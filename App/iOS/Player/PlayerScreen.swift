@@ -3,133 +3,212 @@ import AMDBKit
 import AVKit
 import SwiftUI
 
-struct PlayerScreen: View {
+/// Glass card shown before playback when put.io has a saved position.
+struct ResumePrompt: View {
     let request: PlayerRequest
-    @Environment(AppModel.self) private var app
-    @Environment(Router.self) private var router
-    @Environment(\.dismiss) private var dismiss
-    @State private var player = AVPlayer()
-    @State private var session: PlaybackSession?
-    @State private var askingResume = false
-    @State private var ready = false
-    @State private var remaining = Double.infinity
-    @State private var failure: String?
+    /// Seconds to start from, or nil when cancelled.
+    let onChoice: (Int?) -> Void
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-            VideoPlayerController(player: player).ignoresSafeArea()
-            if !ready && failure == nil && !askingResume {
-                VStack(spacing: 12) {
-                    ProgressView().controlSize(.large)
-                    Text("Preparing…").font(.footnote).foregroundStyle(.white.opacity(0.7))
+            Color.black.opacity(0.55).ignoresSafeArea().onTapGesture { onChoice(nil) }
+            VStack(spacing: 14) {
+                Text(request.title).font(.headline).multilineTextAlignment(.center)
+                Button { onChoice(request.resumeFrom) } label: {
+                    Label("Resume from \(Format.clock(request.resumeFrom))", systemImage: "play.fill")
                 }
+                .buttonStyle(.primaryPill)
+                Button("Start over") { onChoice(0) }.buttonStyle(.glassPill)
+                Button("Cancel") { onChoice(nil) }.font(.footnote).foregroundStyle(.white.opacity(0.7))
             }
-            if askingResume {
-                VStack(spacing: 14) {
-                    Text(request.title).font(.headline)
-                    Button { begin(at: Double(request.resumeFrom)) } label: {
-                        Label("Resume from \(Format.clock(request.resumeFrom))", systemImage: "play.fill")
-                    }
-                    .buttonStyle(.primaryPill)
-                    Button("Start over") { begin(at: 0) }.buttonStyle(.glassPill)
-                }
-                .padding(28)
-                .glassRounded(24)
-            }
-            if let failure {
-                VStack(spacing: 14) {
-                    Text(failure).multilineTextAlignment(.center)
-                    Link("Open in put.io", destination: URL(string: "https://app.put.io/files/\(request.file.id)")!)
-                        .buttonStyle(.glassPill)
-                }
-                .padding(28)
-                .glassRounded(24)
-                .padding(40)
-            }
-            if let next = request.next, remaining < 30 {
-                Button { advance(to: next) } label: { Label("Next: \(next.label)", systemImage: "forward.end.fill") }
-                    .buttonStyle(.primaryPill)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(.trailing, 40).padding(.bottom, 110)
-            }
+            .padding(28)
+            .glassRounded(24)
+            .padding(32)
         }
-        .overlay(alignment: .topLeading) {
-            Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.headline).frame(width: 40, height: 40).glassCapsule()
-            }
-            .buttonStyle(.plain)
-            .padding(16)
-            .accessibilityLabel("Close player")
+        .transition(.opacity)
+    }
+}
+
+@MainActor
+enum PlayerPresenter {
+    /// Presents Apple's player full screen. Its own close button is the only one; dismissal is detected by the coordinator.
+    static func present(_ request: PlayerRequest, from seconds: Int, app: AppModel, router: Router) {
+        guard let putio = app.putio, let presenter = topViewController() else {
+            router.player = nil
+            return
         }
-        .statusBarHidden()
-        .persistentSystemOverlays(.hidden)
-        .task { await setUp() }
-        .task { await trackProgress() }
-        .onDisappear { finish() }
+        let coordinator = PlayerCoordinator(request: request, putio: putio, app: app, router: router)
+        PlayerCoordinator.current = coordinator
+        coordinator.start(from: seconds, on: presenter)
     }
 
-    private func setUp() async {
-        guard let putio = app.putio else { return }
-        let playback = PlaybackSession(fileID: request.file.id, resumeFrom: request.resumeFrom, putio: putio, library: app.library)
-        session = playback
-        if let played = request.played { await app.notePlayed(played) }
-        player.replaceCurrentItem(with: AVPlayerItem(url: playback.streamURL))
-        if playback.shouldOfferResume { askingResume = true } else { begin(at: 0) }
+    static func topViewController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        var top = scene?.keyWindow?.rootViewController
+        while let presented = top?.presentedViewController, !presented.isBeingDismissed { top = presented }
+        return top
+    }
+}
 
-        for _ in 0..<60 {
-            switch player.currentItem?.status {
-            case .readyToPlay:
-                ready = true
-                return
-            case .failed:
-                break
-            default:
-                try? await Task.sleep(for: .seconds(1))
-                continue
-            }
-            break
-        }
-        if request.file.contentType == "video/mp4", let original = try? await putio.originalURL(fileID: request.file.id) {
-            player.replaceCurrentItem(with: AVPlayerItem(url: original))
-            if !askingResume { begin(at: Double(request.resumeFrom)) }
-            ready = true
-        } else {
-            failure = "put.io couldn't stream this file yet. It may still be converting. Try again in a few minutes."
-        }
+@MainActor
+final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelegate {
+    static var current: PlayerCoordinator?
+
+    let request: PlayerRequest
+    private let controller = AVPlayerViewController()
+    private let session: PlaybackSession
+    private let putio: any PutioService
+    private let app: AppModel
+    private let router: Router
+    private var progressTask: Task<Void, Never>?
+    private var nextHost: UIViewController?
+    private var preparingHost: UIViewController?
+    private var inPictureInPicture = false
+    private var triedFallback = false
+    private var finished = false
+
+    init(request: PlayerRequest, putio: any PutioService, app: AppModel, router: Router) {
+        self.request = request
+        self.putio = putio
+        self.app = app
+        self.router = router
+        session = PlaybackSession(fileID: request.file.id, resumeFrom: request.resumeFrom, putio: putio, library: app.library)
     }
 
-    private func begin(at seconds: Double) {
-        askingResume = false
-        player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600))
-        player.play()
+    func start(from seconds: Int, on presenter: UIViewController) {
+        let player = AVPlayer(url: session.streamURL)
+        controller.player = player
+        controller.allowsPictureInPicturePlayback = true
+        controller.canStartPictureInPictureAutomaticallyFromInline = true
+        controller.delegate = self
+        controller.modalPresentationStyle = .fullScreen
+        if seconds > 0 { player.seek(to: CMTime(seconds: Double(seconds), preferredTimescale: 600)) }
+        presenter.present(controller, animated: true) { player.play() }
+        progressTask = Task { [weak self] in await self?.run() }
     }
 
-    private func trackProgress() async {
-        while !Task.isCancelled {
+    private func run() async {
+        var waitedForReady = 0
+        while !Task.isCancelled, !finished {
             try? await Task.sleep(for: .seconds(1))
+            guard let player = controller.player else { continue }
+            if controller.presentingViewController == nil, !inPictureInPicture {
+                finish()
+                return
+            }
+            let status = player.currentItem?.status
+            updatePreparingLabel(visible: status != .readyToPlay && !triedFallback)
+            if status != .readyToPlay { waitedForReady += 1 }
+            if status == .failed || (status != .readyToPlay && waitedForReady >= 60) {
+                await handleUnplayable()
+                waitedForReady = 0
+            }
             let position = player.currentTime().seconds
-            guard position.isFinite, position > 0 else { continue }
             let duration = player.currentItem?.duration.seconds ?? 0
             let total = duration.isFinite ? duration : 0
-            remaining = total > 0 ? total - position : .infinity
-            await session?.tick(seconds: position, duration: total)
+            if position.isFinite, position > 0 { await session.tick(seconds: position, duration: total) }
+            updateNextButton(remaining: total > 0 && position.isFinite ? total - position : .infinity)
+        }
+    }
+
+    private func handleUnplayable() async {
+        guard !triedFallback else { return }
+        triedFallback = true
+        if request.file.contentType == "video/mp4", let original = try? await putio.originalURL(fileID: request.file.id) {
+            controller.player?.replaceCurrentItem(with: AVPlayerItem(url: original))
+            controller.player?.play()
+        } else {
+            updatePreparingLabel(visible: false)
+            showFailure("This video isn't ready to stream yet. Try again in a few minutes.")
         }
     }
 
     private func finish() {
-        player.pause()
-        let position = player.currentTime().seconds
-        let duration = player.currentItem?.duration.seconds ?? 0
-        guard let session, position.isFinite, position > 0 else { return }
-        Task { await session.finish(seconds: position, duration: duration.isFinite ? duration : 0) }
+        guard !finished else { return }
+        finished = true
+        progressTask?.cancel()
+        let player = controller.player
+        player?.pause()
+        let position = player?.currentTime().seconds ?? 0
+        let duration = player?.currentItem?.duration.seconds ?? 0
+        let session = session
+        if position.isFinite, position > 0 {
+            Task { await session.finish(seconds: position, duration: duration.isFinite ? duration : 0) }
+        }
+        if router.player?.id == request.id { router.player = nil }
+        if Self.current === self { Self.current = nil }
+    }
+
+    // MARK: Overlays
+
+    private func updateNextButton(remaining: Double) {
+        guard let next = request.next else { return }
+        if remaining < 30, nextHost == nil {
+            let button = Button { [weak self] in self?.advance(to: next) } label: {
+                Label("Next: \(next.label)", systemImage: "forward.end.fill")
+            }
+            .buttonStyle(.primaryPill)
+            .padding(4)
+            let host = UIHostingController(rootView: AnyView(button))
+            host.sizingOptions = .intrinsicContentSize
+            embed(host) { view, container in
+                [view.trailingAnchor.constraint(equalTo: container.safeAreaLayoutGuide.trailingAnchor, constant: -32),
+                 view.bottomAnchor.constraint(equalTo: container.safeAreaLayoutGuide.bottomAnchor, constant: -96)]
+            }
+            nextHost = host
+        } else if remaining >= 30, let host = nextHost {
+            host.willMove(toParent: nil)
+            host.view.removeFromSuperview()
+            host.removeFromParent()
+            nextHost = nil
+        }
+    }
+
+    private func updatePreparingLabel(visible: Bool) {
+        if visible, preparingHost == nil {
+            let label = Text("Preparing…").font(.callout.weight(.medium)).foregroundStyle(.white.opacity(0.8))
+                .padding(.horizontal, 14).padding(.vertical, 7).glassCapsule()
+            let host = UIHostingController(rootView: AnyView(label))
+            host.sizingOptions = .intrinsicContentSize
+            host.view.isUserInteractionEnabled = false
+            embed(host) { view, container in
+                [view.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+                 view.centerYAnchor.constraint(equalTo: container.centerYAnchor, constant: 90)]
+            }
+            preparingHost = host
+        } else if !visible, let host = preparingHost {
+            host.willMove(toParent: nil)
+            host.view.removeFromSuperview()
+            host.removeFromParent()
+            preparingHost = nil
+        }
+    }
+
+    private func showFailure(_ message: String) {
+        let fileID = request.file.id
+        let view = PlayerFailureView(message: message, fileID: fileID) { [weak self] in self?.controller.dismiss(animated: true) }
+        embed(UIHostingController(rootView: AnyView(view))) { view, container in
+            [view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+             view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+             view.topAnchor.constraint(equalTo: container.topAnchor),
+             view.bottomAnchor.constraint(equalTo: container.bottomAnchor)]
+        }
+    }
+
+    private func embed(_ host: UIViewController, constraints: (UIView, UIView) -> [NSLayoutConstraint]) {
+        host.view.backgroundColor = .clear
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        controller.addChild(host)
+        controller.view.addSubview(host.view)
+        NSLayoutConstraint.activate(constraints(host.view, controller.view))
+        host.didMove(toParent: controller)
     }
 
     private func advance(to next: NextEpisode) {
-        dismiss()
-        let library = app.library
-        Task {
-            try? await Task.sleep(for: .milliseconds(450))
+        let app = app, router = router
+        controller.dismiss(animated: true) {
+            let library = app.library
             if let entry = library.matching(tmdbID: next.target.tmdbID, season: next.target.season, episode: next.target.episode).first {
                 router.play(entry, resumeFrom: library.resumeSeconds(for: entry))
             } else if let query = next.query {
@@ -137,21 +216,44 @@ struct PlayerScreen: View {
             }
         }
     }
-}
 
-private struct VideoPlayerController: UIViewControllerRepresentable {
-    let player: AVPlayer
+    // MARK: Picture in Picture
 
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let controller = AVPlayerViewController()
-        controller.player = player
-        controller.allowsPictureInPicturePlayback = true
-        controller.canStartPictureInPictureAutomaticallyFromInline = true
-        controller.videoGravity = .resizeAspect
-        return controller
+    func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
+        inPictureInPicture = true
     }
 
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
-        if controller.player !== player { controller.player = player }
+    func playerViewControllerDidStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
+        inPictureInPicture = false
+    }
+
+    func playerViewController(_ playerViewController: AVPlayerViewController,
+                              restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
+        guard controller.presentingViewController == nil, let presenter = PlayerPresenter.topViewController() else {
+            completionHandler(true)
+            return
+        }
+        presenter.present(controller, animated: true) { completionHandler(true) }
+    }
+}
+
+private struct PlayerFailureView: View {
+    let message: String
+    let fileID: Int64
+    let close: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.6).ignoresSafeArea()
+            VStack(spacing: 14) {
+                Text(message).multilineTextAlignment(.center)
+                Link("Open in put.io", destination: URL(string: "https://app.put.io/files/\(fileID)")!)
+                    .buttonStyle(.glassPill)
+                Button("Close", action: close).buttonStyle(.primaryPill)
+            }
+            .padding(28)
+            .glassRounded(24)
+            .padding(40)
+        }
     }
 }

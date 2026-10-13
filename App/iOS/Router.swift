@@ -70,7 +70,10 @@ final class Router {
     var searchPath: [CatalogItem] = []
     var libraryPath: [CatalogItem] = []
     var versions: VersionsRequest?
+    /// Set to start playback; cleared when the player closes.
     var player: PlayerRequest?
+    /// Shown before playback when there is a saved position.
+    var resumePrompt: PlayerRequest?
     var banner: Banner?
     var countdown: TrackedTransfer?
     var showSettings = false

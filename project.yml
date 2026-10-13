@@ -19,7 +19,9 @@ targets:
   AMDB:
     type: application
     platform: iOS
-    scheme: {}
+    scheme:
+      testTargets:
+        - AMDBUITests
     sources:
       - path: App/iOS
     dependencies:
@@ -57,3 +59,14 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
+  AMDBUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: App/UITests
+    dependencies:
+      - target: AMDB
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1,2"

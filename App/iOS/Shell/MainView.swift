@@ -24,9 +24,21 @@ struct MainView: View {
                 .ignoresSafeArea(.keyboard)
         }
         .overlay(alignment: .top) { ReadyBanner() }
+        .overlay {
+            if let prompt = router.resumePrompt {
+                ResumePrompt(request: prompt) { choice in
+                    router.resumePrompt = nil
+                    if let choice { launch(prompt, from: choice) } else { router.player = nil }
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: router.resumePrompt?.id)
+        .onChange(of: router.player?.id) { _, _ in
+            guard let request = router.player, PlayerCoordinator.current?.request.id != request.id else { return }
+            if request.resumeFrom > 30 { router.resumePrompt = request } else { launch(request, from: 0) }
+        }
         .onChange(of: router.tab, initial: true) { _, tab in visited.insert(tab) }
         .sheet(item: $router.versions) { VersionsSheet(request: $0) }
-        .fullScreenCover(item: $router.player) { PlayerScreen(request: $0) }
         .sheet(isPresented: $router.showSettings) { SettingsView() }
         .task {
             wireEvents()
@@ -44,6 +56,11 @@ struct MainView: View {
         case .search: router.searchPath
         case .library: router.libraryPath
         }
+    }
+
+    private func launch(_ request: PlayerRequest, from seconds: Int) {
+        if let played = request.played { Task { await app.notePlayed(played) } }
+        PlayerPresenter.present(request, from: seconds, app: app, router: router)
     }
 
     private func wireEvents() {
