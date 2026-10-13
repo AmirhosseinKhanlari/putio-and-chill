@@ -41,6 +41,9 @@ struct AMDBApp: App {
                 .environment(downloader)
                 .preferredColorScheme(.dark)
                 .tint(.white)
+                #if DEBUG
+                .overlay { if WidgetGallery.isEnabled { WidgetGallery() } }
+                #endif
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .active where model.isReady:

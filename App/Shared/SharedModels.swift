@@ -7,12 +7,17 @@ enum AppGroup {
     static var container: URL? { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: id) }
 }
 
-/// One Continue Watching tile for the widget; posters are saved as files in the App Group.
+/// One Continue Watching tile for the widget; artwork is saved as files in the App Group.
 struct WidgetItem: Codable, Hashable, Identifiable {
     let id: String
     let title: String
     let subtitle: String
+    /// "S2 · E4" for episodes, the year for movies.
+    var caption: String?
+    /// Poster file name (fallback artwork).
     let imageFile: String?
+    /// Landscape backdrop file name (preferred artwork).
+    var backdropFile: String?
     let link: URL
 }
 

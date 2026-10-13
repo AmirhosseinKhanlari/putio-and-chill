@@ -10,22 +10,50 @@ enum WidgetPublisher {
     static func publish(_ library: LibraryIndex) async {
         guard let container = AppGroup.container else { return }
         var items: [WidgetItem] = []
-        for entry in library.continueWatching.prefix(6) {
+        var keep: Set<String> = []
+        // One tile per title: a show appears once, at its most recent episode.
+        var seen: Set<String> = []
+        let entries = library.continueWatching.filter { entry in
+            seen.insert(entry.match.map { "\($0.mediaType.rawValue)-\($0.tmdbID)" } ?? "file-\(entry.id)").inserted
+        }
+        for entry in entries.prefix(6) {
             let seconds = library.resumeSeconds(for: entry)
-            var imageFile: String?
-            if let url = CatalogClient.imageURL(entry.match?.posterPath, size: "w185"),
-               let image = await ImagePipeline.shared.image(for: url),
-               let data = image.jpegData(compressionQuality: 0.8) {
-                let name = "poster-\(entry.id).jpg"
-                try? data.write(to: container.appending(path: name), options: .atomic)
-                imageFile = name
-            }
-            items.append(WidgetItem(id: String(entry.id), title: entry.displayTitle,
-                                    subtitle: "Resume \(Format.clock(seconds))", imageFile: imageFile,
+            let poster = await save(entry.match?.posterPath, size: "w342", as: "poster-\(entry.id)-w342.jpg", in: container)
+            let backdrop = await save(entry.match?.backdropPath, size: "w780", as: "backdrop-\(entry.id)-w780.jpg", in: container)
+            keep.formUnion([poster, backdrop].compactMap { $0 })
+            items.append(WidgetItem(id: String(entry.id), title: entry.match?.title ?? entry.displayTitle,
+                                    subtitle: "Resume \(Format.clock(seconds))", caption: caption(entry.match),
+                                    imageFile: poster, backdropFile: backdrop,
                                     link: DeepLink.play(fileID: entry.id).url))
         }
         WidgetSnapshot(continueWatching: items, updatedAt: .now).save()
+        removeStaleArtwork(in: container, keeping: keep)
         WidgetCenter.shared.reloadTimelines(ofKind: "ContinueWatching")
+    }
+
+    private static func caption(_ match: LibraryMatch?) -> String? {
+        guard let match else { return nil }
+        if let season = match.season, let episode = match.episode { return "S\(season) · E\(episode)" }
+        if let season = match.season { return "Season \(season)" }
+        return match.year.map(String.init)
+    }
+
+    /// Downloads artwork into the App Group; returns the file name, or nil when there's no art.
+    private static func save(_ path: String?, size: String, as name: String, in container: URL) async -> String? {
+        let file = container.appending(path: name)
+        if FileManager.default.fileExists(atPath: file.path) { return name }
+        guard let url = CatalogClient.imageURL(path, size: size),
+              let image = await ImagePipeline.shared.image(for: url),
+              let data = image.jpegData(compressionQuality: 0.82),
+              (try? data.write(to: file, options: .atomic)) != nil else { return nil }
+        return name
+    }
+
+    private static func removeStaleArtwork(in container: URL, keeping keep: Set<String>) {
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: container.path)) ?? []
+        for name in files where (name.hasPrefix("poster-") || name.hasPrefix("backdrop-")) && !keep.contains(name) {
+            try? FileManager.default.removeItem(at: container.appending(path: name))
+        }
     }
 }
 

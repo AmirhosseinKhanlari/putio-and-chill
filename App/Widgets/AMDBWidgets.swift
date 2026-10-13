@@ -20,12 +20,14 @@ struct ContinueWatchingEntry: TimelineEntry {
 struct ContinueWatchingProvider: TimelineProvider {
     func placeholder(in context: Context) -> ContinueWatchingEntry {
         ContinueWatchingEntry(date: .now, items: [
-            WidgetItem(id: "p", title: "Interstellar", subtitle: "Resume 1:12:40", imageFile: nil, link: URL(string: "amdb://library")!),
+            WidgetItem(id: "p", title: "Interstellar", subtitle: "Resume 1:12:40", caption: "2014", imageFile: nil,
+                       link: URL(string: "amdb://library")!),
         ])
     }
 
     func getSnapshot(in context: Context, completion: @escaping (ContinueWatchingEntry) -> Void) {
-        completion(ContinueWatchingEntry(date: .now, items: WidgetSnapshot.load()?.continueWatching ?? placeholder(in: context).items))
+        let items = WidgetSnapshot.load()?.continueWatching ?? []
+        completion(ContinueWatchingEntry(date: .now, items: items.isEmpty ? placeholder(in: context).items : items))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<ContinueWatchingEntry>) -> Void) {
@@ -37,70 +39,22 @@ struct ContinueWatchingProvider: TimelineProvider {
 struct ContinueWatchingWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "ContinueWatching", provider: ContinueWatchingProvider()) { entry in
-            ContinueWatchingView(entry: entry)
-                .containerBackground(for: .widget) {
-                    LinearGradient(colors: [Color(red: 0.12, green: 0.08, blue: 0.2), Color(red: 0.03, green: 0.03, blue: 0.05)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing)
-                }
+            ContinueWatchingEntryView(entry: entry)
+                .containerBackground(ContinueWatchingView.background, for: .widget)
         }
         .configurationDisplayName("Continue Watching")
         .description("Pick up where you left off.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .contentMarginsDisabled()
     }
 }
 
-private struct ContinueWatchingView: View {
+private struct ContinueWatchingEntryView: View {
     let entry: ContinueWatchingEntry
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        let count = family == .systemSmall ? 1 : (family == .systemMedium ? 3 : 6)
-        let items = Array(entry.items.prefix(count))
-        if items.isEmpty {
-            VStack(spacing: 6) {
-                Image(systemName: "play.rectangle.on.rectangle").font(.title2)
-                Text("Nothing in progress").font(.caption).foregroundStyle(.secondary)
-            }
-            .widgetURL(URL(string: "amdb://library"))
-        } else if family == .systemSmall, let item = items.first {
-            ZStack(alignment: .bottomLeading) {
-                poster(item).frame(maxWidth: .infinity, maxHeight: .infinity)
-                LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .center, endPoint: .bottom)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title).font(.caption.weight(.bold)).lineLimit(2)
-                    Label(item.subtitle, systemImage: "play.fill").font(.caption2).foregroundStyle(.white.opacity(0.8))
-                }
-                .padding(10)
-            }
-            .foregroundStyle(.white)
-            .widgetURL(item.link)
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Continue Watching").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.7))
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                    ForEach(items) { item in
-                        Link(destination: item.link) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                poster(item).aspectRatio(2 / 3, contentMode: .fill).clipShape(RoundedRectangle(cornerRadius: 8))
-                                Text(item.subtitle).font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
-                            }
-                        }
-                    }
-                }
-            }
-            .foregroundStyle(.white)
-        }
-    }
-
-    @ViewBuilder private func poster(_ item: WidgetItem) -> some View {
-        if let file = item.imageFile, let url = WidgetSnapshot.imageURL(file), let image = UIImage(contentsOfFile: url.path) {
-            Image(uiImage: image).resizable().scaledToFill()
-        } else {
-            ZStack {
-                Color.white.opacity(0.08)
-                Text(item.title).font(.caption2.weight(.bold)).multilineTextAlignment(.center).padding(4)
-            }
-        }
+        ContinueWatchingView(items: entry.items, family: family)
     }
 }
 
