@@ -62,9 +62,12 @@ targets:
         TraktClientID: $(TRAKT_CLIENT_ID)
         OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)
         NSSupportsLiveActivities: true
+        # Only standard HTTPS: exempt from export compliance, so TestFlight builds don't wait on the question.
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.amdb.ios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
