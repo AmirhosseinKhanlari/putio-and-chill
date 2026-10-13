@@ -44,7 +44,7 @@ struct MainView: View {
         .onChange(of: router.tab, initial: true) { _, tab in visited.insert(tab) }
         .sheet(item: $router.versions) { VersionsSheet(request: $0) }
         .sheet(isPresented: $router.showSettings) { SettingsView() }
-        .sheet(isPresented: $router.showSurprise) { SurpriseSheet() }
+        .fullScreenCover(isPresented: $router.showSurprise) { SurprisePage() }
         .task {
             wireEvents()
             await app.myList.load()

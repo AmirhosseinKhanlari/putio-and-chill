@@ -41,6 +41,18 @@ import Testing
         #expect(surprise.pick?.tmdbID != first)
     }
 
+    @Test func offersAlternativesAndSwapsThem() async {
+        var catalog = FakeCatalog()
+        catalog.discovered = (1...9).map { CatalogItem(tmdbID: $0, mediaType: .movie, title: "M\($0)", backdropPath: $0 == 5 ? nil : "/b\($0).jpg") }
+        let surprise = SurpriseModel(catalog: catalog, random: { range in range.lowerBound })
+        await surprise.roll(kind: .movie, mood: .anything)
+        #expect(surprise.pick?.tmdbID == 1)
+        #expect(surprise.alternatives.map(\.tmdbID) == [2, 3, 4, 6, 7, 8])
+        surprise.choose(surprise.alternatives[2])
+        #expect(surprise.pick?.tmdbID == 4)
+        #expect(surprise.alternatives.map(\.tmdbID) == [2, 3, 1, 6, 7, 8])
+    }
+
     @Test func emptyResultsLeaveNoPick() async {
         let surprise = SurpriseModel(catalog: FakeCatalog(), random: { $0.lowerBound })
         await surprise.roll(kind: .tv, mood: .scare)

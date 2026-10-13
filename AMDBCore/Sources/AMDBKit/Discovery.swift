@@ -77,6 +77,8 @@ public enum Mood: String, CaseIterable, Sendable, Identifiable {
 @Observable @MainActor
 public final class SurpriseModel {
     public private(set) var pick: CatalogItem?
+    /// Other good matches for the same mood, offered as "not feeling it?" options.
+    public private(set) var alternatives: [CatalogItem] = []
     public private(set) var isRolling = false
     public private(set) var isEmpty = false
 
@@ -114,6 +116,24 @@ public final class SurpriseModel {
         let chosen = candidates[random(0..<candidates.count)]
         recent = Array((recent + [chosen.id]).suffix(20))
         pick = chosen
+        alternatives = sample(candidates.filter { $0.id != chosen.id && $0.backdropPath != nil }, count: 6)
         isEmpty = false
+    }
+
+    /// Swaps in one of the alternatives; the current pick takes its place in the list.
+    public func choose(_ item: CatalogItem) {
+        guard let current = pick, item.id != current.id, let index = alternatives.firstIndex(where: { $0.id == item.id }) else { return }
+        alternatives[index] = current
+        recent = Array((recent + [item.id]).suffix(20))
+        pick = item
+    }
+
+    private func sample(_ items: [CatalogItem], count: Int) -> [CatalogItem] {
+        var pool = items
+        var result: [CatalogItem] = []
+        while result.count < count, !pool.isEmpty {
+            result.append(pool.remove(at: random(0..<pool.count)))
+        }
+        return result
     }
 }
