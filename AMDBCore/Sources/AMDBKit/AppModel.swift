@@ -33,6 +33,7 @@ public struct ServiceFactory: Sendable {
                 case "eztv": return EZTVProvider(baseURL: url, transport: transport)
                 case "apibay": return ApibayProvider(baseURL: url, transport: transport)
                 case "knaben": return KnabenProvider(baseURL: url, transport: transport)
+                case "torrentscsv": return TorrentsCSVProvider(baseURL: url, transport: transport)
                 default: return nil
                 }
             },

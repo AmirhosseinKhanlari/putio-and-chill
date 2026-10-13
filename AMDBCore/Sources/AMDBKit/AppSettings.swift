@@ -27,6 +27,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         SourceConfig(id: "eztv", name: "EZTV", enabled: true, baseURL: "https://eztvx.to"),
         SourceConfig(id: "apibay", name: "The Pirate Bay (apibay)", enabled: true, baseURL: "https://apibay.org"),
         SourceConfig(id: "knaben", name: "Knaben", enabled: true, baseURL: "https://api.knaben.org"),
+        SourceConfig(id: "torrentscsv", name: "Torrents.csv", enabled: true, baseURL: "https://torrents-csv.com"),
     ], defaultResolution: nil, autoPlayCountdown: true)
 
     public func source(_ id: String) -> SourceConfig? { sources.first { $0.id == id } }

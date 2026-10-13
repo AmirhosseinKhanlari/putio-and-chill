@@ -4,7 +4,7 @@ import Testing
 
 @Suite struct SettingsAndTokensTests {
     @Test func defaultsIncludeAllSources() {
-        #expect(AppSettings.defaults.sources.map(\.id) == ["chill", "yts", "eztv", "apibay", "knaben"])
+        #expect(AppSettings.defaults.sources.map(\.id) == ["chill", "yts", "eztv", "apibay", "knaben", "torrentscsv"])
         #expect(AppSettings.defaults.source("yts")?.baseURL == "https://movies-api.accel.li")
         #expect(AppSettings.defaults.autoPlayCountdown)
     }

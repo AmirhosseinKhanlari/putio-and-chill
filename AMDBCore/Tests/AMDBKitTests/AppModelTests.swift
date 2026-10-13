@@ -51,12 +51,12 @@ final class ProviderCalls: @unchecked Sendable {
         let calls = ProviderCalls()
         let model = makeModel([.putio: "p", .tmdb: "t", .chill: "c"], calls: calls)
         #expect(model.hasChill)
-        #expect(calls.all == ["chill", "yts", "eztv", "apibay", "knaben"])
+        #expect(calls.all == ["chill", "yts", "eztv", "apibay", "knaben", "torrentscsv"])
         calls.reset()
         var settings = model.settings
         settings.sources[2].enabled = false
         model.updateSettings(settings)
-        #expect(calls.all == ["chill", "yts", "apibay", "knaben"])
+        #expect(calls.all == ["chill", "yts", "apibay", "knaben", "torrentscsv"])
     }
 
     @Test func validateTMDBUsesFactory() async {
