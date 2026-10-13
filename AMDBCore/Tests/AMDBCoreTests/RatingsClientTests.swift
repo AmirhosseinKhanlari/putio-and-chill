@@ -17,7 +17,7 @@ import Testing
     @Test func mapsSourcesAndBuildsRequest() async throws {
         let stub = StubTransport(json: Self.json)
         let ratings = try await RatingsClient(apiKey: "K", transport: stub).ratings(imdbID: "tt0816692", kind: .movie)
-        #expect(ratings == Ratings(imdb: 8.7, imdbVotes: 2_300_000, tomatoes: 73, popcorn: 86, metacritic: 74))
+        #expect(ratings == Ratings(imdb: 8.7, imdbVotes: 2_300_000, tomatoes: 73, popcorn: 86, metacritic: 74, letterboxd: 4.3))
         let request = try #require(stub.requests.first)
         #expect(request.url?.path == "/imdb/movie/tt0816692")
         #expect(request.queryItems["apikey"] == "K")

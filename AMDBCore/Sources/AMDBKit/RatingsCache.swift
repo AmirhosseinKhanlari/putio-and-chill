@@ -7,6 +7,7 @@ public struct CachedRatings: Codable, Sendable, Equatable {
 }
 
 /// On-device ratings cache so MDBList's daily quota is spent once per title per week.
+/// The file name carries a version: bump it when `Ratings` gains a source so old entries are refetched.
 public actor RatingsCache {
     private let fileURL: URL?
     private let ttl: TimeInterval
@@ -25,7 +26,7 @@ public actor RatingsCache {
 
     public static func defaultURL() -> URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appending(path: "AMDB/ratings.json")
+            .appending(path: "AMDB/ratings-v2.json")
     }
 
     public func fresh(_ imdbID: String, now: Date = Date()) -> Ratings? {

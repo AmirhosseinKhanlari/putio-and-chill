@@ -9,12 +9,16 @@ public struct Ratings: Sendable, Hashable, Codable {
     /// Rotten Tomatoes audience (Popcornmeter), 0–100.
     public var popcorn: Int?
     public var metacritic: Int?
+    /// Letterboxd average, 0–5 stars.
+    public var letterboxd: Double?
 
-    public init(imdb: Double? = nil, imdbVotes: Int? = nil, tomatoes: Int? = nil, popcorn: Int? = nil, metacritic: Int? = nil) {
+    public init(imdb: Double? = nil, imdbVotes: Int? = nil, tomatoes: Int? = nil, popcorn: Int? = nil, metacritic: Int? = nil,
+                letterboxd: Double? = nil) {
         self.imdb = imdb; self.imdbVotes = imdbVotes; self.tomatoes = tomatoes; self.popcorn = popcorn; self.metacritic = metacritic
+        self.letterboxd = letterboxd
     }
 
-    public var isEmpty: Bool { imdb == nil && tomatoes == nil && popcorn == nil && metacritic == nil }
+    public var isEmpty: Bool { imdb == nil && tomatoes == nil && popcorn == nil && metacritic == nil && letterboxd == nil }
 }
 
 /// MDBList: `GET https://api.mdblist.com/imdb/{movie|show}/{imdbID}?apikey=…`.
@@ -44,6 +48,13 @@ public struct RatingsClient: Sendable {
             case "tomatoes": ratings.tomatoes = percent
             case "popcorn", "tomatoesaudience": ratings.popcorn = percent
             case "metacritic": ratings.metacritic = percent
+            case "letterboxd":
+                // Stars out of 5; fall back to MDBList's 0–100 score if the value is missing.
+                if let stars = entry.value?.value, stars > 0, stars <= 5 {
+                    ratings.letterboxd = stars
+                } else if let score = entry.score?.value, score > 0 {
+                    ratings.letterboxd = (Double(score) / 20 * 10).rounded() / 10
+                }
             default: break
             }
         }

@@ -67,6 +67,7 @@ private struct HeroPage: View {
                     .font(.system(size: regular ? 58 : 34, weight: .ultraLight))
                     .tracking(regular ? 5 : 2)
                     .lineLimit(2).minimumScaleFactor(0.6)
+                    .frame(maxWidth: regular ? 820 : 360, alignment: .leading)
                 MetaLine(item: item, detail: nil, ratings: ratings)
                 if !item.overview.isEmpty {
                     Text(item.overview).font(.callout).foregroundStyle(.white.opacity(0.8)).lineLimit(3)
@@ -110,19 +111,18 @@ struct MetaLine: View {
     var ratings: Ratings?
 
     var body: some View {
-        HStack(spacing: 8) {
-            if let year = item.year { Text(String(year)) }
-            if let runtime = Format.runtime(detail?.runtimeMinutes) { Text("·"); Text(runtime) }
-            if let ratings, !ratings.isEmpty {
-                Text("·")
-                RatingsBadges(ratings: ratings)
-            } else if let rating = item.voteAverage, rating > 0 {
-                Text("·")
-                Label(String(format: "%.1f", rating), systemImage: "star.fill").labelStyle(.titleAndIcon)
+        let tmdb = detail?.item.voteAverage ?? item.voteAverage
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                if let year = item.year { Text(String(year)) }
+                if let runtime = Format.runtime(detail?.runtimeMinutes) { Text("·"); Text(runtime) }
+                if app.library.matching(tmdbID: item.tmdbID).isEmpty == false {
+                    if item.year != nil || detail?.runtimeMinutes != nil { Text("·") }
+                    Label("In put.io", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.good)
+                }
             }
-            if app.library.matching(tmdbID: item.tmdbID).isEmpty == false {
-                Text("·")
-                Label("In put.io", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.good)
+            if RatingsBadges.hasAny(ratings, tmdb: tmdb) {
+                RatingsBadges(ratings: ratings, tmdb: tmdb)
             }
         }
         .font(.footnote.weight(.medium))
