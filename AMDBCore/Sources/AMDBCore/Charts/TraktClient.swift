@@ -39,11 +39,20 @@ public struct TraktClient: Sendable {
         self.http = HTTPRequester(service: "trakt", transport: transport)
     }
 
-    public func listItems(user: String, list: String) async throws -> [ChartEntry] {
-        let url = baseURL.appending(path: "users/\(user)/lists/\(list)/items")
-        let request = URLRequest.get(url, headers: ["trakt-api-key": clientID, "trakt-api-version": "2",
-                                                    "Content-Type": "application/json"])
-        let items = try await http.decode([Item].self, request, decoder: .snakeCase)
+    /// Trakt pages list items (100 by default); ask for 250 per page and follow pages until a short one.
+    public func listItems(user: String, list: String, pageSize: Int = 250, maxPages: Int = 4) async throws -> [ChartEntry] {
+        var items: [Item] = []
+        for page in 1...maxPages {
+            var components = URLComponents(url: baseURL.appending(path: "users/\(user)/lists/\(list)/items"),
+                                           resolvingAgainstBaseURL: false)!
+            components.queryItems = [URLQueryItem(name: "page", value: String(page)),
+                                     URLQueryItem(name: "limit", value: String(pageSize))]
+            let request = URLRequest.get(components.url!, headers: ["trakt-api-key": clientID, "trakt-api-version": "2",
+                                                                    "Content-Type": "application/json"])
+            let batch = try await http.decode([Item].self, request, decoder: .snakeCase)
+            items += batch
+            if batch.count < pageSize { break }
+        }
         return items.compactMap { item -> ChartEntry? in
             switch item.type {
             case "movie": return item.movie.map { $0.entry(rank: item.rank, kind: .movie) }

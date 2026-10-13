@@ -21,6 +21,9 @@ import Testing
         ])
         let request = try #require(stub.requests.first)
         #expect(request.url?.path == "/users/justin/lists/imdb-top-rated-movies/items")
+        #expect(request.queryItems["limit"] == "250")
+        #expect(request.queryItems["page"] == "1")
+        #expect(stub.requests.count == 1)
         #expect(request.value(forHTTPHeaderField: "trakt-api-key") == "CID")
         #expect(request.value(forHTTPHeaderField: "trakt-api-version") == "2")
     }
@@ -29,5 +32,21 @@ import Testing
         #expect(IMDbChart.top250Movies.list == "imdb-top-rated-movies")
         #expect(IMDbChart.top250TV.list == "imdb-top-rated-tv-shows")
         #expect(IMDbChart.top250TV.kind == .tv)
+    }
+
+    @Test func followsPagesUntilShortPage() async throws {
+        @Sendable func page(_ start: Int, _ count: Int) -> Data {
+            let items = (start..<start + count).map {
+                #"{"rank":\#($0),"type":"movie","movie":{"title":"T\#($0)","year":2000,"ids":{"imdb":"tt\#($0)","tmdb":\#($0)}}}"#
+            }
+            return Data("[\(items.joined(separator: ","))]".utf8)
+        }
+        let stub = StubTransport { request in
+            request.queryItems["page"] == "1" ? (200, page(1, 250)) : (200, page(251, 3))
+        }
+        let entries = try await TraktClient(clientID: "CID", transport: stub).listItems(user: "u", list: "l")
+        #expect(entries.count == 253)
+        #expect(entries.last?.rank == 253)
+        #expect(stub.requests.count == 2)
     }
 }

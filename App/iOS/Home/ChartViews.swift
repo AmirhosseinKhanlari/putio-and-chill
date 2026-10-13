@@ -37,6 +37,10 @@ struct ChartRowView: View {
                 }
                 .padding(.horizontal, Metrics.gutter(sizeClass))
             }
+            if !model.entries.isEmpty {
+                Text("Lists from Trakt").font(.caption2).foregroundStyle(.white.opacity(0.4))
+                    .padding(.horizontal, Metrics.gutter(sizeClass))
+            }
         }
         .sheet(isPresented: $showAll) { ChartGridSheet(model: model) }
     }

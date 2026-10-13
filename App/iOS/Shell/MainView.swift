@@ -16,6 +16,7 @@ struct MainView: View {
                     TabStack(tab: tab, path: path(for: tab, router: $router))
                         .opacity(router.tab == tab ? 1 : 0)
                         .allowsHitTesting(router.tab == tab)
+                        .accessibilityHidden(router.tab != tab)
                 }
             }
             GlassTabBar()
