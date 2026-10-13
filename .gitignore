@@ -3,3 +3,6 @@
 xcuserdata/
 DerivedData/
 *.xcuserstate
+AMDBCore/.build/
+AMDBCore/.spike-out/
+.swiftpm/
