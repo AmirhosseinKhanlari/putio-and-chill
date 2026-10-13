@@ -30,6 +30,9 @@ public protocol CatalogService: CatalogSearching {
     func detail(_ kind: MediaKind, id: Int) async throws -> TitleDetail
     func season(tvID: Int, number: Int) async throws -> [Episode]
     func item(_ kind: MediaKind, id: Int) async throws -> CatalogItem
+    func person(id: Int) async throws -> PersonDetail
+    func collection(id: Int) async throws -> CollectionDetail
+    func discover(_ kind: MediaKind, genreIDs: [Int], minRating: Double, minVotes: Int, page: Int) async throws -> CatalogPage
 }
 
 extension CatalogClient: CatalogService {}

@@ -71,7 +71,9 @@ public struct CatalogClient: Sendable {
                 imdbID: raw.imdbId ?? raw.externalIds?.imdbId,
                 runtimeMinutes: raw.runtime ?? raw.episodeRunTime?.first,
                 genres: raw.genres?.map(\.name) ?? [],
-                cast: (raw.credits?.cast ?? []).prefix(20).map { CastMember(name: $0.name, character: $0.character, profilePath: $0.profilePath) },
+                cast: (raw.credits?.cast ?? []).prefix(20).map {
+                    CastMember(name: $0.name, character: $0.character, profilePath: $0.profilePath, id: $0.id)
+                },
                 crew: raw.keyCrew,
                 trailerYouTubeKey: raw.videos?.results?.first { $0.site == "YouTube" && $0.type == "Trailer" }?.key,
                 logoPath: raw.images?.logos?.first { $0.iso6391 == "en" }?.filePath ?? raw.images?.logos?.first?.filePath,
@@ -79,6 +81,9 @@ public struct CatalogClient: Sendable {
                 seasons: (raw.seasons ?? []).filter { $0.seasonNumber > 0 }.map {
                     SeasonSummary(number: $0.seasonNumber, name: $0.name ?? "Season \($0.seasonNumber)",
                                   episodeCount: $0.episodeCount ?? 0, posterPath: $0.posterPath)
+                },
+                collection: raw.belongsToCollection.map {
+                    CollectionRef(id: $0.id, name: $0.name, posterPath: $0.posterPath, backdropPath: $0.backdropPath)
                 })
         } catch {
             throw AppError.decoding(service: "tmdb", detail: String(describing: error))
@@ -88,6 +93,49 @@ public struct CatalogClient: Sendable {
     /// Light single-title lookup (no credits/videos), used to show chart posters.
     public func item(_ kind: MediaKind, id: Int) async throws -> CatalogItem {
         try await http.decode(CatalogItem.self, request("\(kind.rawValue)/\(id)"), decoder: .snakeCase)
+    }
+
+    public func person(id: Int) async throws -> PersonDetail {
+        let body = try await http.data(request("person/\(id)", [("append_to_response", "combined_credits")]))
+        do {
+            struct CreditsWrapper: Decodable { let combinedCredits: PersonRaw.Credits? }
+            struct VotesWrapper: Decodable { let combinedCredits: PersonRaw.Votes? }
+            let decoder = JSONDecoder.snakeCase
+            let raw = try decoder.decode(PersonRaw.self, from: body)
+            let credits = try decoder.decode(CreditsWrapper.self, from: body).combinedCredits
+            let votes = try decoder.decode(VotesWrapper.self, from: body).combinedCredits
+            var voteCount: [String: Int] = [:]
+            for vote in (votes?.cast ?? []) + (votes?.crew ?? []) {
+                let key = "\((vote.mediaType ?? .movie).rawValue)-\(vote.id)"
+                voteCount[key] = max(voteCount[key] ?? 0, vote.voteCount ?? 0)
+            }
+            var seen = Set<String>()
+            let unique = ((credits?.cast ?? []) + (credits?.crew ?? []))
+                .filter { $0.mediaType != .person && seen.insert($0.id).inserted }
+            return PersonDetail(
+                id: raw.id, name: raw.name, biography: raw.biography ?? "", profilePath: raw.profilePath,
+                department: raw.knownForDepartment, birthday: raw.birthday, placeOfBirth: raw.placeOfBirth,
+                credits: byYear(unique, ascending: false),
+                knownFor: Array(unique.sorted { (voteCount[$0.id] ?? 0) > (voteCount[$1.id] ?? 0) }.prefix(10)))
+        } catch {
+            throw AppError.decoding(service: "tmdb", detail: String(describing: error))
+        }
+    }
+
+    public func collection(id: Int) async throws -> CollectionDetail {
+        let raw = try await http.decode(CollectionDetailRaw.self, request("collection/\(id)"), decoder: .snakeCase)
+        return CollectionDetail(id: raw.id, name: raw.name, overview: raw.overview ?? "", posterPath: raw.posterPath,
+                                backdropPath: raw.backdropPath, parts: byYear(raw.parts ?? [], ascending: true))
+    }
+
+    /// Filtered discovery (genres OR-ed), used by "Surprise me".
+    public func discover(_ kind: MediaKind, genreIDs: [Int], minRating: Double, minVotes: Int, page: Int) async throws -> CatalogPage {
+        struct Paged: Decodable { let page: Int?; let totalPages: Int?; let results: [CatalogItem] }
+        var query = [("sort_by", "popularity.desc"), ("vote_average.gte", String(format: "%.1f", minRating)),
+                     ("vote_count.gte", String(minVotes)), ("page", String(page))]
+        if !genreIDs.isEmpty { query.append(("with_genres", genreIDs.map(String.init).joined(separator: "|"))) }
+        let paged = try await http.decode(Paged.self, request("discover/\(kind.rawValue)", query), decoder: .snakeCase)
+        return CatalogPage(items: paged.results.map { $0.with(kind) }, page: paged.page ?? page, totalPages: paged.totalPages ?? page)
     }
 
     public func season(tvID: Int, number: Int) async throws -> [Episode] {

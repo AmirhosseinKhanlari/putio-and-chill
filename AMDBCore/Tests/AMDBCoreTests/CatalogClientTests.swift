@@ -104,4 +104,56 @@ import Testing
         #expect(page.hasMore)
         #expect(stub.requests.first?.queryItems["page"] == "2")
     }
+
+    @Test func personDetailWithCreditsNewestFirst() async throws {
+        let json = #"""
+        {"id":525,"name":"Christopher Nolan","biography":"British-American filmmaker.","profile_path":"/n.jpg",
+         "known_for_department":"Directing","birthday":"1970-07-30","place_of_birth":"London",
+         "combined_credits":{"cast":[{"id":1,"media_type":"movie","title":"Cameo","release_date":"2001-01-01","vote_count":5}],
+           "crew":[{"id":27205,"media_type":"movie","title":"Inception","release_date":"2010-07-15","job":"Director","vote_count":38000},
+                   {"id":27205,"media_type":"movie","title":"Inception","release_date":"2010-07-15","job":"Writer","vote_count":38000},
+                   {"id":872585,"media_type":"movie","title":"Oppenheimer","release_date":"2023-07-19","job":"Director","vote_count":9000},
+                   {"id":9,"media_type":"movie","title":"Upcoming","release_date":"","job":"Producer","vote_count":0}]}}
+        """#
+        let stub = StubTransport(json: json)
+        let person = try await CatalogClient(accessToken: "K", transport: stub).person(id: 525)
+        #expect(person.name == "Christopher Nolan")
+        #expect(person.department == "Directing")
+        #expect(person.credits.map(\.tmdbID) == [872585, 27205, 1, 9])
+        #expect(person.knownFor.first?.tmdbID == 27205)
+        #expect(stub.requests.first?.queryItems["append_to_response"] == "combined_credits")
+    }
+
+    @Test func collectionPartsInReleaseOrder() async throws {
+        let json = #"""
+        {"id":10,"name":"Star Wars Collection","overview":"A space saga.","poster_path":"/c.jpg","backdrop_path":"/cb.jpg",
+         "parts":[{"id":181808,"title":"The Last Jedi","release_date":"2017-12-13"},
+                  {"id":11,"title":"Star Wars","release_date":"1977-05-25"},
+                  {"id":1891,"title":"The Empire Strikes Back","release_date":"1980-05-20"},
+                  {"id":99,"title":"Untitled","release_date":""}]}
+        """#
+        let collection = try await CatalogClient(accessToken: "K", transport: StubTransport(json: json)).collection(id: 10)
+        #expect(collection.name == "Star Wars Collection")
+        #expect(collection.parts.map(\.tmdbID) == [11, 1891, 181808, 99])
+    }
+
+    @Test func movieDetailCarriesCollectionAndCastIDs() async throws {
+        let json = #"{"id":11,"title":"Star Wars","belongs_to_collection":{"id":10,"name":"Star Wars Collection","poster_path":"/c.jpg","backdrop_path":"/cb.jpg"},"credits":{"cast":[{"id":2,"name":"Mark Hamill","character":"Luke","profile_path":null}]}}"#
+        let detail = try await CatalogClient(accessToken: "K", transport: StubTransport(json: json)).detail(.movie, id: 11)
+        #expect(detail.collection == CollectionRef(id: 10, name: "Star Wars Collection", posterPath: "/c.jpg", backdropPath: "/cb.jpg"))
+        #expect(detail.cast.first?.id == 2)
+    }
+
+    @Test func discoverFiltersAndPages() async throws {
+        let stub = StubTransport(json: #"{"page":3,"total_pages":40,"results":[{"id":5,"title":"Good Film"}]}"#)
+        let page = try await CatalogClient(accessToken: "K", transport: stub)
+            .discover(.movie, genreIDs: [35, 18], minRating: 7, minVotes: 500, page: 3)
+        #expect(page.items.first?.tmdbID == 5)
+        #expect(page.totalPages == 40)
+        let q = try #require(stub.requests.first).queryItems
+        #expect(q["with_genres"] == "35|18")
+        #expect(q["vote_average.gte"] == "7.0")
+        #expect(q["vote_count.gte"] == "500")
+        #expect(q["page"] == "3")
+    }
 }

@@ -54,10 +54,47 @@ public struct CastMember: Sendable, Hashable {
     public let name: String
     public let character: String?
     public let profilePath: String?
+    /// TMDB person id, for person pages.
+    public let id: Int?
 
-    public init(name: String, character: String?, profilePath: String?) {
-        self.name = name; self.character = character; self.profilePath = profilePath
+    public init(name: String, character: String?, profilePath: String?, id: Int? = nil) {
+        self.name = name; self.character = character; self.profilePath = profilePath; self.id = id
     }
+}
+
+public struct CollectionRef: Sendable, Hashable {
+    public let id: Int
+    public let name: String
+    public let posterPath: String?
+    public let backdropPath: String?
+
+    public init(id: Int, name: String, posterPath: String?, backdropPath: String?) {
+        self.id = id; self.name = name; self.posterPath = posterPath; self.backdropPath = backdropPath
+    }
+}
+
+public struct CollectionDetail: Sendable, Equatable {
+    public let id: Int
+    public let name: String
+    public let overview: String
+    public let posterPath: String?
+    public let backdropPath: String?
+    /// Release order, undated parts last.
+    public let parts: [CatalogItem]
+}
+
+public struct PersonDetail: Sendable, Equatable {
+    public let id: Int
+    public let name: String
+    public let biography: String
+    public let profilePath: String?
+    public let department: String?
+    public let birthday: String?
+    public let placeOfBirth: String?
+    /// Every title they worked on, newest first, undated last.
+    public let credits: [CatalogItem]
+    /// Their most-voted titles.
+    public let knownFor: [CatalogItem]
 }
 
 public struct SeasonSummary: Sendable, Hashable {
@@ -98,22 +135,24 @@ public struct TitleDetail: Sendable, Equatable {
     public let logoPath: String?
     public let recommendations: [CatalogItem]
     public let seasons: [SeasonSummary]
+    public let collection: CollectionRef?
 
     public init(item: CatalogItem, imdbID: String?, runtimeMinutes: Int? = nil, genres: [String] = [],
                 cast: [CastMember] = [], crew: [CastMember] = [], trailerYouTubeKey: String? = nil, logoPath: String? = nil,
-                recommendations: [CatalogItem] = [], seasons: [SeasonSummary] = []) {
+                recommendations: [CatalogItem] = [], seasons: [SeasonSummary] = [], collection: CollectionRef? = nil) {
         self.item = item; self.imdbID = imdbID; self.runtimeMinutes = runtimeMinutes; self.genres = genres
         self.cast = cast; self.crew = crew; self.trailerYouTubeKey = trailerYouTubeKey; self.logoPath = logoPath
-        self.recommendations = recommendations; self.seasons = seasons
+        self.recommendations = recommendations; self.seasons = seasons; self.collection = collection
     }
 }
 
 struct DetailRaw: Decodable {
     struct Named: Decodable { let name: String }
     struct Credits: Decodable { let cast: [Cast]?; let crew: [Crew]? }
-    struct Crew: Decodable { let name: String; let job: String?; let profilePath: String? }
-    struct Creator: Decodable { let name: String; let profilePath: String? }
-    struct Cast: Decodable { let name: String; let character: String?; let profilePath: String? }
+    struct Crew: Decodable { let id: Int?; let name: String; let job: String?; let profilePath: String? }
+    struct Creator: Decodable { let id: Int?; let name: String; let profilePath: String? }
+    struct Cast: Decodable { let id: Int?; let name: String; let character: String?; let profilePath: String? }
+    struct CollectionRaw: Decodable { let id: Int; let name: String; let posterPath: String?; let backdropPath: String? }
     struct Videos: Decodable { let results: [Video]? }
     struct Video: Decodable { let key: String; let site: String?; let type: String? }
     struct Images: Decodable { let logos: [Logo]? }
@@ -133,14 +172,15 @@ struct DetailRaw: Decodable {
     let recommendations: Page?
     let seasons: [Season]?
     let createdBy: [Creator]?
+    let belongsToCollection: CollectionRaw?
 
     /// Creators first, then directors, writers and composer; one entry per person with their jobs joined.
     var keyCrew: [CastMember] {
         let priority = ["Director": 1, "Screenplay": 2, "Writer": 2, "Teleplay": 2, "Story": 3, "Novel": 3,
                         "Original Music Composer": 4]
         let display = ["Original Music Composer": "Composer"]
-        var people: [(name: String, profile: String?, rank: Int, jobs: [String])] =
-            (createdBy ?? []).map { ($0.name, $0.profilePath, 0, ["Creator"]) }
+        var people: [(name: String, profile: String?, rank: Int, jobs: [String], id: Int?)] =
+            (createdBy ?? []).map { ($0.name, $0.profilePath, 0, ["Creator"], $0.id) }
         for member in credits?.crew ?? [] {
             guard let job = member.job, let rank = priority[job] else { continue }
             let label = display[job] ?? job
@@ -149,13 +189,14 @@ struct DetailRaw: Decodable {
                 people[index].rank = min(people[index].rank, rank)
                 if people[index].profile == nil { people[index].profile = member.profilePath }
             } else {
-                people.append((member.name, member.profilePath, rank, [label]))
+                people.append((member.name, member.profilePath, rank, [label], member.id))
             }
         }
         return people.enumerated()
             .sorted { ($0.element.rank, $0.offset) < ($1.element.rank, $1.offset) }
             .prefix(12)
-            .map { CastMember(name: $0.element.name, character: $0.element.jobs.joined(separator: ", "), profilePath: $0.element.profile) }
+            .map { CastMember(name: $0.element.name, character: $0.element.jobs.joined(separator: ", "),
+                              profilePath: $0.element.profile, id: $0.element.id) }
     }
 }
 
@@ -182,4 +223,47 @@ public struct CatalogPage: Sendable, Equatable {
     }
 
     public var hasMore: Bool { page < totalPages }
+}
+
+struct PersonRaw: Decodable {
+    struct Credits: Decodable { let cast: [CatalogItem]?; let crew: [CatalogItem]? }
+    struct Votes: Decodable { let cast: [Vote]?; let crew: [Vote]? }
+    struct Vote: Decodable { let id: Int; let mediaType: MediaKind?; let voteCount: Int? }
+    let id: Int
+    let name: String
+    let biography: String?
+    let profilePath: String?
+    let knownForDepartment: String?
+    let birthday: String?
+    let placeOfBirth: String?
+}
+
+struct CollectionDetailRaw: Decodable {
+    let id: Int
+    let name: String
+    let overview: String?
+    let posterPath: String?
+    let backdropPath: String?
+    let parts: [CatalogItem]?
+}
+
+/// Ordered by year; undated titles last (stable).
+func byYear(_ items: [CatalogItem], ascending: Bool) -> [CatalogItem] {
+    items.enumerated().sorted { a, b in
+        switch (a.element.year, b.element.year) {
+        case let (x?, y?) where x != y: return ascending ? x < y : x > y
+        case (nil, _?): return false
+        case (_?, nil): return true
+        default: return a.offset < b.offset
+        }
+    }.map(\.element)
+}
+
+extension CatalogItem {
+    /// Discover results omit media_type; stamp the kind that was asked for.
+    func with(_ kind: MediaKind) -> CatalogItem {
+        CatalogItem(tmdbID: tmdbID, mediaType: kind, title: title, overview: overview, posterPath: posterPath,
+                    backdropPath: backdropPath, profilePath: profilePath, year: year, voteAverage: voteAverage,
+                    genreIDs: genreIDs, knownFor: knownFor)
+    }
 }

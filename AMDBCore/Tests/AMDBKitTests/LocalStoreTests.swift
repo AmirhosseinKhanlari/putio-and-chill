@@ -34,4 +34,14 @@ import Testing
         #expect(recent.first == "5")
         #expect(recent.filter { $0 == "5" }.count == 1)
     }
+
+    @Test func olderStateFilesStillLoad() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "amdb-\(UUID().uuidString)/state.json")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // A state file written before My List existed.
+        try Data(#"{"matches":[],"unmatched":[],"pending":[],"recentSearches":["dune"],"folderIDs":{}}"#.utf8).write(to: url)
+        let state = await LocalStore(fileURL: url).snapshot
+        #expect(state.recentSearches == ["dune"])
+        #expect(state.myList.isEmpty)
+    }
 }

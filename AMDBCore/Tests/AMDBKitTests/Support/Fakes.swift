@@ -105,6 +105,20 @@ struct FakeCatalog: CatalogService {
         return try guarded(detail)
     }
     func season(tvID: Int, number: Int) async throws -> [Episode] { try guarded(seasons[number] ?? []) }
+    var people: [Int: PersonDetail] = [:]
+    var collections: [Int: CollectionDetail] = [:]
+    var discovered: [CatalogItem] = []
+    func person(id: Int) async throws -> PersonDetail {
+        guard let person = people[id] else { throw AppError.http(service: "tmdb", status: 404) }
+        return try guarded(person)
+    }
+    func collection(id: Int) async throws -> CollectionDetail {
+        guard let collection = collections[id] else { throw AppError.http(service: "tmdb", status: 404) }
+        return try guarded(collection)
+    }
+    func discover(_ kind: MediaKind, genreIDs: [Int], minRating: Double, minVotes: Int, page: Int) async throws -> CatalogPage {
+        try guarded(CatalogPage(items: page == 1 ? discovered : [], page: page, totalPages: 1))
+    }
     func item(_ kind: MediaKind, id: Int) async throws -> CatalogItem {
         if let detail = details[id] { return try guarded(detail.item) }
         return try guarded(CatalogItem(tmdbID: id, mediaType: kind, title: "Title \(id)", posterPath: "/p\(id).jpg"))
