@@ -65,6 +65,10 @@ public struct PutioClient: Sendable {
         try await get("files/\(id)", as: FileEnvelope.self).file
     }
 
+    public func deleteFiles(ids: [Int64]) async throws {
+        _ = try await http.data(form("files/delete", [("file_ids", ids.map(String.init).joined(separator: ","))]))
+    }
+
     public func createFolder(name: String, parentID: Int64) async throws -> PutioFile {
         try await post("files/create-folder", [("name", name), ("parent_id", String(parentID))], as: FileEnvelope.self).file
     }

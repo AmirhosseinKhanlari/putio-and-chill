@@ -94,6 +94,18 @@ public final class LibraryIndex {
         touchedAt[fileID] = Date()
     }
 
+    /// Deletes files from put.io and forgets them locally.
+    public func delete(_ doomed: [LibraryEntry]) async throws {
+        guard let putio, !doomed.isEmpty else { return }
+        let ids = doomed.map(\.id)
+        try await putio.deleteFiles(ids: ids)
+        entries.removeAll { ids.contains($0.id) }
+        await store.update { state in
+            state.finished.removeAll { ids.contains($0.fileID) }
+            for id in ids { state.matches[id] = nil }
+        }
+    }
+
     public func record(file: PutioFile, match: LibraryMatch) async {
         let id = file.id
         await store.update { state in

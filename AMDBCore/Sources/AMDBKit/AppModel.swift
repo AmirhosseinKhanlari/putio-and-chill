@@ -66,6 +66,7 @@ public final class AppModel {
     public let transfers: TransferMonitor
     public let store: LocalStore
     public let myList: MyList
+    public let downloads: DownloadsIndex
 
     @ObservationIgnored private let tokens: any TokenStore
     @ObservationIgnored private let userDefaults: UserDefaults
@@ -94,6 +95,7 @@ public final class AppModel {
         library = LibraryIndex(store: store)
         transfers = TransferMonitor(store: store)
         myList = MyList(store: store)
+        downloads = DownloadsIndex(store: store)
         rebuild()
     }
 

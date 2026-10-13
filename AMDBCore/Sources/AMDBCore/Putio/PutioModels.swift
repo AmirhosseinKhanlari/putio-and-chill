@@ -1,12 +1,22 @@
 import Foundation
 
 public struct PutioAccount: Decodable, Sendable, Equatable {
+    public struct Disk: Decodable, Sendable, Equatable {
+        public let avail: Int64
+        public let size: Int64
+        public let used: Int64
+
+        public init(avail: Int64, size: Int64, used: Int64) { self.avail = avail; self.size = size; self.used = used }
+        public var fractionUsed: Double { size > 0 ? Double(used) / Double(size) : 0 }
+    }
+
     public let username: String
     public let mail: String?
     public let userId: Int64?
+    public let disk: Disk?
 
-    public init(username: String, mail: String? = nil, userId: Int64? = nil) {
-        self.username = username; self.mail = mail; self.userId = userId
+    public init(username: String, mail: String? = nil, userId: Int64? = nil, disk: Disk? = nil) {
+        self.username = username; self.mail = mail; self.userId = userId; self.disk = disk
     }
 }
 

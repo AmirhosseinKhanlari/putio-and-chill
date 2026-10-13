@@ -66,6 +66,17 @@ final class FakePutio: PutioService, @unchecked Sendable {
         return folder
     }
 
+    private(set) var deleted: [Int64] = []
+    func deleteFiles(ids: [Int64]) async throws {
+        lock.withLock {
+            deleted += ids
+            for id in ids {
+                filesByID[id] = nil
+                for key in children.keys { children[key]?.removeAll { $0.id == id } }
+            }
+        }
+    }
+
     func startFrom(fileID: Int64) async throws -> Int { lock.withLock { filesByID[fileID]?.startFrom ?? 0 } }
     func setStartFrom(fileID: Int64, seconds: Int) async throws { lock.withLock { startFromSets.append((fileID, seconds)) } }
     func hlsURL(fileID: Int64) -> URL { URL(string: "https://hls.test/\(fileID).m3u8")! }

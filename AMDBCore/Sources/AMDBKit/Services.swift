@@ -11,6 +11,7 @@ public protocol PutioService: Sendable {
     func listFiles(parentID: Int64) async throws -> PutioFileList
     func file(id: Int64) async throws -> PutioFile
     func createFolder(name: String, parentID: Int64) async throws -> PutioFile
+    func deleteFiles(ids: [Int64]) async throws
     func startFrom(fileID: Int64) async throws -> Int
     func setStartFrom(fileID: Int64, seconds: Int) async throws
     func hlsURL(fileID: Int64) -> URL

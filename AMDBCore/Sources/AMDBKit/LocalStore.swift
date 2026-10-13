@@ -49,6 +49,41 @@ public struct SavedTitle: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+/// A movie played to the end in AMDB (auto-clean only ever considers these).
+public struct FinishedFile: Codable, Sendable, Hashable {
+    public let fileID: Int64
+    public let at: Date
+    public init(fileID: Int64, at: Date) { self.fileID = fileID; self.at = at }
+}
+
+public enum DownloadState: Codable, Sendable, Hashable {
+    case queued
+    case downloading(progress: Double)
+    /// Path relative to the app's home directory (the container path changes between launches).
+    case done(relativePath: String)
+    case failed(message: String)
+}
+
+/// An offline copy of a put.io video on this device.
+public struct DownloadRecord: Codable, Sendable, Hashable, Identifiable {
+    public let fileID: Int64
+    public let title: String
+    public let posterPath: String?
+    public let tmdbID: Int?
+    public let kind: MediaKind?
+    public let season: Int?
+    public let episode: Int?
+    public var state: DownloadState
+
+    public init(fileID: Int64, title: String, posterPath: String?, tmdbID: Int?, kind: MediaKind?,
+                season: Int?, episode: Int?, state: DownloadState) {
+        self.fileID = fileID; self.title = title; self.posterPath = posterPath; self.tmdbID = tmdbID
+        self.kind = kind; self.season = season; self.episode = episode; self.state = state
+    }
+
+    public var id: Int64 { fileID }
+}
+
 public struct LocalState: Codable, Sendable, Equatable {
     public var matches: [Int64: LibraryMatch] = [:]
     public var unmatched: Set<Int64> = []
@@ -57,10 +92,12 @@ public struct LocalState: Codable, Sendable, Equatable {
     public var lastPlayed: PlayedTitle?
     public var folderIDs: [String: Int64] = [:]
     public var myList: [SavedTitle] = []
+    public var finished: [FinishedFile] = []
+    public var downloads: [DownloadRecord] = []
     public init() {}
 
     enum CodingKeys: String, CodingKey {
-        case matches, unmatched, pending, recentSearches, lastPlayed, folderIDs, myList
+        case matches, unmatched, pending, recentSearches, lastPlayed, folderIDs, myList, finished, downloads
     }
 
     /// Every field is optional on disk, so files written by older versions keep loading.
@@ -73,6 +110,8 @@ public struct LocalState: Codable, Sendable, Equatable {
         lastPlayed = try c.decodeIfPresent(PlayedTitle.self, forKey: .lastPlayed)
         folderIDs = try c.decodeIfPresent([String: Int64].self, forKey: .folderIDs) ?? [:]
         myList = try c.decodeIfPresent([SavedTitle].self, forKey: .myList) ?? []
+        finished = try c.decodeIfPresent([FinishedFile].self, forKey: .finished) ?? []
+        downloads = try c.decodeIfPresent([DownloadRecord].self, forKey: .downloads) ?? []
     }
 }
 

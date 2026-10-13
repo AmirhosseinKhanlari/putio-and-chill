@@ -33,6 +33,12 @@ public struct AppSettings: Codable, Sendable, Equatable {
     /// ISO 639-1 codes; nil audio = original track, nil subtitles = off.
     public var audioLanguage: String?
     public var subtitleLanguage: String?
+    /// Delete movies finished in AMDB after this many days; nil = off.
+    public var autoCleanDays: Int?
+    /// The user has reviewed the first auto-clean list.
+    public var autoCleanConfirmed = false
+    /// Offline downloads: highest quality, or a smaller data-saver stream.
+    public var downloadDataSaver = false
 
     public init(sources: [SourceConfig], defaultResolution: Int?, autoPlayCountdown: Bool) {
         self.sources = sources; self.defaultResolution = defaultResolution; self.autoPlayCountdown = autoPlayCountdown
@@ -40,6 +46,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case sources, defaultResolution, autoPlayCountdown, autoPlayNextEpisode, oneTapGet, smartGet, audioLanguage, subtitleLanguage
+        case autoCleanDays, autoCleanConfirmed, downloadDataSaver
     }
 
     /// Settings saved by older versions keep their values and pick up defaults for new options.
@@ -53,6 +60,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
         smartGet = try c.decodeIfPresent(SmartGetRule.self, forKey: .smartGet) ?? .recommended
         audioLanguage = try c.decodeIfPresent(String.self, forKey: .audioLanguage)
         subtitleLanguage = try c.decodeIfPresent(String.self, forKey: .subtitleLanguage)
+        autoCleanDays = try c.decodeIfPresent(Int.self, forKey: .autoCleanDays)
+        autoCleanConfirmed = try c.decodeIfPresent(Bool.self, forKey: .autoCleanConfirmed) ?? false
+        downloadDataSaver = try c.decodeIfPresent(Bool.self, forKey: .downloadDataSaver) ?? false
     }
 
     public static let defaults = AppSettings(sources: [

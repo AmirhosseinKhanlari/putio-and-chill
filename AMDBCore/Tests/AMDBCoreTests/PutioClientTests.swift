@@ -57,4 +57,20 @@ import Testing
         try await PutioClient(token: "T", transport: stub).cancelTransfers(ids: [1, 2])
         #expect(stub.requests.first?.bodyString == "transfer_ids=1%2C2")
     }
+
+    @Test func accountInfoIncludesDisk() async throws {
+        let stub = StubTransport(json: #"{"status":"OK","info":{"username":"ameerr","mail":"a@b.c","disk":{"avail":700000000000,"size":1000000000000,"used":300000000000}}}"#)
+        let info = try await PutioClient(token: "T", transport: stub).accountInfo()
+        #expect(info.disk?.used == 300_000_000_000)
+        #expect(info.disk?.size == 1_000_000_000_000)
+        #expect(info.disk?.fractionUsed == 0.3)
+    }
+
+    @Test func deleteFilesPostsCommaSeparatedIDs() async throws {
+        let stub = StubTransport(json: #"{"status":"OK"}"#)
+        try await PutioClient(token: "T", transport: stub).deleteFiles(ids: [5, 9])
+        let request = try #require(stub.requests.first)
+        #expect(request.url?.path == "/v2/files/delete")
+        #expect(request.bodyString == "file_ids=5%2C9")
+    }
 }

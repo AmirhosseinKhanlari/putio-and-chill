@@ -8,14 +8,17 @@ public final class PlaybackSession {
     public let resumeFrom: Int
     private let putio: any PutioService
     private weak var library: LibraryIndex?
+    private let store: LocalStore?
     private let saveEvery: Int
     private var lastSaved: Int
 
-    public init(fileID: Int64, resumeFrom: Int, putio: any PutioService, library: LibraryIndex?, saveEvery: Int = 10) {
+    public init(fileID: Int64, resumeFrom: Int, putio: any PutioService, library: LibraryIndex?,
+                store: LocalStore? = nil, saveEvery: Int = 10) {
         self.fileID = fileID
         self.resumeFrom = resumeFrom
         self.putio = putio
         self.library = library
+        self.store = store
         self.saveEvery = saveEvery
         self.lastSaved = resumeFrom
     }
@@ -38,6 +41,12 @@ public final class PlaybackSession {
         let watchedToEnd = duration > 0 && Double(position) >= duration * 0.95
         let value = watchedToEnd ? 0 : position
         library?.noteProgress(fileID: fileID, seconds: value)
+        if watchedToEnd, let store {
+            let id = fileID
+            await store.update { state in
+                if !state.finished.contains(where: { $0.fileID == id }) { state.finished.append(FinishedFile(fileID: id, at: Date())) }
+            }
+        }
         try? await putio.setStartFrom(fileID: fileID, seconds: value)
     }
 }
