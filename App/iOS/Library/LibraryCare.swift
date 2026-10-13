@@ -35,6 +35,8 @@ struct StorageMeter: View {
 struct DownloadButton: View {
     let entry: LibraryEntry
     var iconOnly = true
+    /// Bare icon (episode rows) instead of a glass pill.
+    var plain = false
     @Environment(AppModel.self) private var app
     @Environment(OfflineDownloader.self) private var downloader
     @State private var showUnsupported = false
@@ -52,21 +54,39 @@ struct DownloadButton: View {
         } label: {
             switch state {
             case let .downloading(progress)?:
-                ProgressRing(progress: progress, lineWidth: 3).frame(width: 20, height: 20)
+                ProgressRing(progress: progress, lineWidth: 3).frame(width: plain ? 26 : 20, height: plain ? 26 : 20)
             case .queued?:
                 ProgressView().controlSize(.small)
             case .done?:
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.good)
+                    .font(plain ? .system(size: 28) : .body)
             default:
-                if iconOnly { Image(systemName: "arrow.down.to.line") } else { Label("Download", systemImage: "arrow.down.to.line") }
+                if plain {
+                    Image(systemName: "arrow.down.to.line.circle").font(.system(size: 28, weight: .light))
+                } else if iconOnly {
+                    Image(systemName: "arrow.down.to.line")
+                } else {
+                    Label("Download", systemImage: "arrow.down.to.line")
+                }
             }
         }
-        .buttonStyle(.glassPill)
+        .buttonStyle(DownloadButtonStyle(plain: plain))
         .accessibilityLabel(label(state))
         .alert("Downloads need a real device", isPresented: $showUnsupported) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Apple's offline video downloads don't run in the Simulator. On your iPad or iPhone this saves the video for offline viewing.")
+        }
+    }
+
+    private struct DownloadButtonStyle: ButtonStyle {
+        let plain: Bool
+        func makeBody(configuration: Configuration) -> some View {
+            if plain {
+                AnyView(LiftStyle().makeBody(configuration: configuration))
+            } else {
+                AnyView(GlassPillStyle().makeBody(configuration: configuration))
+            }
         }
     }
 

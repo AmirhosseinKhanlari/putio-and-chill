@@ -5,6 +5,7 @@ import SwiftUI
 struct EpisodeList: View {
     let model: TitleModel
     @Environment(AppModel.self) private var app
+    @Environment(OfflineDownloader.self) private var downloader
     @Environment(Router.self) private var router
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -25,6 +26,7 @@ struct EpisodeList: View {
                 }
                 Spacer()
                 if let season = model.selectedSeason {
+                    downloadSeasonButton(season)
                     seasonButton(season)
                 }
             }
@@ -35,6 +37,23 @@ struct EpisodeList: View {
             }
         }
         .padding(.horizontal, Metrics.gutter(sizeClass))
+    }
+
+    /// Saves every episode of the season that's already in put.io to this device.
+    @ViewBuilder private func downloadSeasonButton(_ season: Int) -> some View {
+        let inPutio = model.episodes.compactMap { app.library.matching(tmdbID: model.item.tmdbID, season: season, episode: $0.number).first }
+        let missing = inPutio.filter { app.downloads.record(fileID: $0.id) == nil }
+        if !inPutio.isEmpty {
+            Button {
+                Task { for entry in missing { await downloader.start(entry) } }
+            } label: {
+                Label(missing.isEmpty ? "Season downloaded" : "Download season",
+                      systemImage: missing.isEmpty ? "checkmark.circle.fill" : "arrow.down.to.line")
+            }
+            .buttonStyle(.glassPill)
+            .disabled(missing.isEmpty || !OfflineDownloader.isSupported)
+            .accessibilityHint(OfflineDownloader.isSupported ? "Saves \(missing.count) episodes for offline viewing" : "Downloads need a real device")
+        }
     }
 
     @ViewBuilder private func seasonButton(_ season: Int) -> some View {

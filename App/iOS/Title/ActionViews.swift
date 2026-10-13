@@ -148,13 +148,19 @@ struct EpisodeActionButton: View {
             if finding {
                 ProgressView().frame(width: 34, height: 34)
             } else {
-                iconButton("arrow.down.circle", label: "Get episode") { Task { await get() } }
+                iconButton("icloud.and.arrow.down", label: "Get episode") { Task { await get() } }
                     .contextMenu { Button("Choose a version…") { openVersions() } }
             }
         case let .play(entry):
-            iconButton("play.circle.fill", label: "Play episode") { router.play(entry, resumeFrom: 0, next: next) }
+            HStack(spacing: 10) {
+                DownloadButton(entry: entry, plain: true)
+                iconButton("play.circle.fill", label: "Play episode") { router.play(entry, resumeFrom: 0, next: next) }
+            }
         case let .resume(entry, seconds):
-            iconButton("play.circle.fill", label: "Resume episode") { router.play(entry, resumeFrom: seconds, next: next) }
+            HStack(spacing: 10) {
+                DownloadButton(entry: entry, plain: true)
+                iconButton("play.circle.fill", label: "Resume episode") { router.play(entry, resumeFrom: seconds, next: next) }
+            }
         case let .downloading(transfer):
             DownloadStatus(transfer: transfer, ringOnly: true)
         case .failed:
