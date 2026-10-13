@@ -334,3 +334,14 @@ Results of `amdb-spike`, run by the user on their own network and account.
 | chill `ResolvePlayback`, `GetTransfer` | Both exist (200 / 400 invalid id) | Informational only; put.io direct covers both. |
 | Aggregate (direct sources, Furiosa) | 76 merged; the top rows carry both `Knaben` and `TPB` tags | Cross-source merge by infohash works on live data. |
 | "?" resolution rows | Some Knaben titles carry no resolution token | The Versions sheet shows these under "All" only, with a "?" badge. |
+
+## Feature batch 2 (2026-10-13)
+
+Built in four phases, each with its own tests and commit.
+
+| Phase | Features | Decisions |
+|---|---|---|
+| A · Discovery | Collections ("watch in order", release order from TMDB collections), person pages (TMDB combined credits), My List (local; a row on Home), "Surprise me" (TMDB discover with rating ≥ 7, ≥ 500 votes, mood → genres) | — |
+| B · Watching | Auto-play next episode (5 s countdown), subtitle & audio language preferences (AVPlayer media-selection criteria; put.io HLS carries put.io's subtitles), Smart one-tap Get | Default rule: 1080p, most seeders, ≤ 10 GB; editable |
+| C · Library | put.io storage meter, delete files, auto-clean, offline downloads | Offline uses AVAssetDownloadURLSession on put.io HLS. Auto-clean is opt-in and only deletes movies finished in AMDB, after 7/30/90 days, with the list shown before the first run. |
+| D · System | Live Activity for transfers, Home Screen widgets, Siri/Shortcuts (App Intents) | The user has a paid developer account, so the App Group is used on device. Live Activity updates locally (no push server), so it updates while the app runs or refreshes. |
