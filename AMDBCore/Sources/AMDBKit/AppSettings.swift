@@ -11,14 +11,48 @@ public struct SourceConfig: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
+/// Smart one-tap Get: preferred resolution and size cap (nil = no limit).
+public struct SmartGetRule: Codable, Sendable, Equatable, Hashable {
+    public var resolution: Int?
+    public var maxSizeGB: Double?
+
+    public init(resolution: Int?, maxSizeGB: Double?) { self.resolution = resolution; self.maxSizeGB = maxSizeGB }
+
+    public static let recommended = SmartGetRule(resolution: 1080, maxSizeGB: 10)
+}
+
 public struct AppSettings: Codable, Sendable, Equatable {
     public var sources: [SourceConfig]
     /// Resolution raw value (2160, 1080, 720, 480) preselected in the Versions sheet; nil means "All".
     public var defaultResolution: Int?
     public var autoPlayCountdown: Bool
+    public var autoPlayNextEpisode = true
+    /// "Get & Watch" sends the best release by `smartGet` instead of opening Versions.
+    public var oneTapGet = true
+    public var smartGet = SmartGetRule.recommended
+    /// ISO 639-1 codes; nil audio = original track, nil subtitles = off.
+    public var audioLanguage: String?
+    public var subtitleLanguage: String?
 
     public init(sources: [SourceConfig], defaultResolution: Int?, autoPlayCountdown: Bool) {
         self.sources = sources; self.defaultResolution = defaultResolution; self.autoPlayCountdown = autoPlayCountdown
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case sources, defaultResolution, autoPlayCountdown, autoPlayNextEpisode, oneTapGet, smartGet, audioLanguage, subtitleLanguage
+    }
+
+    /// Settings saved by older versions keep their values and pick up defaults for new options.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sources = try c.decodeIfPresent([SourceConfig].self, forKey: .sources) ?? AppSettings.defaults.sources
+        defaultResolution = try c.decodeIfPresent(Int.self, forKey: .defaultResolution)
+        autoPlayCountdown = try c.decodeIfPresent(Bool.self, forKey: .autoPlayCountdown) ?? true
+        autoPlayNextEpisode = try c.decodeIfPresent(Bool.self, forKey: .autoPlayNextEpisode) ?? true
+        oneTapGet = try c.decodeIfPresent(Bool.self, forKey: .oneTapGet) ?? true
+        smartGet = try c.decodeIfPresent(SmartGetRule.self, forKey: .smartGet) ?? .recommended
+        audioLanguage = try c.decodeIfPresent(String.self, forKey: .audioLanguage)
+        subtitleLanguage = try c.decodeIfPresent(String.self, forKey: .subtitleLanguage)
     }
 
     public static let defaults = AppSettings(sources: [

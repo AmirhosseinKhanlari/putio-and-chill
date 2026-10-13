@@ -117,6 +117,27 @@ public final class AppModel {
         try await factory.makeCatalog(token).validate()
     }
 
+    /// Searches every source, picks by the Smart Get rule, and sends the winner to put.io.
+    public func smartGet(_ query: MediaQuery, target: TransferTarget) async -> SmartGetResult {
+        var latest = ReleaseSnapshot()
+        for await snapshot in searcher.stream(for: query) {
+            latest = snapshot
+            if snapshot.isComplete { break }
+        }
+        guard let release = SmartPicker.pick(latest.releases, rule: settings.smartGet) else { return .noMatch }
+        do {
+            try await transfers.send(release, target: target)
+            return .sent(release)
+        } catch let error as AppError {
+            return .failed(error)
+        } catch {
+            return .failed(.transport(error.localizedDescription))
+        }
+    }
+
+    /// Test seam: replace the release searcher built from settings.
+    func overrideReleaseSearcher(_ searcher: any ReleaseSearching) { self.searcher = searcher }
+
     public func validateMDBList(_ key: String) async throws {
         try await factory.makeRatings(key).validate()
     }
