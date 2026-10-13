@@ -31,6 +31,8 @@ enum AppTab: String, CaseIterable, Identifiable {
 enum Route: Hashable {
     case title(CatalogItem)
     case chart(IMDbChart)
+    case person(Int)
+    case collection(Int)
 }
 
 struct NextEpisode: Hashable {
@@ -83,11 +85,14 @@ final class Router {
     var banner: Banner?
     var countdown: TrackedTransfer?
     var showSettings = false
+    var showSurprise = false
     /// TMDB id of the title page on screen; a ready transfer for it counts down instead of showing a banner.
     var activeTitle: Int?
 
     func open(_ item: CatalogItem) { push(.title(item)) }
     func open(_ chart: IMDbChart) { push(.chart(chart)) }
+    func openPerson(_ id: Int) { push(.person(id)) }
+    func openCollection(_ id: Int) { push(.collection(id)) }
 
     private func push(_ route: Route) {
         switch tab {

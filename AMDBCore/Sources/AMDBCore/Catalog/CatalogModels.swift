@@ -81,6 +81,11 @@ public struct CollectionDetail: Sendable, Equatable {
     public let backdropPath: String?
     /// Release order, undated parts last.
     public let parts: [CatalogItem]
+
+    public init(id: Int, name: String, overview: String, posterPath: String?, backdropPath: String?, parts: [CatalogItem]) {
+        self.id = id; self.name = name; self.overview = overview; self.posterPath = posterPath
+        self.backdropPath = backdropPath; self.parts = parts
+    }
 }
 
 public struct PersonDetail: Sendable, Equatable {
@@ -95,6 +100,13 @@ public struct PersonDetail: Sendable, Equatable {
     public let credits: [CatalogItem]
     /// Their most-voted titles.
     public let knownFor: [CatalogItem]
+
+    public init(id: Int, name: String, biography: String, profilePath: String?, department: String?, birthday: String?,
+                placeOfBirth: String?, credits: [CatalogItem], knownFor: [CatalogItem]) {
+        self.id = id; self.name = name; self.biography = biography; self.profilePath = profilePath
+        self.department = department; self.birthday = birthday; self.placeOfBirth = placeOfBirth
+        self.credits = credits; self.knownFor = knownFor
+    }
 }
 
 public struct SeasonSummary: Sendable, Hashable {

@@ -41,8 +41,10 @@ struct MainView: View {
         .onChange(of: router.tab, initial: true) { _, tab in visited.insert(tab) }
         .sheet(item: $router.versions) { VersionsSheet(request: $0) }
         .sheet(isPresented: $router.showSettings) { SettingsView() }
+        .sheet(isPresented: $router.showSurprise) { SurpriseSheet() }
         .task {
             wireEvents()
+            await app.myList.load()
             DemoMode.apply(to: router)
             await app.transfers.restore()
             await app.library.refresh()
@@ -98,6 +100,8 @@ private struct TabStack: View {
                     switch route {
                     case let .title(item): TitleView(item: item)
                     case let .chart(chart): ChartPage(chart: chart)
+                    case let .person(id): PersonPage(personID: id)
+                    case let .collection(id): CollectionPage(collectionID: id)
                     }
                 }
         }

@@ -36,6 +36,9 @@ enum DemoMode {
         case "search": router.tab = .search
         case "library": router.tab = .library
         case "movies": router.tab = .movies
+        case "person": router.homePath = [.person(900)]
+        case "collection": router.homePath = [.collection(8945)]
+        case "surprise": router.showSurprise = true
         case "chart":
             router.tab = .movies
             router.moviesPath = [.chart(.top250Movies)]
@@ -91,8 +94,8 @@ struct DemoCatalog: CatalogService {
     }
     func detail(_ kind: MediaKind, id: Int) async throws -> TitleDetail {
         guard let item = Self.everything.first(where: { $0.tmdbID == id }) else { throw AppError.http(service: "tmdb", status: 404) }
-        let cast = ["Anya Taylor-Joy", "Chris Hemsworth", "Tom Burke", "Alyla Browne", "George Shevtsov"].map {
-            CastMember(name: $0, character: "Character", profilePath: nil)
+        let cast = ["Anya Taylor-Joy", "Chris Hemsworth", "Tom Burke", "Alyla Browne", "George Shevtsov"].enumerated().map {
+            CastMember(name: $0.element, character: "Character", profilePath: nil, id: 900 + $0.offset)
         }
         let seasons = kind == .tv ? (1...2).map { SeasonSummary(number: $0, name: "Season \($0)", episodeCount: 8, posterPath: nil) } : []
         // Furiosa uses its real IMDb id so demo mode exercises real IMDb trailers.
@@ -100,10 +103,25 @@ struct DemoCatalog: CatalogService {
         return TitleDetail(item: item, imdbID: imdbID, runtimeMinutes: kind == .tv ? 55 : 148,
                            genres: kind == .tv ? ["Drama", "Mystery"] : ["Action", "Adventure", "Science Fiction"],
                            cast: cast, trailerYouTubeKey: "zSWdZVtXT7E",
-                           recommendations: Array(Self.movies.shuffled().prefix(8)), seasons: seasons)
+                           recommendations: Array(Self.movies.shuffled().prefix(8)), seasons: seasons,
+                           collection: item.title.hasPrefix("Furiosa")
+                               ? CollectionRef(id: 8945, name: "Mad Max Collection", posterPath: nil, backdropPath: "/demo-c.jpg") : nil)
     }
     func season(tvID: Int, number: Int) async throws -> [Episode] {
         (1...8).map { Episode(number: $0, name: "Episode \($0)", overview: "Things get complicated at Lumon.", runtimeMinutes: 50 + $0) }
+    }
+    func person(id: Int) async throws -> PersonDetail {
+        PersonDetail(id: id, name: "Anya Taylor-Joy",
+                     biography: "An actress known for intense, transformative roles across film and television.",
+                     profilePath: nil, department: "Acting", birthday: "1996-04-16", placeOfBirth: "Miami, Florida, USA",
+                     credits: Self.movies, knownFor: Array(Self.movies.prefix(5)))
+    }
+    func collection(id: Int) async throws -> CollectionDetail {
+        CollectionDetail(id: id, name: "Mad Max Collection", overview: "A post-apocalyptic saga of survival on the Fury Road.",
+                         posterPath: nil, backdropPath: "/demo-c.jpg", parts: Array(Self.movies.prefix(5)))
+    }
+    func discover(_ kind: MediaKind, genreIDs: [Int], minRating: Double, minVotes: Int, page: Int) async throws -> CatalogPage {
+        CatalogPage(items: kind == .tv ? Self.shows : Self.movies, page: page, totalPages: 1)
     }
     func item(_ kind: MediaKind, id: Int) async throws -> CatalogItem {
         guard let item = Self.everything.first(where: { $0.tmdbID == id }) else { throw AppError.http(service: "tmdb", status: 404) }

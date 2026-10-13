@@ -14,6 +14,7 @@ struct TitleView: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 30) {
                 TitleHeader(item: item, model: model)
+                if let collection = model?.detail?.collection { CollectionCard(collection: collection) }
                 if item.mediaType == .tv, let model { EpisodeList(model: model) }
                 if let detail = model?.detail, !(detail.cast.isEmpty && detail.crew.isEmpty) {
                     CastAndCrewRow(cast: detail.cast, crew: detail.crew)
@@ -90,6 +91,7 @@ private struct TitleHeader: View {
                     if let model, item.mediaType == .movie {
                         PrimaryActions(model: model, season: nil, episode: nil)
                     }
+                    if detail != nil { MyListButton(item: item, iconOnly: true) }
                     if detail?.imdbID != nil || detail?.trailerYouTubeKey != nil {
                         Button { Task { await playTrailer() } } label: {
                             if loadingTrailer {
@@ -139,5 +141,34 @@ struct BackButton: View {
         .padding(.leading, 16)
         .padding(.top, 8)
         .accessibilityLabel("Back")
+    }
+}
+
+/// "Part of the Star Wars Collection — Watch in order".
+private struct CollectionCard: View {
+    let collection: CollectionRef
+    @Environment(Router.self) private var router
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    var body: some View {
+        Button { router.openCollection(collection.id) } label: {
+            HStack(spacing: 14) {
+                RemoteImage(path: collection.posterPath, size: "w185", seed: collection.name)
+                    .frame(width: 46, height: 69)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("PART OF").font(.caption2.weight(.semibold)).tracking(2).foregroundStyle(.white.opacity(0.6))
+                    Text(collection.name).font(.headline).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Text("Watch in order").font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.5))
+            }
+            .padding(12)
+            .glassRounded(16)
+        }
+        .buttonStyle(.lift)
+        .frame(maxWidth: 640)
+        .padding(.horizontal, Metrics.gutter(sizeClass))
     }
 }

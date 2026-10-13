@@ -6,6 +6,7 @@ struct CastAndCrewRow: View {
     let cast: [CastMember]
     let crew: [CastMember]
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(Router.self) private var router
 
     var body: some View {
         let compact = sizeClass == .compact
@@ -15,7 +16,12 @@ struct CastAndCrewRow: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: compact ? 14 : 22) {
                     ForEach(Array((cast + crew).enumerated()), id: \.offset) { _, person in
-                        PersonCircle(person: person, diameter: diameter)
+                        if let id = person.id {
+                            Button { router.openPerson(id) } label: { PersonCircle(person: person, diameter: diameter) }
+                                .buttonStyle(.lift)
+                        } else {
+                            PersonCircle(person: person, diameter: diameter)
+                        }
                     }
                 }
                 .padding(.horizontal, Metrics.gutter(sizeClass))

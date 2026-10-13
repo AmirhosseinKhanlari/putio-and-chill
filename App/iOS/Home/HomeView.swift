@@ -14,8 +14,12 @@ struct HomeView: View {
                 } else {
                     Color.clear.frame(height: 160)
                 }
+                SurpriseCard()
                 if !app.library.continueWatching.isEmpty {
                     EntryRowView(title: "Continue Watching", entries: app.library.continueWatching)
+                }
+                if !app.myList.items.isEmpty {
+                    CatalogRowView(row: CatalogRow(id: "mylist", title: "My List", items: app.myList.items.map(\.catalogItem)))
                 }
                 if !app.library.recentlyAdded.isEmpty {
                     EntryRowView(title: "Recently Added to put.io", entries: app.library.recentlyAdded)
@@ -46,5 +50,31 @@ struct HomeView: View {
             model = home
             await home.load()
         }
+    }
+}
+
+/// "Can't decide?" entry point for Surprise me.
+private struct SurpriseCard: View {
+    @Environment(Router.self) private var router
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    var body: some View {
+        Button { router.showSurprise = true } label: {
+            HStack(spacing: 14) {
+                Text("🎲").font(.system(size: 30))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Can't decide?").font(.headline)
+                    Text("Pick a mood and get a great movie or series").font(.footnote).foregroundStyle(.white.opacity(0.65))
+                }
+                Spacer(minLength: 8)
+                Text("Surprise me").font(.subheadline.weight(.bold)).foregroundStyle(.black)
+                    .padding(.horizontal, 16).padding(.vertical, 9).background(.white, in: Capsule())
+            }
+            .padding(14)
+            .glassRounded(18)
+        }
+        .buttonStyle(.lift)
+        .frame(maxWidth: 640)
+        .padding(.horizontal, Metrics.gutter(sizeClass))
     }
 }
