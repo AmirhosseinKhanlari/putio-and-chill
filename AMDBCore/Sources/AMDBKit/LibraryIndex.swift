@@ -13,7 +13,7 @@ public struct LibraryEntry: Identifiable, Sendable, Hashable {
 
     public var id: Int64 { file.id }
     public var startFrom: Int { file.startFrom ?? 0 }
-    public var displayTitle: String { match?.title ?? file.name }
+    public var displayTitle: String { match?.title ?? (file.name as NSString).deletingPathExtension }
 }
 
 @Observable @MainActor

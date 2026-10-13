@@ -53,14 +53,15 @@ struct DemoCatalog: CatalogService {
         ("Parasite", 2019, "Greed and class discrimination threaten a newly formed symbiotic relationship."),
         ("Everything Everywhere All at Once", 2022, "A middle-aged immigrant is swept up in an insane adventure."),
     ].enumerated().map { index, entry in
-        CatalogItem(tmdbID: 100 + index, mediaType: .movie, title: entry.0, overview: entry.2, year: entry.1, voteAverage: 7.4 + Double(index % 5) / 5)
+        CatalogItem(tmdbID: 100 + index, mediaType: .movie, title: entry.0, overview: entry.2,
+                    backdropPath: "/demo-\(100 + index).jpg", year: entry.1, voteAverage: 7.4 + Double(index % 5) / 5)
     }
 
     static let shows: [CatalogItem] = [
         ("Severance", 2022), ("Shōgun", 2024), ("The Bear", 2022), ("Andor", 2022), ("Slow Horses", 2022), ("The Last of Us", 2023),
     ].enumerated().map { index, entry in
         CatalogItem(tmdbID: 200 + index, mediaType: .tv, title: entry.0, overview: "A prestige series everyone keeps recommending.",
-                    year: entry.1, voteAverage: 8.4)
+                    backdropPath: "/demo-\(200 + index).jpg", year: entry.1, voteAverage: 8.4)
     }
 
     private static var everything: [CatalogItem] { movies + shows }

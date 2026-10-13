@@ -824,14 +824,15 @@ struct DemoCatalog: CatalogService {
         ("Parasite", 2019, "Greed and class discrimination threaten a newly formed symbiotic relationship."),
         ("Everything Everywhere All at Once", 2022, "A middle-aged immigrant is swept up in an insane adventure."),
     ].enumerated().map { index, entry in
-        CatalogItem(tmdbID: 100 + index, mediaType: .movie, title: entry.0, overview: entry.2, year: entry.1, voteAverage: 7.4 + Double(index % 5) / 5)
+        CatalogItem(tmdbID: 100 + index, mediaType: .movie, title: entry.0, overview: entry.2,
+                    backdropPath: "/demo-\(100 + index).jpg", year: entry.1, voteAverage: 7.4 + Double(index % 5) / 5)
     }
 
     static let shows: [CatalogItem] = [
         ("Severance", 2022), ("Shōgun", 2024), ("The Bear", 2022), ("Andor", 2022), ("Slow Horses", 2022), ("The Last of Us", 2023),
     ].enumerated().map { index, entry in
         CatalogItem(tmdbID: 200 + index, mediaType: .tv, title: entry.0, overview: "A prestige series everyone keeps recommending.",
-                    year: entry.1, voteAverage: 8.4)
+                    backdropPath: "/demo-\(200 + index).jpg", year: entry.1, voteAverage: 8.4)
     }
 
     private static var everything: [CatalogItem] { movies + shows }
@@ -1803,12 +1804,14 @@ private struct HeroPage: View {
     var body: some View {
         let regular = sizeClass != .compact
         ZStack(alignment: .bottomLeading) {
-            RemoteImage(path: item.backdropPath, size: "w1280", seed: item.title)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
-            LinearGradient(colors: [.clear, .clear, Theme.background.opacity(0.75), Theme.background],
-                           startPoint: .top, endPoint: .bottom)
-            LinearGradient(colors: [Theme.background.opacity(regular ? 0.85 : 0.4), .clear], startPoint: .leading, endPoint: .trailing)
+            ZStack {
+                RemoteImage(path: item.backdropPath, size: "w1280", seed: item.title)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                LinearGradient(colors: [Theme.background.opacity(regular ? 0.8 : 0.35), .clear], startPoint: .leading, endPoint: .trailing)
+            }
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.5),
+                                         .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
             VStack(alignment: .leading, spacing: 10) {
                 Text("#\(rank) TRENDING · \(item.mediaType == .tv ? "SERIES" : "FILM")")
                     .font(.caption.weight(.semibold)).tracking(2).foregroundStyle(.white.opacity(0.7))
@@ -2116,12 +2119,15 @@ private struct TitleHeader: View {
         let regular = sizeClass != .compact
         let detail = model?.detail
         ZStack(alignment: .bottomLeading) {
-            RemoteImage(path: item.backdropPath, size: "w1280", seed: item.title)
-                .frame(height: regular ? 620 : 460)
-                .frame(maxWidth: .infinity)
-                .clipped()
-            LinearGradient(colors: [.clear, Theme.background.opacity(0.7), Theme.background], startPoint: .top, endPoint: .bottom)
-            LinearGradient(colors: [Theme.background.opacity(regular ? 0.85 : 0.3), .clear], startPoint: .leading, endPoint: .trailing)
+            ZStack {
+                RemoteImage(path: item.backdropPath, size: "w1280", seed: item.title)
+                    .frame(height: regular ? 620 : 460)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                LinearGradient(colors: [Theme.background.opacity(regular ? 0.8 : 0.3), .clear], startPoint: .leading, endPoint: .trailing)
+            }
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45),
+                                         .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
             VStack(alignment: .leading, spacing: 12) {
                 if let logo = detail?.logoPath {
                     RemoteImage(path: logo, size: "w500", seed: item.title, contentMode: .fit)
