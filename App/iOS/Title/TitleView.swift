@@ -15,7 +15,9 @@ struct TitleView: View {
             VStack(alignment: .leading, spacing: 30) {
                 TitleHeader(item: item, model: model)
                 if item.mediaType == .tv, let model { EpisodeList(model: model) }
-                if let cast = model?.detail?.cast, !cast.isEmpty { CastRow(cast: cast) }
+                if let detail = model?.detail, !(detail.cast.isEmpty && detail.crew.isEmpty) {
+                    CastAndCrewRow(cast: detail.cast, crew: detail.crew)
+                }
                 if let recommendations = model?.detail?.recommendations, !recommendations.isEmpty {
                     CatalogRowView(row: CatalogRow(id: "more-\(item.id)", title: "More Like This", items: recommendations))
                 }
@@ -50,6 +52,7 @@ private struct TitleHeader: View {
     let item: CatalogItem
     let model: TitleModel?
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var trailer: TrailerKey?
 
     var body: some View {
         let regular = sizeClass != .compact
@@ -81,9 +84,17 @@ private struct TitleHeader: View {
                 if let genres = detail?.genres, !genres.isEmpty {
                     Text(genres.joined(separator: " · ")).font(.caption).foregroundStyle(.white.opacity(0.55))
                 }
-                if let model, item.mediaType == .movie {
-                    PrimaryActions(model: model, season: nil, episode: nil).padding(.top, 6)
-                } else if model?.error != nil {
+                HStack(spacing: 10) {
+                    if let model, item.mediaType == .movie {
+                        PrimaryActions(model: model, season: nil, episode: nil)
+                    }
+                    if let key = detail?.trailerYouTubeKey {
+                        Button { trailer = TrailerKey(key: key) } label: { Label("Trailer", systemImage: "play.rectangle.fill") }
+                            .buttonStyle(.glassPill)
+                    }
+                }
+                .padding(.top, 6)
+                if model?.error != nil {
                     Text("Couldn't load details.").font(.footnote).foregroundStyle(Theme.poor)
                 }
             }
@@ -91,6 +102,7 @@ private struct TitleHeader: View {
             .padding(.horizontal, Metrics.gutter(sizeClass))
             .padding(.bottom, 24)
         }
+        .fullScreenCover(item: $trailer) { TrailerSheet(youtubeKey: $0.key) { trailer = nil }.ignoresSafeArea() }
     }
 }
 
@@ -105,32 +117,5 @@ struct BackButton: View {
         .padding(.leading, 16)
         .padding(.top, 8)
         .accessibilityLabel("Back")
-    }
-}
-
-private struct CastRow: View {
-    let cast: [CastMember]
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Cast").font(.title3.weight(.semibold)).padding(.horizontal, Metrics.gutter(sizeClass))
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 16) {
-                    ForEach(cast, id: \.self) { member in
-                        VStack(spacing: 6) {
-                            RemoteImage(path: member.profilePath, size: "w185", seed: member.name)
-                                .frame(width: 72, height: 72).clipShape(Circle())
-                            Text(member.name).font(.caption.weight(.semibold)).lineLimit(1)
-                            if let character = member.character {
-                                Text(character).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        }
-                        .frame(width: 92)
-                    }
-                }
-                .padding(.horizontal, Metrics.gutter(sizeClass))
-            }
-        }
     }
 }

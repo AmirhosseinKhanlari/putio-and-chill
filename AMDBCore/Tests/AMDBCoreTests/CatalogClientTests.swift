@@ -39,7 +39,12 @@ import Testing
         let json = #"""
         {"id":693134,"title":"Dune: Part Two","overview":"o","poster_path":"/p.jpg","backdrop_path":"/b.jpg","release_date":"2024-02-27",
          "vote_average":8.2,"runtime":166,"imdb_id":"tt15239678","genres":[{"id":878,"name":"Science Fiction"}],
-         "credits":{"cast":[{"name":"Timothée Chalamet","character":"Paul","profile_path":"/t.jpg"}]},
+         "credits":{"cast":[{"name":"Timothée Chalamet","character":"Paul","profile_path":"/t.jpg"}],
+                    "crew":[{"name":"Mary Parent","job":"Producer","profile_path":null},
+                            {"name":"Denis Villeneuve","job":"Director","profile_path":"/d.jpg"},
+                            {"name":"Denis Villeneuve","job":"Screenplay","profile_path":"/d.jpg"},
+                            {"name":"Jon Spaihts","job":"Screenplay","profile_path":null},
+                            {"name":"Hans Zimmer","job":"Original Music Composer","profile_path":"/h.jpg"}]},
          "videos":{"results":[{"key":"teaser1","site":"YouTube","type":"Teaser"},{"key":"trailer1","site":"YouTube","type":"Trailer"}]},
          "images":{"logos":[{"file_path":"/fr.png","iso_639_1":"fr"},{"file_path":"/en.png","iso_639_1":"en"}]},
          "recommendations":{"results":[{"id":438631,"title":"Dune","release_date":"2021-09-15"}]}}
@@ -50,6 +55,8 @@ import Testing
         #expect(detail.runtimeMinutes == 166)
         #expect(detail.genres == ["Science Fiction"])
         #expect(detail.cast.first?.name == "Timothée Chalamet")
+        #expect(detail.crew.map(\.name) == ["Denis Villeneuve", "Jon Spaihts", "Hans Zimmer"])
+        #expect(detail.crew.map(\.character) == ["Director, Screenplay", "Screenplay", "Composer"])
         #expect(detail.trailerYouTubeKey == "trailer1")
         #expect(detail.logoPath == "/en.png")
         #expect(detail.recommendations.first?.mediaType == .movie)
@@ -58,10 +65,11 @@ import Testing
     }
 
     @Test func tvDetailUsesExternalIDsAndSeasons() async throws {
-        let json = #"{"id":95396,"name":"Severance","first_air_date":"2022-02-17","episode_run_time":[55],"external_ids":{"imdb_id":"tt11280740"},"seasons":[{"season_number":0,"name":"Specials","episode_count":2},{"season_number":1,"name":"Season 1","episode_count":9,"poster_path":"/s1.jpg"}]}"#
+        let json = #"{"id":95396,"name":"Severance","first_air_date":"2022-02-17","episode_run_time":[55],"external_ids":{"imdb_id":"tt11280740"},"created_by":[{"name":"Dan Erickson","profile_path":"/e.jpg"}],"seasons":[{"season_number":0,"name":"Specials","episode_count":2},{"season_number":1,"name":"Season 1","episode_count":9,"poster_path":"/s1.jpg"}]}"#
         let detail = try await CatalogClient(accessToken: "K", transport: StubTransport(json: json)).detail(.tv, id: 95396)
         #expect(detail.imdbID == "tt11280740")
         #expect(detail.runtimeMinutes == 55)
+        #expect(detail.crew.first == CastMember(name: "Dan Erickson", character: "Creator", profilePath: "/e.jpg"))
         #expect(detail.seasons.map(\.number) == [1])
         #expect(detail.item.mediaType == .tv)
     }

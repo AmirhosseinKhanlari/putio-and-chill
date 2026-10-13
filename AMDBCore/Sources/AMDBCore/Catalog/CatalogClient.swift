@@ -65,6 +65,7 @@ public struct CatalogClient: Sendable {
                 runtimeMinutes: raw.runtime ?? raw.episodeRunTime?.first,
                 genres: raw.genres?.map(\.name) ?? [],
                 cast: (raw.credits?.cast ?? []).prefix(20).map { CastMember(name: $0.name, character: $0.character, profilePath: $0.profilePath) },
+                crew: raw.keyCrew,
                 trailerYouTubeKey: raw.videos?.results?.first { $0.site == "YouTube" && $0.type == "Trailer" }?.key,
                 logoPath: raw.images?.logos?.first { $0.iso6391 == "en" }?.filePath ?? raw.images?.logos?.first?.filePath,
                 recommendations: raw.recommendations?.results ?? [],

@@ -92,23 +92,27 @@ public struct TitleDetail: Sendable, Equatable {
     public let runtimeMinutes: Int?
     public let genres: [String]
     public let cast: [CastMember]
+    /// Key crew (creators, directors, writers, composer); `character` holds the job, e.g. "Director, Screenplay".
+    public let crew: [CastMember]
     public let trailerYouTubeKey: String?
     public let logoPath: String?
     public let recommendations: [CatalogItem]
     public let seasons: [SeasonSummary]
 
     public init(item: CatalogItem, imdbID: String?, runtimeMinutes: Int? = nil, genres: [String] = [],
-                cast: [CastMember] = [], trailerYouTubeKey: String? = nil, logoPath: String? = nil,
+                cast: [CastMember] = [], crew: [CastMember] = [], trailerYouTubeKey: String? = nil, logoPath: String? = nil,
                 recommendations: [CatalogItem] = [], seasons: [SeasonSummary] = []) {
         self.item = item; self.imdbID = imdbID; self.runtimeMinutes = runtimeMinutes; self.genres = genres
-        self.cast = cast; self.trailerYouTubeKey = trailerYouTubeKey; self.logoPath = logoPath
+        self.cast = cast; self.crew = crew; self.trailerYouTubeKey = trailerYouTubeKey; self.logoPath = logoPath
         self.recommendations = recommendations; self.seasons = seasons
     }
 }
 
 struct DetailRaw: Decodable {
     struct Named: Decodable { let name: String }
-    struct Credits: Decodable { let cast: [Cast]? }
+    struct Credits: Decodable { let cast: [Cast]?; let crew: [Crew]? }
+    struct Crew: Decodable { let name: String; let job: String?; let profilePath: String? }
+    struct Creator: Decodable { let name: String; let profilePath: String? }
     struct Cast: Decodable { let name: String; let character: String?; let profilePath: String? }
     struct Videos: Decodable { let results: [Video]? }
     struct Video: Decodable { let key: String; let site: String?; let type: String? }
@@ -128,6 +132,31 @@ struct DetailRaw: Decodable {
     let images: Images?
     let recommendations: Page?
     let seasons: [Season]?
+    let createdBy: [Creator]?
+
+    /// Creators first, then directors, writers and composer; one entry per person with their jobs joined.
+    var keyCrew: [CastMember] {
+        let priority = ["Director": 1, "Screenplay": 2, "Writer": 2, "Teleplay": 2, "Story": 3, "Novel": 3,
+                        "Original Music Composer": 4]
+        let display = ["Original Music Composer": "Composer"]
+        var people: [(name: String, profile: String?, rank: Int, jobs: [String])] =
+            (createdBy ?? []).map { ($0.name, $0.profilePath, 0, ["Creator"]) }
+        for member in credits?.crew ?? [] {
+            guard let job = member.job, let rank = priority[job] else { continue }
+            let label = display[job] ?? job
+            if let index = people.firstIndex(where: { $0.name == member.name }) {
+                if !people[index].jobs.contains(label) { people[index].jobs.append(label) }
+                people[index].rank = min(people[index].rank, rank)
+                if people[index].profile == nil { people[index].profile = member.profilePath }
+            } else {
+                people.append((member.name, member.profilePath, rank, [label]))
+            }
+        }
+        return people.enumerated()
+            .sorted { ($0.element.rank, $0.offset) < ($1.element.rank, $1.offset) }
+            .prefix(12)
+            .map { CastMember(name: $0.element.name, character: $0.element.jobs.joined(separator: ", "), profilePath: $0.element.profile) }
+    }
 }
 
 struct SeasonRaw: Decodable {

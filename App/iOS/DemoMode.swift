@@ -90,7 +90,8 @@ struct DemoCatalog: CatalogService {
         let seasons = kind == .tv ? (1...2).map { SeasonSummary(number: $0, name: "Season \($0)", episodeCount: 8, posterPath: nil) } : []
         return TitleDetail(item: item, imdbID: "tt\(id)", runtimeMinutes: kind == .tv ? 55 : 148,
                            genres: kind == .tv ? ["Drama", "Mystery"] : ["Action", "Adventure", "Science Fiction"],
-                           cast: cast, recommendations: Array(Self.movies.shuffled().prefix(8)), seasons: seasons)
+                           cast: cast, trailerYouTubeKey: "zSWdZVtXT7E",
+                           recommendations: Array(Self.movies.shuffled().prefix(8)), seasons: seasons)
     }
     func season(tvID: Int, number: Int) async throws -> [Episode] {
         (1...8).map { Episode(number: $0, name: "Episode \($0)", overview: "Things get complicated at Lumon.", runtimeMinutes: 50 + $0) }

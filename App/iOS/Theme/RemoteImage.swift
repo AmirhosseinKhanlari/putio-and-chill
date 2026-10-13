@@ -9,13 +9,16 @@ struct RemoteImage: View {
     private let seed: String
     private let contentMode: ContentMode
     private let alignment: Alignment
+    private let neutral: Bool
     @State private var image: UIImage?
 
-    init(path: String?, size: String, seed: String, contentMode: ContentMode = .fill, alignment: Alignment = .center) {
+    init(path: String?, size: String, seed: String, contentMode: ContentMode = .fill, alignment: Alignment = .center,
+         neutral: Bool = false) {
         self.url = CatalogClient.imageURL(path, size: size)
         self.seed = seed
         self.contentMode = contentMode
         self.alignment = alignment
+        self.neutral = neutral
     }
 
     init(url: URL?, seed: String) {
@@ -23,6 +26,7 @@ struct RemoteImage: View {
         self.seed = seed
         self.contentMode = .fill
         self.alignment = .center
+        self.neutral = false
     }
 
     var body: some View {
@@ -45,7 +49,9 @@ struct RemoteImage: View {
     }
 
     @ViewBuilder private var base: some View {
-        if contentMode == .fill {
+        if neutral {
+            Color.white.opacity(0.08)
+        } else if contentMode == .fill {
             let palette = AmbientPalette.seeded(seed)
             LinearGradient(colors: [palette.primary.color, palette.secondary.color], startPoint: .topLeading, endPoint: .bottomTrailing)
         } else {
