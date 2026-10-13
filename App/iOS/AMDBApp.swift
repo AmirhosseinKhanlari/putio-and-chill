@@ -8,6 +8,7 @@ struct AMDBApp: App {
     @State private var router = Router()
     @State private var ambient = AmbientController()
     @State private var charts = ChartCenter()
+    @State private var downloader: OfflineDownloader
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -20,6 +21,7 @@ struct AMDBApp: App {
                        ratingsCache: RatingsCache(fileURL: RatingsCache.defaultURL()),
                        bundledTraktClientID: Bundle.main.object(forInfoDictionaryKey: "TraktClientID") as? String)
         _model = State(initialValue: model)
+        _downloader = State(initialValue: OfflineDownloader(app: model))
         BackgroundRefresh.register(model: model)
     }
 
@@ -30,6 +32,7 @@ struct AMDBApp: App {
                 .environment(router)
                 .environment(ambient)
                 .environment(charts)
+                .environment(downloader)
                 .preferredColorScheme(.dark)
                 .tint(.white)
                 .onChange(of: scenePhase) { _, phase in

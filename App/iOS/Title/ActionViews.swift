@@ -28,12 +28,14 @@ struct PrimaryActions: View {
             case let .play(entry):
                 Button { router.play(entry, resumeFrom: 0) } label: { Label("Play", systemImage: "play.fill") }
                     .buttonStyle(.primaryPill)
+                DownloadButton(entry: entry)
                 versionsButton
             case let .resume(entry, seconds):
                 Button { router.play(entry, resumeFrom: seconds) } label: {
                     Label("Resume \(Format.clock(seconds))", systemImage: "play.fill")
                 }
                 .buttonStyle(.primaryPill)
+                DownloadButton(entry: entry)
                 versionsButton
             case let .downloading(transfer):
                 DownloadStatus(transfer: transfer, large: true)

@@ -32,12 +32,12 @@ struct ResumePrompt: View {
 @MainActor
 enum PlayerPresenter {
     /// Presents Apple's player full screen. Its own close button is the only one; dismissal is detected by the coordinator.
-    static func present(_ request: PlayerRequest, from seconds: Int, app: AppModel, router: Router) {
+    static func present(_ request: PlayerRequest, from seconds: Int, app: AppModel, router: Router, localURL: URL? = nil) {
         guard let putio = app.putio, let presenter = topViewController() else {
             router.player = nil
             return
         }
-        let coordinator = PlayerCoordinator(request: request, putio: putio, app: app, router: router)
+        let coordinator = PlayerCoordinator(request: request, putio: putio, app: app, router: router, localURL: localURL)
         PlayerCoordinator.current = coordinator
         coordinator.start(from: seconds, on: presenter)
     }
@@ -70,17 +70,21 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
     private var inPictureInPicture = false
     private var triedFallback = false
     private var finished = false
+    private let localURL: URL?
 
-    init(request: PlayerRequest, putio: any PutioService, app: AppModel, router: Router) {
+    init(request: PlayerRequest, putio: any PutioService, app: AppModel, router: Router, localURL: URL? = nil) {
         self.request = request
         self.putio = putio
         self.app = app
         self.router = router
-        session = PlaybackSession(fileID: request.file.id, resumeFrom: request.resumeFrom, putio: putio, library: app.library)
+        self.localURL = localURL
+        session = PlaybackSession(fileID: request.file.id, resumeFrom: request.resumeFrom, putio: putio,
+                                  library: app.library, store: app.store)
     }
 
     func start(from seconds: Int, on presenter: UIViewController) {
-        let player = AVPlayer(url: session.streamURL)
+        // Offline copy when downloaded; otherwise put.io's HLS stream.
+        let player = AVPlayer(url: localURL ?? session.streamURL)
         controller.player = player
         controller.allowsPictureInPicturePlayback = true
         controller.canStartPictureInPictureAutomaticallyFromInline = true

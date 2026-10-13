@@ -86,6 +86,8 @@ final class Router {
     var countdown: TrackedTransfer?
     var showSettings = false
     var showSurprise = false
+    /// Short confirmation shown at the top (e.g. "Cleaned up 2 finished movies").
+    var toast: String?
     /// TMDB id of the title page on screen; a ready transfer for it counts down instead of showing a banner.
     var activeTitle: Int?
 

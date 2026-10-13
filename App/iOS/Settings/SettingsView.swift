@@ -98,6 +98,20 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("Delete finished movies", selection: $draft.autoCleanDays) {
+                        Text("Never").tag(Int?.none)
+                        Text("After 7 days").tag(Int?.some(7))
+                        Text("After 30 days").tag(Int?.some(30))
+                        Text("After 90 days").tag(Int?.some(90))
+                    }
+                    Toggle("Data saver downloads", isOn: $draft.downloadDataSaver)
+                } header: {
+                    Text("Storage")
+                } footer: {
+                    Text("Only movies you watched to the end in AMDB are deleted from put.io, never shows or unwatched files. You'll see the list before the first cleanup. Data saver keeps offline downloads small (about 1 GB per hour).")
+                }
+
+                Section {
                     Toggle("One-tap Get", isOn: $draft.oneTapGet)
                     Picker("Quality", selection: $draft.smartGet.resolution) {
                         Text("4K").tag(Int?.some(2160))

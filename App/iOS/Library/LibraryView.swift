@@ -24,6 +24,13 @@ struct LibraryView: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Library").font(.system(size: sizeClass == .compact ? 34 : 48, weight: .ultraLight)).tracking(3)
+                StorageMeter()
+                if !app.downloads.records.isEmpty {
+                    Text("On this device").font(.title3.weight(.semibold))
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) { ForEach(app.downloads.records) { DownloadCard(record: $0) } }
+                    }
+                }
                 if !app.transfers.tracked.isEmpty {
                     Text("Transfers").font(.title3.weight(.semibold))
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -63,8 +70,38 @@ private struct LibraryCardView: View {
     let width: CGFloat
     @Environment(AppModel.self) private var app
     @Environment(Router.self) private var router
+    @Environment(OfflineDownloader.self) private var downloader
+    @State private var confirmDelete = false
+
+    private var entries: [LibraryEntry] {
+        switch card {
+        case let .movie(entry), let .file(entry): [entry]
+        case let .show(_, _, _, episodes): episodes
+        }
+    }
 
     var body: some View {
+        content
+            .contextMenu {
+                if case let .movie(entry) = card, OfflineDownloader.isSupported {
+                    if app.downloads.record(fileID: entry.id) == nil {
+                        Button { Task { await downloader.start(entry) } } label: { Label("Download", systemImage: "arrow.down.to.line") }
+                    } else {
+                        Button { Task { await downloader.remove(fileID: entry.id) } } label: { Label("Remove download", systemImage: "minus.circle") }
+                    }
+                }
+                Button(role: .destructive) { confirmDelete = true } label: {
+                    Label(entries.count > 1 ? "Delete \(entries.count) episodes from put.io" : "Delete from put.io", systemImage: "trash")
+                }
+            }
+            .confirmationDialog("Delete from put.io?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("Delete", role: .destructive) { Task { try? await app.library.delete(entries) } }
+            } message: {
+                Text("This removes \(entries.count == 1 ? "the file" : "\(entries.count) files") from your put.io account. It can't be undone in AMDB.")
+            }
+    }
+
+    @ViewBuilder private var content: some View {
         switch card {
         case let .movie(entry), let .file(entry):
             let resume = app.library.resumeSeconds(for: entry)
@@ -126,5 +163,41 @@ private struct TransferCard: View {
         .padding(12)
         .frame(width: 320)
         .glassRounded(16)
+    }
+}
+
+private struct DownloadCard: View {
+    let record: DownloadRecord
+    @Environment(AppModel.self) private var app
+    @Environment(Router.self) private var router
+    @Environment(OfflineDownloader.self) private var downloader
+
+    var body: some View {
+        HStack(spacing: 12) {
+            RemoteImage(path: record.posterPath, size: "w185", seed: record.title)
+                .frame(width: 44, height: 66).clipShape(RoundedRectangle(cornerRadius: 6))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(record.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text(status).font(.caption).foregroundStyle(.white.opacity(0.65)).lineLimit(2)
+            }
+            Spacer(minLength: 0)
+            Menu {
+                Button(role: .destructive) { Task { await downloader.cancel(fileID: record.fileID) } } label: {
+                    Label("Remove download", systemImage: "trash")
+                }
+            } label: { Image(systemName: "ellipsis").frame(width: 28, height: 28) }
+        }
+        .padding(12)
+        .frame(width: 300)
+        .glassRounded(16)
+    }
+
+    private var status: String {
+        switch record.state {
+        case .queued: "Waiting…"
+        case let .downloading(progress): "Downloading \(Int(progress * 100))%"
+        case .done: "Available offline"
+        case let .failed(message): "Failed: \(message)"
+        }
     }
 }
