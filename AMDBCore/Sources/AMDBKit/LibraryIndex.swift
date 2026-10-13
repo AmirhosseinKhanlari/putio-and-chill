@@ -69,11 +69,17 @@ public final class LibraryIndex {
         }
     }
 
+    /// In-progress files, most recently watched first, one per title: a movie with several versions,
+    /// or a show with several started episodes, appears once at whichever was watched last.
     public var continueWatching: [LibraryEntry] {
-        entries.filter { resumeSeconds(for: $0) >= 30 }.sorted { a, b in
+        let started = entries.filter { resumeSeconds(for: $0) >= 30 }.sorted { a, b in
             let ta = touchedAt[a.id], tb = touchedAt[b.id]
             if ta != nil || tb != nil { return (ta ?? .distantPast) > (tb ?? .distantPast) }
             return (a.file.updatedAt ?? "") > (b.file.updatedAt ?? "")
+        }
+        var seen: Set<String> = []
+        return started.filter { entry in
+            seen.insert(entry.match.map { "\($0.mediaType.rawValue)-\($0.tmdbID)" } ?? "file-\(entry.id)").inserted
         }
     }
 

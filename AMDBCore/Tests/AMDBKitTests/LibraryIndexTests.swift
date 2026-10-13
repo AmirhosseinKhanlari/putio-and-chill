@@ -53,6 +53,21 @@ import Testing
         #expect(!index.continueWatching.contains { $0.id == 12 })
     }
 
+    @Test func continueWatchingShowsEachTitleOnce() async {
+        let putio = Self.tree()
+        // A second, older-watched version of Dune and a started episode next to S02E04.
+        putio.add(PutioFile(id: 15, name: "Dune.Part.Two.2024.2160p.mkv", fileType: "VIDEO", size: 9_000_000_000,
+                            createdAt: "2026-10-02T00:00:00", updatedAt: "2026-10-04T00:00:00", startFrom: 3000), to: 0)
+        let index = LibraryIndex(store: LocalStore(fileURL: nil))
+        index.configure(putio: putio, catalog: Self.catalog)
+        await index.refresh()
+        #expect(index.continueWatching.map(\.id) == [12, 10])
+        // Watching the 4K copy and episode 5 moves those to the front, still one card per title.
+        index.noteProgress(fileID: 15, seconds: 3100)
+        index.noteProgress(fileID: 14, seconds: 200)
+        #expect(index.continueWatching.map(\.id) == [14, 15])
+    }
+
     @Test func matchingFiltersBySeasonAndEpisode() async {
         let index = makeIndex()
         await index.refresh()

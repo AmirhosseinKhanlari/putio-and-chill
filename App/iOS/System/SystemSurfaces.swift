@@ -11,12 +11,7 @@ enum WidgetPublisher {
         guard let container = AppGroup.container else { return }
         var items: [WidgetItem] = []
         var keep: Set<String> = []
-        // One tile per title: a show appears once, at its most recent episode.
-        var seen: Set<String> = []
-        let entries = library.continueWatching.filter { entry in
-            seen.insert(entry.match.map { "\($0.mediaType.rawValue)-\($0.tmdbID)" } ?? "file-\(entry.id)").inserted
-        }
-        for entry in entries.prefix(6) {
+        for entry in library.continueWatching.prefix(6) {
             let seconds = library.resumeSeconds(for: entry)
             let poster = await save(entry.match?.posterPath, size: "w342", as: "poster-\(entry.id)-w342.jpg", in: container)
             let backdrop = await save(entry.match?.backdropPath, size: "w780", as: "backdrop-\(entry.id)-w780.jpg", in: container)
