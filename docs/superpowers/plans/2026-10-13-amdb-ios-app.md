@@ -48,6 +48,7 @@ App/iOS/
   Theme/AmbientBackground.swift  background view + .ambientBackground()
   Theme/RemoteImage.swift        TMDB/put.io image view with seeded placeholder
   Components/ProgressRing.swift
+  Components/FlowLayout.swift    wrapping chip layout (added during Task 3 for release tags)
   Components/PosterCard.swift    PosterCard, LibraryPoster
   Components/CatalogRowView.swift CatalogRowView, EntryRowView
   Shell/RootView.swift           onboarding vs main
@@ -2672,7 +2673,7 @@ struct ReleaseRow: View {
                 .frame(width: 60)
             VStack(alignment: .leading, spacing: 5) {
                 Text(release.name).font(.subheadline).lineLimit(2).multilineTextAlignment(.leading)
-                HStack(spacing: 5) {
+                FlowLayout(spacing: 5) {
                     ForEach(release.sources.sorted(), id: \.self) { tag in
                         Text(tag.label).font(.caption2.weight(.semibold))
                             .padding(.horizontal, 6).padding(.vertical, 2)
