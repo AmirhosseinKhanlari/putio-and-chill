@@ -60,7 +60,7 @@ extension ButtonStyle where Self == LiftStyle { static var lift: LiftStyle { Lif
 
 extension View {
     @ViewBuilder func glassCapsule() -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, tvOS 26.0, *) {
             glassEffect(.regular, in: .capsule)
         } else {
             background(.ultraThinMaterial, in: Capsule())
@@ -69,7 +69,7 @@ extension View {
     }
 
     @ViewBuilder func glassRounded(_ radius: CGFloat = 18) -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, tvOS 26.0, *) {
             glassEffect(.regular, in: .rect(cornerRadius: radius))
         } else {
             background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: radius))

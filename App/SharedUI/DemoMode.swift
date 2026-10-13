@@ -28,6 +28,7 @@ enum DemoMode {
                         bundledOpenSubtitlesKey: "demo")
     }
 
+    #if os(iOS)
     @MainActor static func apply(to router: Router) {
         switch screen {
         case "title": router.homePath = [.title(DemoCatalog.movies[0])]
@@ -52,6 +53,7 @@ enum DemoMode {
         default: break
         }
     }
+    #endif
 }
 
 struct DemoCatalog: CatalogService {

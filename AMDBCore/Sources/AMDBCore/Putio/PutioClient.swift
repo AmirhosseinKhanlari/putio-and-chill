@@ -25,6 +25,30 @@ public struct PutioClient: Sendable {
         return components.queryItems?.first { $0.name == "access_token" }?.value.flatMap { $0.isEmpty ? nil : $0 }
     }
 
+    /// TV sign-in: a short code the user enters at put.io/link (or scans as a QR code) on another device.
+    public static func requestDeviceCode(appID: String, transport: any HTTPTransport,
+                                         baseURL: URL = defaultBaseURL) async throws -> PutioDeviceCode {
+        var components = URLComponents(url: baseURL.appending(path: "oauth2/oob/code"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "app_id", value: appID)]
+        let response = try await HTTPRequester(service: "putio", transport: transport)
+            .decode(DeviceCodeResponse.self, .get(components.url!), decoder: .snakeCase)
+        return PutioDeviceCode(code: response.code, qrCodeURL: response.qrCodeUrl.flatMap(URL.init(string:)))
+    }
+
+    /// The account token once the user has entered the code, nil while still waiting.
+    public static func deviceToken(code: String, transport: any HTTPTransport, baseURL: URL = defaultBaseURL) async throws -> String? {
+        let url = baseURL.appending(path: "oauth2/oob/code/\(code)")
+        let response = try await HTTPRequester(service: "putio", transport: transport)
+            .decode(DeviceTokenResponse.self, .get(url), decoder: .snakeCase)
+        return response.oauthToken.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// Where the user enters a device code.
+    public static let linkURL = URL(string: "https://put.io/link")!
+
+    struct DeviceCodeResponse: Decodable { let code: String; let qrCodeUrl: String? }
+    struct DeviceTokenResponse: Decodable { let oauthToken: String? }
+
     // MARK: Account
 
     public func accountInfo() async throws -> PutioAccount {

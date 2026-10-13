@@ -76,6 +76,13 @@ public struct PutioFileList: Decodable, Sendable, Equatable {
     public init(parent: PutioFile?, files: [PutioFile]) { self.parent = parent; self.files = files }
 }
 
+public struct PutioDeviceCode: Sendable, Equatable {
+    public let code: String
+    public let qrCodeURL: URL?
+
+    public init(code: String, qrCodeURL: URL?) { self.code = code; self.qrCodeURL = qrCodeURL }
+}
+
 public struct PutioSubtitle: Codable, Sendable, Hashable, Identifiable {
     public let key: String
     /// Display name of the language ("English").

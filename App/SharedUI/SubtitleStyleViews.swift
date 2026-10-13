@@ -2,8 +2,9 @@ import AMDBKit
 import SwiftUI
 
 extension SubtitleStyle {
-    func font(compact: Bool) -> Font {
-        let base: CGFloat = compact ? 17 : 26
+    /// `scale` enlarges everything for the TV (viewed from across the room).
+    func font(compact: Bool, scale: CGFloat = 1) -> Font {
+        let base: CGFloat = (compact ? 17 : 26) * scale
         let scale: CGFloat = switch size {
         case .small: 0.8
         case .medium: 1
@@ -42,10 +43,11 @@ struct StyledSubtitleText: View {
     let text: String
     let style: SubtitleStyle
     let compact: Bool
+    var scale: CGFloat = 1
 
     var body: some View {
         Text(text)
-            .font(style.font(compact: compact))
+            .font(style.font(compact: compact, scale: scale))
             .multilineTextAlignment(.center)
             .foregroundStyle(style.textColor)
             // Without a box, a heavier outline-like shadow keeps text readable on bright scenes.
@@ -129,6 +131,8 @@ struct SubtitleStyleEditor: View {
             }
         }
         .navigationTitle("Subtitle Style")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 }
