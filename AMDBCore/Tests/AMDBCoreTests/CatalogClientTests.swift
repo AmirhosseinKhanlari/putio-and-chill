@@ -94,4 +94,14 @@ import Testing
         #expect(item.posterPath == "/s.jpg")
         #expect(stub.requests.first?.url?.path == "/3/movie/278")
     }
+
+    @Test func searchMultiPageReportsTotals() async throws {
+        let stub = StubTransport(json: #"{"page":2,"total_pages":7,"results":[{"id":11,"media_type":"movie","title":"Star Wars","release_date":"1977-05-25"}]}"#)
+        let page = try await CatalogClient(accessToken: "K", transport: stub).searchMulti("star wars", page: 2)
+        #expect(page.items.map(\.title) == ["Star Wars"])
+        #expect(page.page == 2)
+        #expect(page.totalPages == 7)
+        #expect(page.hasMore)
+        #expect(stub.requests.first?.queryItems["page"] == "2")
+    }
 }

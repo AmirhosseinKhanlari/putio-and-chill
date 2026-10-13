@@ -44,4 +44,34 @@ import Testing
         await search.loadRecent()
         #expect(search.recent == ["dune part two"])
     }
+
+    @Test func loadMoreAppendsNextPagesUntilTheEnd() async throws {
+        var catalog = Self.catalog
+        catalog.multiPages = ["dune": [2: [movie(3, "Dune 1984"), movie(1, "Dune")], 3: [movie(4, "Dune Prophecy")]]]
+        catalog.multiTotalPages = 3
+        let search = SearchModel(catalog: catalog, store: LocalStore(fileURL: nil), debounce: .zero)
+        search.query = "dune"
+        try await waitUntil { search.results.count == 2 }
+        #expect(search.canLoadMore)
+        await search.loadMore()
+        #expect(search.results.map(\.tmdbID) == [1, 2, 3])
+        await search.loadMore()
+        #expect(search.results.map(\.tmdbID) == [1, 2, 3, 4])
+        #expect(!search.canLoadMore)
+        await search.loadMore()
+        #expect(search.results.count == 4)
+    }
+
+    @Test func newQueryResetsPaging() async throws {
+        var catalog = Self.catalog
+        catalog.multiPages = ["dune": [2: [movie(3, "Dune 1984")]]]
+        catalog.multiTotalPages = 2
+        let search = SearchModel(catalog: catalog, store: LocalStore(fileURL: nil), debounce: .zero)
+        search.query = "dune"
+        try await waitUntil { search.results.count == 2 }
+        await search.loadMore()
+        search.query = "nolan"
+        try await waitUntil { search.results.map(\.tmdbID) == [525, 27205] }
+        #expect(search.canLoadMore)
+    }
 }

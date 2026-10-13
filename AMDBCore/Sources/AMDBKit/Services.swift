@@ -22,6 +22,7 @@ extension PutioClient: PutioService {}
 public protocol CatalogService: CatalogSearching {
     func validate() async throws
     func searchMulti(_ query: String) async throws -> [CatalogItem]
+    func searchMulti(_ query: String, page: Int) async throws -> CatalogPage
     func trending(_ kind: MediaKind?) async throws -> [CatalogItem]
     func popular(_ kind: MediaKind) async throws -> [CatalogItem]
     func topRated(_ kind: MediaKind) async throws -> [CatalogItem]

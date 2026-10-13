@@ -10,13 +10,20 @@ public final class SearchModel {
     public private(set) var results: [CatalogItem] = []
     public private(set) var isSearching = false
     public private(set) var recent: [String] = []
+    /// More TMDB pages exist for the current query; call `loadMore()` when the grid reaches its end.
+    public private(set) var canLoadMore = false
+    public private(set) var isLoadingMore = false
 
     @ObservationIgnored private let engine: LiveSearchEngine<CatalogItem>
     @ObservationIgnored private let store: LocalStore
     @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private let catalog: any CatalogService
+    @ObservationIgnored private var pagedQuery = ""
+    @ObservationIgnored private var nextPage = 2
 
     public init(catalog: any CatalogService, store: LocalStore, debounce: Duration = .milliseconds(250)) {
         self.store = store
+        self.catalog = catalog
         engine = LiveSearchEngine(debounce: debounce) { query in try await catalog.searchMulti(query) }
     }
 
@@ -36,6 +43,22 @@ public final class SearchModel {
 
     public var releaseQuery: MediaQuery? { trimmed.isEmpty ? nil : .text(trimmed) }
 
+    public func loadMore() async {
+        guard canLoadMore, !isLoadingMore, !pagedQuery.isEmpty else { return }
+        let query = pagedQuery
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        guard let page = try? await catalog.searchMulti(query, page: nextPage) else {
+            canLoadMore = false
+            return
+        }
+        guard query == pagedQuery else { return }
+        var seen = Set(results.map(\.id))
+        results += page.items.filter { seen.insert($0.id).inserted }
+        nextPage += 1
+        canLoadMore = page.hasMore && !page.items.isEmpty
+    }
+
     public func loadRecent() async { recent = await store.snapshot.recentSearches }
 
     public func commit() async {
@@ -49,6 +72,8 @@ public final class SearchModel {
         guard !text.isEmpty else {
             results = []
             isSearching = false
+            canLoadMore = false
+            pagedQuery = ""
             return
         }
         isSearching = true
@@ -57,6 +82,9 @@ public final class SearchModel {
             guard let found = try? await engine.results(for: text), !Task.isCancelled else { return }
             results = found
             isSearching = false
+            pagedQuery = text
+            nextPage = 2
+            canLoadMore = !found.isEmpty
         }
     }
 }

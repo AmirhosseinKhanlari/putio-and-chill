@@ -63,12 +63,15 @@ private struct SearchContent: View {
 
                     if compact {
                         suggestions
-                        grid(model.grid)
+                        grid(model.grid, paged: true)
                     } else {
                         HStack(alignment: .top, spacing: 28) {
                             suggestions.frame(width: 260)
-                            grid(model.grid)
+                            grid(model.grid, paged: true)
                         }
+                    }
+                    if model.isLoadingMore {
+                        ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12)
                     }
                     if model.results.isEmpty && !model.isSearching {
                         Text("No titles match. Try “Search releases” for anything TMDB doesn't know.")
@@ -126,14 +129,18 @@ private struct SearchContent: View {
         }
     }
 
-    private func grid(_ items: [CatalogItem]) -> some View {
+    private func grid(_ items: [CatalogItem], paged: Bool = false) -> some View {
         let width = Metrics.poster(sizeClass)
         return LazyVGrid(columns: [GridItem(.adaptive(minimum: width, maximum: width + 30), spacing: 12, alignment: .top)],
                          alignment: .leading, spacing: 18) {
-            ForEach(items) { item in
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 Button { open(item) } label: { PosterCard(item: item, width: width) }
                     .buttonStyle(.lift)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .onAppear {
+                        // Infinite scroll: fetch the next TMDB page as the last row comes into view.
+                        if paged, index >= items.count - 6 { Task { await model.loadMore() } }
+                    }
             }
         }
         .animation(.snappy(duration: 0.25), value: items.map(\.id))

@@ -170,3 +170,16 @@ struct SeasonRaw: Decodable {
     }
     let episodes: [Ep]?
 }
+
+/// One page of TMDB results.
+public struct CatalogPage: Sendable, Equatable {
+    public let items: [CatalogItem]
+    public let page: Int
+    public let totalPages: Int
+
+    public init(items: [CatalogItem], page: Int, totalPages: Int) {
+        self.items = items; self.page = page; self.totalPages = totalPages
+    }
+
+    public var hasMore: Bool { page < totalPages }
+}

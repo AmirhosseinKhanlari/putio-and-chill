@@ -24,6 +24,13 @@ public struct CatalogClient: Sendable {
         try await page("search/multi", [("query", query), ("include_adult", "false")])
     }
 
+    public func searchMulti(_ query: String, page: Int) async throws -> CatalogPage {
+        struct Paged: Decodable { let page: Int?; let totalPages: Int?; let results: [CatalogItem] }
+        let req = request("search/multi", [("query", query), ("include_adult", "false"), ("page", String(page))])
+        let paged = try await http.decode(Paged.self, req, decoder: .snakeCase)
+        return CatalogPage(items: paged.results, page: paged.page ?? page, totalPages: paged.totalPages ?? page)
+    }
+
     public func trending(_ kind: MediaKind?) async throws -> [CatalogItem] {
         try await page("trending/\(kind?.rawValue ?? "all")/week")
     }

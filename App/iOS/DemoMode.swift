@@ -78,6 +78,9 @@ struct DemoCatalog: CatalogService {
         try await Task.sleep(for: .milliseconds(120))
         return Self.everything.filter { $0.title.localizedCaseInsensitiveContains(query) }
     }
+    func searchMulti(_ query: String, page: Int) async throws -> CatalogPage {
+        CatalogPage(items: page == 1 ? try await searchMulti(query) : [], page: page, totalPages: 1)
+    }
     func trending(_ kind: MediaKind?) async throws -> [CatalogItem] { Array(Self.movies.prefix(4)) + Array(Self.shows.prefix(3)) }
     func popular(_ kind: MediaKind) async throws -> [CatalogItem] { kind == .tv ? Self.shows : Self.movies }
     func topRated(_ kind: MediaKind) async throws -> [CatalogItem] { (kind == .tv ? Self.shows : Self.movies).reversed() }

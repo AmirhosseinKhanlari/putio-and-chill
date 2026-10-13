@@ -82,6 +82,8 @@ struct FakeCatalog: CatalogService {
     var movieSearch: [String: [CatalogItem]] = [:]
     var tvSearch: [String: [CatalogItem]] = [:]
     var failAll = false
+    var multiPages: [String: [Int: [CatalogItem]]] = [:]
+    var multiTotalPages = 1
 
     private func guarded<T>(_ value: T) throws -> T {
         if failAll { throw AppError.transport("offline") }
@@ -90,6 +92,10 @@ struct FakeCatalog: CatalogService {
 
     func validate() async throws { _ = try guarded(()) }
     func searchMulti(_ query: String) async throws -> [CatalogItem] { try guarded(multi[query.lowercased()] ?? []) }
+    func searchMulti(_ query: String, page: Int) async throws -> CatalogPage {
+        let items = page == 1 ? (multi[query.lowercased()] ?? []) : (multiPages[query.lowercased()]?[page] ?? [])
+        return try guarded(CatalogPage(items: items, page: page, totalPages: multiTotalPages))
+    }
     func trending(_ kind: MediaKind?) async throws -> [CatalogItem] { try guarded(trendingItems) }
     func popular(_ kind: MediaKind) async throws -> [CatalogItem] { try guarded(kind == .movie ? popularMovies : popularShows) }
     func topRated(_ kind: MediaKind) async throws -> [CatalogItem] { try guarded(kind == .movie ? popularMovies : popularShows) }
