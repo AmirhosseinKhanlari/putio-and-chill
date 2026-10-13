@@ -28,4 +28,27 @@ final class ChartUITests: XCTestCase {
             add(shot)
         }
     }
+
+    func testSeeAllOpensFullPage() throws {
+        let app = XCUIApplication()
+        app.launch()
+        guard app.buttons["Movies"].waitForExistence(timeout: 25) else { throw XCTSkip("not signed in on this simulator") }
+        app.buttons["Movies"].tap()
+        let seeAll = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'See all'")).allElementsBoundByIndex
+        let deadline = Date().addingTimeInterval(30)
+        var target = seeAll.first { $0.isHittable }
+        while target == nil, Date() < deadline {
+            sleep(1)
+            target = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'See all'")).allElementsBoundByIndex.first { $0.isHittable }
+        }
+        try XCTUnwrap(target, "See all should appear").tap()
+        XCTAssertTrue(app.staticTexts["IMDB TOP 250"].waitForExistence(timeout: 10), "full chart page should open")
+        sleep(5)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "chart-page"
+        shot.lifetime = .keepAlways
+        add(shot)
+        app.buttons["Back"].tap()
+        XCTAssertTrue(app.staticTexts["IMDB TOP 250"].waitForNonExistence(timeout: 5), "back returns to Movies")
+    }
 }

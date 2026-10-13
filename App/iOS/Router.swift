@@ -27,6 +27,12 @@ enum AppTab: String, CaseIterable, Identifiable {
     }
 }
 
+/// Screens that can be pushed onto a tab's navigation stack.
+enum Route: Hashable {
+    case title(CatalogItem)
+    case chart(IMDbChart)
+}
+
 struct NextEpisode: Hashable {
     let query: MediaQuery?
     let target: TransferTarget
@@ -64,11 +70,11 @@ enum Banner: Identifiable, Equatable {
 @Observable @MainActor
 final class Router {
     var tab: AppTab = .home
-    var homePath: [CatalogItem] = []
-    var moviesPath: [CatalogItem] = []
-    var tvPath: [CatalogItem] = []
-    var searchPath: [CatalogItem] = []
-    var libraryPath: [CatalogItem] = []
+    var homePath: [Route] = []
+    var moviesPath: [Route] = []
+    var tvPath: [Route] = []
+    var searchPath: [Route] = []
+    var libraryPath: [Route] = []
     var versions: VersionsRequest?
     /// Set to start playback; cleared when the player closes.
     var player: PlayerRequest?
@@ -80,13 +86,16 @@ final class Router {
     /// TMDB id of the title page on screen; a ready transfer for it counts down instead of showing a banner.
     var activeTitle: Int?
 
-    func open(_ item: CatalogItem) {
+    func open(_ item: CatalogItem) { push(.title(item)) }
+    func open(_ chart: IMDbChart) { push(.chart(chart)) }
+
+    private func push(_ route: Route) {
         switch tab {
-        case .home: homePath.append(item)
-        case .movies: moviesPath.append(item)
-        case .tv: tvPath.append(item)
-        case .search: searchPath.append(item)
-        case .library: libraryPath.append(item)
+        case .home: homePath.append(route)
+        case .movies: moviesPath.append(route)
+        case .tv: tvPath.append(route)
+        case .search: searchPath.append(route)
+        case .library: libraryPath.append(route)
         }
     }
 

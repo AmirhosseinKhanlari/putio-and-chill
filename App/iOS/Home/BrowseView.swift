@@ -6,6 +6,7 @@ struct BrowseView: View {
     let kind: MediaKind
     @Environment(AppModel.self) private var app
     @Environment(AmbientController.self) private var ambient
+    @Environment(ChartCenter.self) private var charts
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var model: BrowseModel?
     @State private var chart: ChartModel?
@@ -32,8 +33,7 @@ struct BrowseView: View {
             guard model == nil, let catalog = app.catalog else { return }
             let browse = BrowseModel(kind: kind, catalog: catalog)
             model = browse
-            if app.hasCharts {
-                let top = ChartModel(chart: kind == .tv ? .top250TV : .top250Movies, app: app, catalog: catalog)
+            if let top = charts.model(kind == .tv ? .top250TV : .top250Movies, app: app) {
                 chart = top
                 Task { await top.load() }
             }

@@ -49,7 +49,7 @@ struct MainView: View {
         }
     }
 
-    private func path(for tab: AppTab, router: Bindable<Router>) -> Binding<[CatalogItem]> {
+    private func path(for tab: AppTab, router: Bindable<Router>) -> Binding<[Route]> {
         switch tab {
         case .home: router.homePath
         case .movies: router.moviesPath
@@ -84,7 +84,7 @@ struct MainView: View {
 
 private struct TabStack: View {
     let tab: AppTab
-    @Binding var path: [CatalogItem]
+    @Binding var path: [Route]
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
@@ -94,7 +94,12 @@ private struct TabStack: View {
                 .safeAreaInset(edge: sizeClass == .compact ? .bottom : .top, spacing: 0) {
                     Color.clear.frame(height: Metrics.tabBarInset(sizeClass))
                 }
-                .navigationDestination(for: CatalogItem.self) { TitleView(item: $0) }
+                .navigationDestination(for: Route.self) { route in
+                    switch route {
+                    case let .title(item): TitleView(item: item)
+                    case let .chart(chart): ChartPage(chart: chart)
+                    }
+                }
         }
     }
 

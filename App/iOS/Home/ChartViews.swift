@@ -7,7 +7,6 @@ struct ChartRowView: View {
     let model: ChartModel
     @Environment(Router.self) private var router
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @State private var showAll = false
 
     var body: some View {
         let width = Metrics.poster(sizeClass)
@@ -16,7 +15,7 @@ struct ChartRowView: View {
                 Text(model.chart.title).font(.title3.weight(.semibold))
                 Spacer()
                 if !model.entries.isEmpty {
-                    Button("See all \(model.entries.count)") { showAll = true }
+                    Button("See all \(model.entries.count)") { router.open(model.chart) }
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.75))
                 }
@@ -42,7 +41,6 @@ struct ChartRowView: View {
                     .padding(.horizontal, Metrics.gutter(sizeClass))
             }
         }
-        .sheet(isPresented: $showAll) { ChartGridSheet(model: model) }
     }
 }
 
@@ -88,55 +86,5 @@ struct ChartPoster: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
             .task(id: entry.id) { await model.item(for: entry) }
-    }
-}
-
-private struct ChartGridSheet: View {
-    let model: ChartModel
-    @Environment(Router.self) private var router
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
-    var body: some View {
-        let width = Metrics.poster(sizeClass)
-        NavigationStack {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: width, maximum: width + 30), spacing: 14, alignment: .top)],
-                          alignment: .leading, spacing: 20) {
-                    ForEach(model.entries) { entry in
-                        Button {
-                            guard let item = model.items[entry.id] else { return }
-                            dismiss()
-                            Task {
-                                try? await Task.sleep(for: .milliseconds(350))
-                                router.open(item)
-                            }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ChartPoster(model: model, entry: entry, width: width)
-                                    .overlay(alignment: .topLeading) {
-                                        Text("#\(entry.rank)").font(.caption.weight(.heavy))
-                                            .padding(.horizontal, 7).padding(.vertical, 3)
-                                            .background(.black.opacity(0.65), in: Capsule())
-                                            .padding(6)
-                                    }
-                                Text(entry.title).font(.caption).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
-                                if let year = entry.year {
-                                    Text(String(year)).font(.caption2).foregroundStyle(.white.opacity(0.5))
-                                }
-                            }
-                            .frame(width: width, alignment: .leading)
-                        }
-                        .buttonStyle(.lift)
-                    }
-                }
-                .padding(Metrics.gutter(sizeClass))
-            }
-            .background(Theme.sheet)
-            .navigationTitle(model.chart.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
-        }
-        .presentationBackground(Theme.sheet)
     }
 }

@@ -7,6 +7,7 @@ struct AMDBApp: App {
     @State private var model: AppModel
     @State private var router = Router()
     @State private var ambient = AmbientController()
+    @State private var charts = ChartCenter()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -28,6 +29,7 @@ struct AMDBApp: App {
                 .environment(model)
                 .environment(router)
                 .environment(ambient)
+                .environment(charts)
                 .preferredColorScheme(.dark)
                 .tint(.white)
                 .onChange(of: scenePhase) { _, phase in

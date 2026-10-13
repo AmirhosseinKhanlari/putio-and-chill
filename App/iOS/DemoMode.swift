@@ -27,15 +27,18 @@ enum DemoMode {
 
     @MainActor static func apply(to router: Router) {
         switch screen {
-        case "title": router.homePath = [DemoCatalog.movies[0]]
-        case "show": router.homePath = [DemoCatalog.shows[0]]
+        case "title": router.homePath = [.title(DemoCatalog.movies[0])]
+        case "show": router.homePath = [.title(DemoCatalog.shows[0])]
         case "versions":
-            router.homePath = [DemoCatalog.movies[0]]
+            router.homePath = [.title(DemoCatalog.movies[0])]
             router.versions = VersionsRequest(query: .movie(imdbID: "tt0", title: DemoCatalog.movies[0].title, year: 2024),
                                               target: nil, playNow: [])
         case "search": router.tab = .search
         case "library": router.tab = .library
         case "movies": router.tab = .movies
+        case "chart":
+            router.tab = .movies
+            router.moviesPath = [.chart(.top250Movies)]
         case "player":
             router.player = PlayerRequest(file: PutioFile(id: 1, name: "Interstellar.2014.1080p.BluRay.x264.mkv", fileType: "VIDEO"),
                                           title: "Interstellar", resumeFrom: 4360, played: nil, next: nil)
