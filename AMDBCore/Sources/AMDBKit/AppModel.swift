@@ -215,9 +215,25 @@ public final class AppModel {
                 return try? await OpenSubtitlesHash.compute(url: url, size: size, transport: URLSessionTransport())
             }
         }
-        return SubtitleFinder(context: context, service: subtitleService, store: store, cache: subtitleCache, language: language,
+        let source = putio.map { putio in
+            PutioSubtitleSource(list: { try await putio.subtitles(fileID: context.fileID) },
+                                text: { try await putio.subtitleText(fileID: context.fileID, key: $0) })
+        }
+        return SubtitleFinder(context: context, service: subtitleService, putio: source, store: store, cache: subtitleCache,
+                              language: language, preferredLanguage: settings.subtitleLanguage,
                               signedIn: openSubtitlesUser != nil, session: { [weak self] in await self?.openSubtitlesSession() },
                               hasher: hasher)
+    }
+
+    /// Saves put.io's subtitles for a file on the device (offline copies play them without a connection).
+    public func cachePutioSubtitles(fileID: Int64) async {
+        guard let putio, let tracks = try? await putio.subtitles(fileID: fileID) else { return }
+        subtitleCache.writePutioList(tracks, fileID: fileID)
+        for track in tracks where subtitleCache.readPutio(fileID: fileID, key: track.key) == nil {
+            if let text = try? await putio.subtitleText(fileID: fileID, key: track.key) {
+                subtitleCache.writePutio(text, fileID: fileID, key: track.key)
+            }
+        }
     }
 
     /// Signs in to OpenSubtitles and remembers the account in the Keychain.

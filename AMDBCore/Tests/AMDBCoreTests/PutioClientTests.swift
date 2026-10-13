@@ -40,9 +40,23 @@ import Testing
         #expect(stub.requests[1].bodyString == "time=4400")
     }
 
-    @Test func hlsURLCarriesTokenAndSubtitles() {
-        let url = PutioClient(token: "T", transport: StubTransport(json: "{}")).hlsURL(fileID: 42)
-        #expect(url.absoluteString == "https://api.put.io/v2/files/42/hls/media.m3u8?subtitle_key=all&oauth_token=T")
+    @Test func hlsURLCarriesTokenAndOptionalSubtitles() {
+        let client = PutioClient(token: "T", transport: StubTransport(json: "{}"))
+        #expect(client.hlsURL(fileID: 42).absoluteString == "https://api.put.io/v2/files/42/hls/media.m3u8?subtitle_key=all&oauth_token=T")
+        #expect(client.hlsURL(fileID: 42, subtitles: false).absoluteString == "https://api.put.io/v2/files/42/hls/media.m3u8?oauth_token=T")
+    }
+
+    @Test func listsAndDownloadsSubtitles() async throws {
+        let list = StubTransport(json: #"{"subtitles":[{"key":"abc","language":"English","language_code":"eng","name":"Movie.srt","source":"folder"}],"default":"abc"}"#)
+        let tracks = try await PutioClient(token: "T", transport: list).subtitles(fileID: 7)
+        #expect(tracks == [PutioSubtitle(key: "abc", language: "English", languageCode: "eng", name: "Movie.srt", source: "folder")])
+        let file = StubTransport { _ in (200, Data("1\n00:00:01,000 --> 00:00:02,000\nHi\n".utf8)) }
+        let text = try await PutioClient(token: "T", transport: file).subtitleText(fileID: 7, key: "abc")
+        #expect(text.contains("Hi"))
+        let request = try #require(file.requests.first)
+        #expect(request.url?.path == "/v2/files/7/subtitles/abc")
+        #expect(request.url?.query() == "format=srt")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "token T")
     }
 
     @Test func authorizeURLAndCallbackParsing() throws {

@@ -210,10 +210,21 @@ final class DemoPutio: PutioService, @unchecked Sendable {
 
     func startFrom(fileID: Int64) async throws -> Int { 0 }
     func setStartFrom(fileID: Int64, seconds: Int) async throws {}
-    func hlsURL(fileID: Int64) -> URL {
+    func hlsURL(fileID: Int64, subtitles: Bool) -> URL {
         URL(string: "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8")!
     }
     func originalURL(fileID: Int64) async throws -> URL { hlsURL(fileID: fileID) }
+    func subtitles(fileID: Int64) async throws -> [PutioSubtitle] {
+        [PutioSubtitle(key: "eng-mkv", language: "English", languageCode: "eng", name: "English (from the file)", source: "mkv"),
+         PutioSubtitle(key: "fre-os", language: "French", languageCode: "fre", name: "Interstellar.2014.FR", source: "opensubtitles")]
+    }
+    func subtitleText(fileID: Int64, key: String) async throws -> String {
+        (0..<2700).map { i in
+            let start = i * 4
+            return "\(i + 1)\n" + String(format: "%02d:%02d:%02d,000 --> %02d:%02d:%02d,000", start / 3600, start / 60 % 60, start % 60,
+                                           (start + 3) / 3600, (start + 3) / 60 % 60, (start + 3) % 60) + "\nput.io line \(i + 1)\n"
+        }.joined(separator: "\n")
+    }
 }
 
 struct DemoProvider: SourceProvider {

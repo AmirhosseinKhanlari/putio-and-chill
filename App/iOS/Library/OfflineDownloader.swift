@@ -50,7 +50,11 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         await app.downloads.upsert(DownloadRecord(
             fileID: entry.id, title: entry.displayTitle, posterPath: match?.posterPath, tmdbID: match?.tmdbID,
             kind: match?.mediaType, season: match?.season, episode: match?.episode, state: .queued))
-        let asset = AVURLAsset(url: putio.hlsURL(fileID: entry.id))
+        // Subtitles aren't muxed into the copy; put.io's subtitle files are saved next to it so the app's own
+        // subtitles menu works offline too.
+        let fileID = entry.id
+        Task { await app.cachePutioSubtitles(fileID: fileID) }
+        let asset = AVURLAsset(url: putio.hlsURL(fileID: entry.id, subtitles: false))
         let configuration = AVAssetDownloadConfiguration(asset: asset, title: entry.displayTitle)
         if let selections = try? await asset.load(.allMediaSelections) {
             configuration.primaryContentConfiguration.mediaSelections = selections

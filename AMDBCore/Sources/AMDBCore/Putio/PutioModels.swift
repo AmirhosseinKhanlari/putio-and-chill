@@ -76,9 +76,18 @@ public struct PutioFileList: Decodable, Sendable, Equatable {
     public init(parent: PutioFile?, files: [PutioFile]) { self.parent = parent; self.files = files }
 }
 
-public struct PutioSubtitle: Decodable, Sendable, Equatable {
+public struct PutioSubtitle: Codable, Sendable, Hashable, Identifiable {
     public let key: String
+    /// Display name of the language ("English").
     public let language: String?
+    /// ISO 639-2 code ("eng").
+    public let languageCode: String?
     public let name: String?
+    /// Where put.io got it: "mkv" (inside the file), "folder" (a file next to it), "opensubtitles".
     public let source: String?
+    public var id: String { key }
+
+    public init(key: String, language: String?, languageCode: String? = nil, name: String? = nil, source: String? = nil) {
+        self.key = key; self.language = language; self.languageCode = languageCode; self.name = name; self.source = source
+    }
 }

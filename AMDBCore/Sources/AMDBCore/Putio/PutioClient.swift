@@ -91,9 +91,22 @@ public struct PutioClient: Sendable {
         try await get("files/\(fileID)/subtitles", as: SubtitlesEnvelope.self).subtitles
     }
 
-    public func hlsURL(fileID: Int64) -> URL {
-        URL(string: "\(baseURL.absoluteString)/files/\(fileID)/hls/media.m3u8?subtitle_key=all&oauth_token=\(formEncode(token))")!
+    /// One subtitle file as SRT text.
+    public func subtitleText(fileID: Int64, key: String) async throws -> String {
+        var components = URLComponents(url: baseURL.appending(path: "files/\(fileID)/subtitles/\(key)"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "format", value: "srt")]
+        let data = try await http.data(.get(components.url!, headers: authHeaders))
+        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
     }
+
+    /// The HLS stream. With `subtitles`, put.io muxes every subtitle track into it (used for offline copies);
+    /// streaming leaves them out because the app draws subtitles itself.
+    public func hlsURL(fileID: Int64, subtitles: Bool) -> URL {
+        let subtitleParam = subtitles ? "subtitle_key=all&" : ""
+        return URL(string: "\(baseURL.absoluteString)/files/\(fileID)/hls/media.m3u8?\(subtitleParam)oauth_token=\(formEncode(token))")!
+    }
+
+    public func hlsURL(fileID: Int64) -> URL { hlsURL(fileID: fileID, subtitles: true) }
 
     // MARK: Plumbing
 

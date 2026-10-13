@@ -24,7 +24,9 @@ public final class PlaybackSession {
     }
 
     public var shouldOfferResume: Bool { resumeFrom > 30 }
-    public var streamURL: URL { putio.hlsURL(fileID: fileID) }
+    /// Streams without put.io's subtitle tracks: the app shows put.io and OpenSubtitles subtitles itself,
+    /// so Apple's player has no second subtitles menu.
+    public var streamURL: URL { putio.hlsURL(fileID: fileID, subtitles: false) }
 
     public func tick(seconds: Double, duration: Double) async {
         let position = Int(seconds)

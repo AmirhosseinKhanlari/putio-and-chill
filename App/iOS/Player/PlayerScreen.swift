@@ -52,7 +52,7 @@ enum PlayerPresenter {
 }
 
 @MainActor
-final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelegate, @MainActor UIGestureRecognizerDelegate {
+final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelegate {
     static var current: PlayerCoordinator?
 
     let request: PlayerRequest
@@ -76,6 +76,7 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
     private var subtitleButtonHost: UIViewController?
     private var subtitleButtonHideTask: Task<Void, Never>?
     private var timeObserver: Any?
+    private var playbackObservation: NSKeyValueObservation?
 
     init(request: PlayerRequest, putio: any PutioService, app: AppModel, router: Router, localURL: URL? = nil) {
         self.request = request
@@ -151,6 +152,8 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
         subtitleButtonHideTask?.cancel()
         let player = controller.player
         if let timeObserver { player?.removeTimeObserver(timeObserver) }
+        playbackObservation?.invalidate()
+        playbackObservation = nil
         timeObserver = nil
         player?.pause()
         let position = player?.currentTime().seconds ?? 0
@@ -188,20 +191,12 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
         }
     }
 
-    /// Picks the preferred audio and subtitle tracks (Settings → Playback); subtitles off when none is chosen.
-    /// An OpenSubtitles pick for this file replaces put.io's subtitle tracks.
+    /// Picks the preferred audio track (Settings → Playback). Subtitles are drawn by the app (put.io + OpenSubtitles),
+    /// so any subtitle track inside the stream (older offline copies) stays off.
     private func applyLanguagePreferences(to item: AVPlayerItem) async {
         let settings = app.settings
-        if let group = try? await item.asset.loadMediaSelectionGroup(for: .legible) {
-            if subtitles.track != nil, group.allowsEmptySelection {
-                item.select(nil, in: group)
-            } else if let language = settings.subtitleLanguage,
-               let index = LanguageMatcher.bestIndex(available: group.options.map { $0.extendedLanguageTag ?? $0.locale?.identifier },
-                                                     preferred: language) {
-                item.select(group.options[index], in: group)
-            } else if settings.subtitleLanguage == nil, group.allowsEmptySelection {
-                item.select(nil, in: group)
-            }
+        if let group = try? await item.asset.loadMediaSelectionGroup(for: .legible), group.allowsEmptySelection {
+            item.select(nil, in: group)
         }
         if let language = settings.audioLanguage, let group = try? await item.asset.loadMediaSelectionGroup(for: .audible),
            let index = LanguageMatcher.bestIndex(available: group.options.map { $0.extendedLanguageTag ?? $0.locale?.identifier },
@@ -312,8 +307,10 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
                 if self.subtitleLine.videoBounds != bounds { self.subtitleLine.videoBounds = bounds }
             }
         }
-        Task { await subtitles.restore() }
-        guard subtitles.isAvailable else { return }
+        Task {
+            await subtitles.restore()
+            refreshSubtitleButton()
+        }
         let host = UIHostingController(rootView: AnyView(EmptyView()))
         host.sizingOptions = .intrinsicContentSize
         subtitleButtonHost = host
@@ -322,29 +319,30 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
             [view.trailingAnchor.constraint(equalTo: container.safeAreaLayoutGuide.trailingAnchor, constant: -20),
              view.centerYAnchor.constraint(equalTo: container.centerYAnchor)]
         }
-        let tap = UITapGestureRecognizer(target: self, action: #selector(playerTapped))
-        tap.cancelsTouchesInView = false
-        tap.delegate = self
-        controller.view.addGestureRecognizer(tap)
-        showSubtitleButton()
+        host.view.alpha = 0
+        // AVKit keeps its tap gestures to itself, so the button follows playback instead: always shown while
+        // paused (when AVKit's controls stay up too), and for a few seconds whenever playback starts or resumes.
+        playbackObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
+            let status = player.timeControlStatus
+            Task { @MainActor in self?.playbackChanged(status) }
+        }
+    }
+
+    private func playbackChanged(_ status: AVPlayer.TimeControlStatus) {
+        showSubtitleButton(autoHide: status != .paused)
     }
 
     private func refreshSubtitleButton() {
         (subtitleButtonHost as? UIHostingController<AnyView>)?.rootView = AnyView(
-            SubtitlesButton(active: subtitles.track != nil) { [weak self] in self?.openSubtitleSheet() }
+            SubtitlesButton(active: subtitles.isShowing) { [weak self] in self?.openSubtitleSheet() }
         )
     }
 
-    /// AVKit shows its controls on tap and hides them after a few seconds; the button follows the same rhythm.
-    @objc private func playerTapped() {
-        guard let view = subtitleButtonHost?.view else { return }
-        if view.alpha > 0.5 { hideSubtitleButton() } else { showSubtitleButton() }
-    }
-
-    private func showSubtitleButton() {
+    private func showSubtitleButton(autoHide: Bool) {
         guard let view = subtitleButtonHost?.view else { return }
         UIView.animate(withDuration: 0.2) { view.alpha = 1 }
         subtitleButtonHideTask?.cancel()
+        guard autoHide else { return }
         subtitleButtonHideTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
@@ -380,14 +378,6 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
         item.select(nil, in: group)
     }
 
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
-
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        guard let button = subtitleButtonHost?.view, let touched = touch.view else { return true }
-        return !touched.isDescendant(of: button)
-    }
-
     // MARK: Picture in Picture
 
     func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
@@ -412,7 +402,7 @@ extension PlayerCoordinator: @MainActor UIAdaptivePresentationControllerDelegate
     /// Subtitle sheet closed (swipe or Done): refresh the button and show it briefly.
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         refreshSubtitleButton()
-        showSubtitleButton()
+        showSubtitleButton(autoHide: controller.player?.timeControlStatus != .paused)
     }
 }
 

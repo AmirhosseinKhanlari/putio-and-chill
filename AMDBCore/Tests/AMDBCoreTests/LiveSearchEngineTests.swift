@@ -10,12 +10,13 @@ actor CallLog {
 @Suite struct LiveSearchEngineTests {
     @Test func newerQuerySupersedesOlder() async throws {
         let log = CallLog()
-        let engine = LiveSearchEngine<String>(debounce: .milliseconds(200)) { q in
+        // Wide margins: the first keystroke must start before the second even when the machine is busy.
+        let engine = LiveSearchEngine<String>(debounce: .milliseconds(800)) { q in
             await log.add(q)
             return [q]
         }
         let first = Task { try await engine.results(for: "du") }
-        try await Task.sleep(for: .milliseconds(30))
+        try await Task.sleep(for: .milliseconds(150))
         let second = try await engine.results(for: "dune")
         #expect(try await first.value == nil)
         #expect(second == ["dune"])

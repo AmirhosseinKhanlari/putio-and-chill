@@ -54,11 +54,11 @@ struct SubtitlesButton: View {
                 .glassCapsule()
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Find subtitles")
+        .accessibilityLabel("Subtitles")
     }
 }
 
-/// Search OpenSubtitles, pick one, fix its timing.
+/// The one subtitles menu: off, put.io's tracks, or an OpenSubtitles search; plus timing for what's showing.
 struct SubtitleSheet: View {
     let finder: SubtitleFinder
     let onPicked: () -> Void
@@ -67,11 +67,12 @@ struct SubtitleSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                if let choice = finder.choice {
+                if let choice = finder.choice, !choice.isOff, finder.isShowing {
                     Section("Showing") {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(choice.release).font(.subheadline.weight(.semibold)).lineLimit(2)
-                            Text(languageName(choice.language)).font(.caption).foregroundStyle(.secondary)
+                            Text("\(languageName(choice.language)) · \(choice.putioKey == nil ? "OpenSubtitles" : "put.io")")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                         HStack {
                             Button { Task { await finder.shiftTiming(by: -0.5) } } label: {
@@ -92,10 +93,34 @@ struct SubtitleSheet: View {
                             .buttonStyle(.bordered)
                             .accessibilityLabel("Show subtitles later")
                         }
-                        Button("Turn off these subtitles", role: .destructive) { Task { await finder.turnOff() } }
                     }
                 }
 
+                Section {
+                    Button { Task { await finder.turnOff(); onPicked() } } label: {
+                        HStack {
+                            Text("Off").foregroundStyle(.primary)
+                            Spacer()
+                            if !finder.isShowing { Image(systemName: "checkmark").foregroundStyle(Theme.good).fontWeight(.semibold) }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Section {
+                    ForEach(finder.putioTracks) { track in
+                        Button { Task { await pick(track) } } label: { putioRow(track) }
+                            .buttonStyle(.plain)
+                            .disabled(finder.loadingPutioKey != nil)
+                    }
+                } header: {
+                    Text("On put.io")
+                } footer: {
+                    if finder.putioTracks.isEmpty { Text("put.io has no subtitles for this video. Search OpenSubtitles below.") }
+                }
+
+                if finder.canSearch {
                 Section {
                     Picker("Language", selection: Binding(get: { finder.language }, set: { newValue in
                         finder.language = newValue
@@ -123,11 +148,17 @@ struct SubtitleSheet: View {
                             .disabled(finder.downloadingID != nil)
                     }
                 } header: {
-                    if !finder.results.isEmpty { Text("Results") }
+                    if !finder.results.isEmpty { Text("OpenSubtitles") }
                 } footer: {
                     if let remaining = finder.remainingDownloads {
                         Text("\(remaining) OpenSubtitles downloads left today. Subtitles you've picked before don't count again.")
                     }
+                }
+                } else {
+                    Section {
+                        Text("Add an OpenSubtitles API key in Settings to search for more subtitles.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    } header: { Text("OpenSubtitles") }
                 }
             }
             .navigationTitle("Subtitles")
@@ -135,7 +166,7 @@ struct SubtitleSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
-            .task { if !finder.searched { await finder.search() } }
+            .task { if finder.canSearch, !finder.searched { await finder.search() } }
         }
         .tint(.white)
         .preferredColorScheme(.dark)
@@ -157,11 +188,44 @@ struct SubtitleSheet: View {
             Spacer(minLength: 8)
             if finder.downloadingID == result.fileID {
                 ProgressView()
-            } else if finder.choice?.subtitleFileID == result.fileID {
+            } else if finder.isShowing, finder.choice?.putioKey == nil, finder.choice?.subtitleFileID == result.fileID {
                 Image(systemName: "checkmark").foregroundStyle(Theme.good).fontWeight(.semibold)
             }
         }
         .contentShape(Rectangle())
+    }
+
+    private func putioRow(_ track: PutioSubtitle) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(track.language ?? track.name ?? "Subtitle").font(.subheadline).foregroundStyle(.primary)
+                HStack(spacing: 6) {
+                    switch track.source {
+                    case "mkv": tag("In the file", color: Theme.good)
+                    case "folder": tag("Next to the file", color: .blue)
+                    default: tag("Fetched by put.io", color: .gray)
+                    }
+                    if let name = track.name, name != track.language {
+                        Text(name).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+            }
+            Spacer(minLength: 8)
+            if finder.loadingPutioKey == track.key {
+                ProgressView()
+            } else if finder.isShowing, finder.choice?.putioKey == track.key {
+                Image(systemName: "checkmark").foregroundStyle(Theme.good).fontWeight(.semibold)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func pick(_ track: PutioSubtitle) async {
+        await finder.choose(track)
+        if finder.choice?.putioKey == track.key, finder.message == nil {
+            onPicked()
+            dismiss()
+        }
     }
 
     private func tag(_ text: String, color: Color) -> some View {

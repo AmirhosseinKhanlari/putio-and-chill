@@ -72,7 +72,75 @@ private final class FakeSubtitles: SubtitleService, @unchecked Sendable {
 
         await again.turnOff()
         #expect(again.text(at: 2) == nil)
-        #expect(await store.snapshot.subtitleChoices[77] == nil)
+        #expect(await store.snapshot.subtitleChoices[77]?.isOff == true)
+    }
+
+    nonisolated static let putioTracks = [
+        PutioSubtitle(key: "os-en", language: "English", languageCode: "eng", name: "Fetched", source: "opensubtitles"),
+        PutioSubtitle(key: "mkv-en", language: "English", languageCode: "eng", name: "In file", source: "mkv"),
+        PutioSubtitle(key: "fa", language: "Persian", languageCode: "per", name: "Farsi", source: "folder"),
+    ]
+
+    nonisolated static func putioSource(failing: Bool = false) -> PutioSubtitleSource {
+        PutioSubtitleSource(list: {
+            if failing { throw AppError.transport("offline") }
+            return putioTracks
+        }, text: { key in
+            if failing { throw AppError.transport("offline") }
+            return "1\n00:00:01,000 --> 00:00:03,000\nput.io \(key)\n"
+        })
+    }
+
+    @Test func picksTheBestPutioTrackForALanguage() {
+        #expect(SubtitleFinder.bestTrack(Self.putioTracks, for: "en")?.key == "mkv-en")
+        #expect(SubtitleFinder.bestTrack(Self.putioTracks, for: "fa")?.key == "fa")
+        #expect(SubtitleFinder.bestTrack([PutioSubtitle(key: "x", language: "German")], for: "de")?.key == "x")
+        #expect(SubtitleFinder.bestTrack(Self.putioTracks, for: "ja") == nil)
+    }
+
+    @Test func preferredLanguageShowsPutioTrackUntilUserChooses() async {
+        let store = LocalStore(fileURL: nil)
+        let cache = SubtitleFileCache(directory: nil)
+        let finder = SubtitleFinder(context: Self.episode, service: nil, putio: Self.putioSource(), store: store, cache: cache,
+                                    language: "en", preferredLanguage: "fa")
+        await finder.restore()
+        #expect(finder.putioTracks.count == 3)
+        #expect(finder.text(at: 2) == "put.io fa")
+        #expect(await store.snapshot.subtitleChoices[77] == nil, "the automatic pick isn't saved")
+
+        await finder.choose(Self.putioTracks[1])
+        #expect(finder.text(at: 2) == "put.io mkv-en")
+        #expect(await store.snapshot.subtitleChoices[77]?.putioKey == "mkv-en")
+
+        // Next time: the saved pick wins over the preferred language; then "off" sticks too.
+        let again = SubtitleFinder(context: Self.episode, service: nil, putio: Self.putioSource(), store: store, cache: cache,
+                                   language: "en", preferredLanguage: "fa")
+        await again.restore()
+        #expect(again.text(at: 2) == "put.io mkv-en")
+        await again.turnOff()
+        let third = SubtitleFinder(context: Self.episode, service: nil, putio: Self.putioSource(), store: store, cache: cache,
+                                   language: "en", preferredLanguage: "fa")
+        await third.restore()
+        #expect(third.text(at: 2) == nil)
+        #expect(third.choice?.isOff == true)
+    }
+
+    @Test func offlineUsesCachedPutioSubtitles() async {
+        let cache = SubtitleFileCache(directory: nil)
+        let online = SubtitleFinder(context: Self.episode, service: nil, putio: Self.putioSource(), store: LocalStore(fileURL: nil),
+                                    cache: cache, language: "en", preferredLanguage: "en")
+        await online.restore()
+        let offline = SubtitleFinder(context: Self.episode, service: nil, putio: Self.putioSource(failing: true),
+                                     store: LocalStore(fileURL: nil), cache: cache, language: "en", preferredLanguage: "en")
+        await offline.restore()
+        #expect(offline.putioTracks.count == 3)
+        #expect(offline.text(at: 2) == "put.io mkv-en")
+    }
+
+    @Test func oldSavedChoicesStillDecode() throws {
+        let json = #"{"subtitleFileID":500,"language":"en","release":"Old","offset":1.5}"#
+        let decoded = try JSONDecoder().decode(SubtitleChoice.self, from: Data(json.utf8))
+        #expect(decoded == SubtitleChoice(subtitleFileID: 500, language: "en", release: "Old", offset: 1.5))
     }
 
     @Test func quotaAndMissingKeyExplainThemselves() async {

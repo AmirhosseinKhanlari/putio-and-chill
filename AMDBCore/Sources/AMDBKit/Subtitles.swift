@@ -27,25 +27,59 @@ public struct SubtitleContext: Sendable, Hashable {
     }
 }
 
-/// The OpenSubtitles file picked for one put.io file, with the user's timing shift.
+/// What's shown for one put.io file: a put.io track, an OpenSubtitles file, or explicitly nothing; plus the timing shift.
 public struct SubtitleChoice: Codable, Sendable, Hashable {
+    /// OpenSubtitles file ID (0 for put.io tracks and "off").
     public let subtitleFileID: Int
+    /// put.io subtitle key, when the choice is one of put.io's tracks.
+    public let putioKey: String?
     public let language: String
     public let release: String
     /// Seconds; positive shows subtitles later.
     public var offset: Double
+    /// The user turned subtitles off for this file (beats the preferred-language default).
+    public let isOff: Bool
 
-    public init(subtitleFileID: Int, language: String, release: String, offset: Double = 0) {
+    public init(subtitleFileID: Int, language: String, release: String, offset: Double = 0, putioKey: String? = nil,
+                isOff: Bool = false) {
         self.subtitleFileID = subtitleFileID; self.language = language; self.release = release; self.offset = offset
+        self.putioKey = putioKey; self.isOff = isOff
+    }
+
+    static let off = SubtitleChoice(subtitleFileID: 0, language: "", release: "", isOff: true)
+
+    enum CodingKeys: String, CodingKey { case subtitleFileID, putioKey, language, release, offset, isOff }
+
+    /// Fields added later are optional on disk.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        subtitleFileID = try c.decodeIfPresent(Int.self, forKey: .subtitleFileID) ?? 0
+        putioKey = try c.decodeIfPresent(String.self, forKey: .putioKey)
+        language = try c.decodeIfPresent(String.self, forKey: .language) ?? ""
+        release = try c.decodeIfPresent(String.self, forKey: .release) ?? ""
+        offset = try c.decodeIfPresent(Double.self, forKey: .offset) ?? 0
+        isOff = try c.decodeIfPresent(Bool.self, forKey: .isOff) ?? false
     }
 }
 
-/// Downloaded subtitle files on disk (nil directory = memory only, for tests), keyed by OpenSubtitles file ID.
-/// Kept so re-watching never spends another download.
+/// put.io's subtitles for the file being played (embedded tracks, files next to it, put.io's own OpenSubtitles fetches).
+public struct PutioSubtitleSource: Sendable {
+    public let list: @Sendable () async throws -> [PutioSubtitle]
+    public let text: @Sendable (_ key: String) async throws -> String
+
+    public init(list: @escaping @Sendable () async throws -> [PutioSubtitle],
+                text: @escaping @Sendable (_ key: String) async throws -> String) {
+        self.list = list
+        self.text = text
+    }
+}
+
+/// Subtitle files on disk (nil directory = memory only, for tests). OpenSubtitles files are kept so re-watching never
+/// spends another download; put.io tracks so offline copies keep their subtitles.
 public final class SubtitleFileCache: @unchecked Sendable {
     private let directory: URL?
     private let lock = NSLock()
-    private var memory: [Int: String] = [:]
+    private var memory: [String: String] = [:]
 
     public init(directory: URL?) { self.directory = directory }
 
@@ -53,52 +87,82 @@ public final class SubtitleFileCache: @unchecked Sendable {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "AMDB/Subtitles")
     }
 
-    public func read(_ id: Int) -> String? {
-        if let cached = lock.withLock({ memory[id] }) { return cached }
-        guard let directory else { return nil }
-        return try? String(contentsOf: directory.appending(path: "\(id).srt"), encoding: .utf8)
+    public func read(_ id: Int) -> String? { read(name: "\(id).srt") }
+    public func write(_ text: String, for id: Int) { write(text, name: "\(id).srt") }
+
+    public func readPutio(fileID: Int64, key: String) -> String? { read(name: Self.putioName(fileID, key)) }
+    public func writePutio(_ text: String, fileID: Int64, key: String) { write(text, name: Self.putioName(fileID, key)) }
+
+    public func readPutioList(fileID: Int64) -> [PutioSubtitle]? {
+        read(name: "putio-\(fileID)-list.json").flatMap { try? JSONDecoder().decode([PutioSubtitle].self, from: Data($0.utf8)) }
     }
 
-    public func write(_ text: String, for id: Int) {
-        lock.withLock { memory[id] = text }
+    public func writePutioList(_ tracks: [PutioSubtitle], fileID: Int64) {
+        guard let data = try? JSONEncoder().encode(tracks), let text = String(data: data, encoding: .utf8) else { return }
+        write(text, name: "putio-\(fileID)-list.json")
+    }
+
+    private static func putioName(_ fileID: Int64, _ key: String) -> String {
+        "putio-\(fileID)-\(key.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }).srt"
+    }
+
+    private func read(name: String) -> String? {
+        if let cached = lock.withLock({ memory[name] }) { return cached }
+        guard let directory else { return nil }
+        return try? String(contentsOf: directory.appending(path: name), encoding: .utf8)
+    }
+
+    private func write(_ text: String, name: String) {
+        lock.withLock { memory[name] = text }
         guard let directory else { return }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? text.write(to: directory.appending(path: "\(id).srt"), atomically: true, encoding: .utf8)
+        try? text.write(to: directory.appending(path: name), atomically: true, encoding: .utf8)
     }
 }
 
-/// Find-and-show subtitles from OpenSubtitles for one video: search, download, remember, shift timing.
+/// Every subtitle option for one video in one place: put.io's tracks plus an OpenSubtitles search.
+/// Picks are remembered per file with their timing; the preferred language from Settings is applied when nothing was picked.
 @Observable @MainActor
 public final class SubtitleFinder {
     public let context: SubtitleContext
+    /// OpenSubtitles search language.
     public var language: String
+    public private(set) var putioTracks: [PutioSubtitle] = []
     public private(set) var results: [SubtitleResult] = []
     public private(set) var isSearching = false
     public private(set) var searched = false
     public private(set) var downloadingID: Int?
+    public private(set) var loadingPutioKey: String?
     public private(set) var message: String?
     public private(set) var choice: SubtitleChoice?
     public private(set) var track: SubtitleTrack?
     public private(set) var remainingDownloads: Int?
 
-    public var isAvailable: Bool { service != nil }
+    /// OpenSubtitles search is set up (API key present).
+    public var canSearch: Bool { service != nil }
+    public var isShowing: Bool { track != nil }
 
     @ObservationIgnored private let service: (any SubtitleService)?
+    @ObservationIgnored private let putio: PutioSubtitleSource?
     @ObservationIgnored private let store: LocalStore
     @ObservationIgnored private let cache: SubtitleFileCache
+    @ObservationIgnored private let preferredLanguage: String?
     @ObservationIgnored private let session: @MainActor () async -> OpenSubtitlesLogin?
     @ObservationIgnored private let hasher: (@Sendable () async -> String?)?
     @ObservationIgnored private let signedIn: Bool
     @ObservationIgnored private var movieHash: String??
 
-    public init(context: SubtitleContext, service: (any SubtitleService)?, store: LocalStore, cache: SubtitleFileCache,
-                language: String, signedIn: Bool = false, session: @escaping @MainActor () async -> OpenSubtitlesLogin? = { nil },
+    public init(context: SubtitleContext, service: (any SubtitleService)?, putio: PutioSubtitleSource? = nil, store: LocalStore,
+                cache: SubtitleFileCache, language: String, preferredLanguage: String? = nil, signedIn: Bool = false,
+                session: @escaping @MainActor () async -> OpenSubtitlesLogin? = { nil },
                 hasher: (@Sendable () async -> String?)? = nil) {
         self.context = context
         self.service = service
+        self.putio = putio
         self.store = store
         self.cache = cache
         self.language = Self.openSubtitlesCode(language)
+        self.preferredLanguage = preferredLanguage
         self.signedIn = signedIn
         self.session = session
         self.hasher = hasher
@@ -113,12 +177,24 @@ public final class SubtitleFinder {
         }
     }
 
-    /// Re-applies the subtitle chosen for this file last time (from disk, no download).
+    /// Loads put.io's tracks, then shows what was picked for this file last time, or else put.io's track in the
+    /// preferred language from Settings.
     public func restore() async {
-        guard let saved = await store.snapshot.subtitleChoices[context.fileID],
-              let text = cache.read(saved.subtitleFileID) else { return }
-        choice = saved
-        track = SubtitleParser.parse(text)
+        await loadPutioTracks()
+        let saved = await store.snapshot.subtitleChoices[context.fileID]
+        if let saved {
+            guard !saved.isOff else { choice = saved; return }
+            if let key = saved.putioKey {
+                if let text = await putioText(key) { show(text, as: saved) }
+            } else if let text = cache.read(saved.subtitleFileID) {
+                show(text, as: saved)
+            }
+            return
+        }
+        guard let preferredLanguage, let match = Self.bestTrack(putioTracks, for: preferredLanguage),
+              let text = await putioText(match.key) else { return }
+        // Not saved: changing the language in Settings later still applies to this file.
+        show(text, as: Self.choice(for: match))
     }
 
     /// Text to draw at `time`, with the timing shift applied.
@@ -127,9 +203,61 @@ public final class SubtitleFinder {
         return track.text(at: time - (choice?.offset ?? 0))
     }
 
+    // MARK: put.io
+
+    public func choose(_ putioTrack: PutioSubtitle) async {
+        guard loadingPutioKey == nil else { return }
+        loadingPutioKey = putioTrack.key
+        message = nil
+        defer { loadingPutioKey = nil }
+        guard let text = await putioText(putioTrack.key), !SubtitleParser.parse(text).cues.isEmpty else {
+            message = "Couldn't load that subtitle from put.io."
+            return
+        }
+        let picked = Self.choice(for: putioTrack, offset: choice?.putioKey == putioTrack.key ? choice?.offset ?? 0 : 0)
+        show(text, as: picked)
+        await save(picked)
+    }
+
+    /// The track in `language`, preferring ones inside the file, then files next to it, then put.io's own fetches.
+    public static func bestTrack(_ tracks: [PutioSubtitle], for language: String) -> PutioSubtitle? {
+        let wanted = LanguageMatcher.normalize(language)
+        let englishName = Locale(identifier: "en_US").localizedString(forLanguageCode: wanted)?.lowercased()
+        let matching = tracks.filter { track in
+            if let code = track.languageCode, LanguageMatcher.normalize(code) == wanted { return true }
+            return track.language?.lowercased() == englishName
+        }
+        let rank = ["mkv": 0, "folder": 1]
+        return matching.min { (rank[$0.source ?? ""] ?? 2) < (rank[$1.source ?? ""] ?? 2) }
+    }
+
+    private static func choice(for track: PutioSubtitle, offset: Double = 0) -> SubtitleChoice {
+        SubtitleChoice(subtitleFileID: 0, language: track.languageCode ?? track.language ?? "",
+                       release: track.name ?? track.language ?? "put.io subtitle", offset: offset, putioKey: track.key)
+    }
+
+    private func loadPutioTracks() async {
+        guard let putio else { return }
+        if let tracks = try? await putio.list() {
+            putioTracks = tracks
+            cache.writePutioList(tracks, fileID: context.fileID)
+        } else {
+            putioTracks = cache.readPutioList(fileID: context.fileID) ?? []
+        }
+    }
+
+    private func putioText(_ key: String) async -> String? {
+        if let cached = cache.readPutio(fileID: context.fileID, key: key) { return cached }
+        guard let putio, let text = try? await putio.text(key) else { return nil }
+        cache.writePutio(text, fileID: context.fileID, key: key)
+        return text
+    }
+
+    // MARK: OpenSubtitles
+
     public func search() async {
         guard let service else {
-            message = "Add an OpenSubtitles API key in Settings to search for subtitles."
+            message = "Add an OpenSubtitles API key in Settings to search for more subtitles."
             return
         }
         isSearching = true
@@ -171,14 +299,12 @@ public final class SubtitleFinder {
                 text = try await service.text(at: download.link)
                 cache.write(text, for: result.fileID)
             }
-            let parsed = SubtitleParser.parse(text)
-            guard !parsed.cues.isEmpty else {
+            guard !SubtitleParser.parse(text).cues.isEmpty else {
                 message = "That subtitle file couldn't be read. Try another one."
                 return
             }
             let picked = SubtitleChoice(subtitleFileID: result.fileID, language: result.language, release: result.release)
-            choice = picked
-            track = parsed
+            show(text, as: picked)
             await save(picked)
         } catch OpenSubtitlesError.quotaReached {
             message = signedIn
@@ -189,18 +315,24 @@ public final class SubtitleFinder {
         }
     }
 
+    // MARK: Both
+
     public func shiftTiming(by delta: Double) async {
-        guard var current = choice else { return }
+        guard var current = choice, !current.isOff else { return }
         current.offset = (current.offset + delta).rounded(toPlaces: 1)
         choice = current
         await save(current)
     }
 
     public func turnOff() async {
-        choice = nil
+        choice = .off
         track = nil
-        let fileID = context.fileID
-        await store.update { $0.subtitleChoices[fileID] = nil }
+        await save(.off)
+    }
+
+    private func show(_ text: String, as picked: SubtitleChoice) {
+        choice = picked
+        track = SubtitleParser.parse(text)
     }
 
     private func save(_ choice: SubtitleChoice) async {

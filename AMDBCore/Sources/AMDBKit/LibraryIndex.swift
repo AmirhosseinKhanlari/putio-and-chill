@@ -27,7 +27,9 @@ public final class LibraryIndex {
     private var putio: (any PutioService)?
     private var matcher: LibraryMatcher?
     private var progressOverrides: [Int64: Int] = [:]
-    private var touchedAt: [Int64: Date] = [:]
+    /// Order in which files were watched this session (higher = more recent); a counter, so ties can't happen.
+    private var touchedOrder: [Int64: Int] = [:]
+    private var touchCount = 0
 
     public init(store: LocalStore, maxFolders: Int = 300) {
         self.store = store
@@ -73,8 +75,8 @@ public final class LibraryIndex {
     /// or a show with several started episodes, appears once at whichever was watched last.
     public var continueWatching: [LibraryEntry] {
         let started = entries.filter { resumeSeconds(for: $0) >= 30 }.sorted { a, b in
-            let ta = touchedAt[a.id], tb = touchedAt[b.id]
-            if ta != nil || tb != nil { return (ta ?? .distantPast) > (tb ?? .distantPast) }
+            let ta = touchedOrder[a.id], tb = touchedOrder[b.id]
+            if ta != nil || tb != nil { return (ta ?? -1) > (tb ?? -1) }
             return (a.file.updatedAt ?? "") > (b.file.updatedAt ?? "")
         }
         var seen: Set<String> = []
@@ -97,7 +99,8 @@ public final class LibraryIndex {
 
     public func noteProgress(fileID: Int64, seconds: Int) {
         progressOverrides[fileID] = seconds
-        touchedAt[fileID] = Date()
+        touchCount += 1
+        touchedOrder[fileID] = touchCount
     }
 
     /// Deletes files from put.io and forgets them locally.

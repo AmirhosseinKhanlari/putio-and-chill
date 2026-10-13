@@ -156,7 +156,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Playback")
                 } footer: {
-                    Text("Subtitles come from put.io. Choose which languages put.io fetches in put.io → Settings → Subtitles.")
+                    Text("Subtitles turn on in this language when put.io has them. In the player, the subtitles button lists put.io's subtitles and searches OpenSubtitles.")
                 }
 
                 openSubtitlesSection

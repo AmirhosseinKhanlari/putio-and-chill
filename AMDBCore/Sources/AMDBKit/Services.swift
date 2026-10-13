@@ -14,8 +14,14 @@ public protocol PutioService: Sendable {
     func deleteFiles(ids: [Int64]) async throws
     func startFrom(fileID: Int64) async throws -> Int
     func setStartFrom(fileID: Int64, seconds: Int) async throws
-    func hlsURL(fileID: Int64) -> URL
+    func hlsURL(fileID: Int64, subtitles: Bool) -> URL
     func originalURL(fileID: Int64) async throws -> URL
+    func subtitles(fileID: Int64) async throws -> [PutioSubtitle]
+    func subtitleText(fileID: Int64, key: String) async throws -> String
+}
+
+extension PutioService {
+    public func hlsURL(fileID: Int64) -> URL { hlsURL(fileID: fileID, subtitles: true) }
 }
 
 extension PutioClient: PutioService {}
