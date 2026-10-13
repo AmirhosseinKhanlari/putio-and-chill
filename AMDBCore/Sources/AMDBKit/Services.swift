@@ -1,0 +1,39 @@
+import AMDBCore
+import Foundation
+
+public protocol PutioService: Sendable {
+    func accountInfo() async throws -> PutioAccount
+    func addTransfer(url: String, saveParentID: Int64?) async throws -> PutioTransfer
+    func transfer(id: Int64) async throws -> PutioTransfer
+    func transfers() async throws -> [PutioTransfer]
+    func cancelTransfers(ids: [Int64]) async throws
+    func retryTransfer(id: Int64) async throws -> PutioTransfer
+    func listFiles(parentID: Int64) async throws -> PutioFileList
+    func file(id: Int64) async throws -> PutioFile
+    func createFolder(name: String, parentID: Int64) async throws -> PutioFile
+    func startFrom(fileID: Int64) async throws -> Int
+    func setStartFrom(fileID: Int64, seconds: Int) async throws
+    func hlsURL(fileID: Int64) -> URL
+    func originalURL(fileID: Int64) async throws -> URL
+}
+
+extension PutioClient: PutioService {}
+
+public protocol CatalogService: CatalogSearching {
+    func validate() async throws
+    func searchMulti(_ query: String) async throws -> [CatalogItem]
+    func trending(_ kind: MediaKind?) async throws -> [CatalogItem]
+    func popular(_ kind: MediaKind) async throws -> [CatalogItem]
+    func topRated(_ kind: MediaKind) async throws -> [CatalogItem]
+    func discover(_ kind: MediaKind, genreID: Int) async throws -> [CatalogItem]
+    func detail(_ kind: MediaKind, id: Int) async throws -> TitleDetail
+    func season(tvID: Int, number: Int) async throws -> [Episode]
+}
+
+extension CatalogClient: CatalogService {}
+
+public protocol ReleaseSearching: Sendable {
+    func stream(for query: MediaQuery) -> AsyncStream<ReleaseSnapshot>
+}
+
+extension ReleaseAggregator: ReleaseSearching {}
