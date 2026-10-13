@@ -117,7 +117,7 @@ struct Release: Hashable, Sendable {
 | Provider | Request | Notes |
 |---|---|---|
 | `ChillProvider` | `POST https://api.chill.institute/v4/chill.v4.UserService/<Method>` with JSON, `Content-Type: application/json`, `Authorization: Bearer <chill token>` | Movies and text: `GetIndexers` once, then `Search {query, indexerId}` per enabled indexer. Episodes: `GetTVShowEpisodeDownload {imdbId, seasonNumber, episodeNumber}`. Seasons: `GetTVShowSeasonDownloads {imdbId, seasonNumber}`. Uses chill's `releaseInfo` when present. Tag: `chill·<indexer>`. |
-| `YTSProvider` | `GET {base}/api/v2/list_movies.json?query_term=<imdbID>` | Movies only. Builds magnets from `hash` plus standard trackers. Default base `https://yts.mx`. |
+| `YTSProvider` | `GET {base}/api/v2/list_movies.json?query_term=<imdbID>` | Movies only. Builds magnets from `hash` plus standard trackers. Default base `https://movies-api.accel.li`; `yts.mx` is dead, and yts.lt, .am and .ag redirect to yts.gg. |
 | `EZTVProvider` | `GET {base}/api/get-torrents?imdb_id=<digits>&limit=100&page=n` | TV only. Filters by season and episode. Default base `https://eztvx.to`. |
 | `ApibayProvider` | `GET {base}/q.php?q=<query>&cat=0` | A single `id:"0"` row means no results. Default base `https://apibay.org`. |
 | `KnabenProvider` | `POST {base}/v1` JSON `{search_type:"100%", search_field:"title", query, size:50, hide_unsafe:true, hide_xxx:true}` | Default base `https://api.knaben.org`. |
@@ -277,3 +277,22 @@ are never committed. The spike confirms:
 5. Each provider's default base URL responds from the user's network.
 
 Findings update this spec before the plan continues.
+
+## Spike findings (2026-10-13)
+
+Results of `amdb-spike`, run by the user on their own network and account.
+
+| Check | Result | Consequence |
+|---|---|---|
+| put.io `Authorization: token …` | Works | Keep it. |
+| `start_from` exposure | Present on **every file in `files/list`** and on `files/{id}`. Other fields: `first_accessed_at`, `updated_at`, `screenshot`, `is_mp4_available`. | Continue Watching comes free from the `LibraryIndex` folder walk; no per-file calls. Order by `updated_at`; `first_accessed_at` marks a file as played at least once. |
+| HLS of an MKV (HEVC x265, 5.1) in `AVPlayer` | `isPlayable = true` | The native player is enough. No VLCKit. |
+| TMDB v4 read token, `search/multi` | Works (20 results for "dune") | No change. |
+| YTS `yts.mx` | DNS fails. yts.lt, .am and .ag redirect to yts.gg, and the API itself announces `https://movies-api.accel.li/api/v2/`. | Default base changed to `https://movies-api.accel.li`. It returns the same schema. |
+| EZTV (`eztvx.to`) | Episode: 7 releases | No change. |
+| apibay | Movie: 57 releases, episode: 18 | No change. |
+| Knaben | Movie: 50 releases, episode: 18 | No change. |
+| chill | Indexers: EZTV, LimeTorrents, Nyaa.si, The Pirate Bay, TheRARBG, TorrentGalaxyClone, Torrents.csv, YTS. Movie search: 171 releases; episode download: 1. | Chill adds the most coverage, so it should stay a first-class optional source. |
+| chill `ResolvePlayback`, `GetTransfer` | Both exist (200 / 400 invalid id) | Informational only; put.io direct covers both. |
+| Aggregate (direct sources, Furiosa) | 76 merged; the top rows carry both `Knaben` and `TPB` tags | Cross-source merge by infohash works on live data. |
+| "?" resolution rows | Some Knaben titles carry no resolution token | The Versions sheet shows these under "All" only, with a "?" badge. |

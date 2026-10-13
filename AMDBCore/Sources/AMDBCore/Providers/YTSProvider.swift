@@ -5,7 +5,7 @@ public struct YTSProvider: SourceProvider {
     private let baseURL: URL
     private let http: HTTPRequester
 
-    public init(baseURL: URL = URL(string: "https://yts.mx")!, transport: any HTTPTransport) {
+    public init(baseURL: URL = URL(string: "https://movies-api.accel.li")!, transport: any HTTPTransport) {
         self.baseURL = baseURL
         self.http = HTTPRequester(service: "yts", transport: transport)
     }
