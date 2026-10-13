@@ -51,3 +51,9 @@ public protocol ChartsService: Sendable {
 }
 
 extension TraktClient: ChartsService {}
+
+public protocol TrailerService: Sendable {
+    func trailer(imdbID: String) async throws -> TrailerVideo?
+}
+
+extension IMDbTrailerClient: TrailerService {}

@@ -52,7 +52,9 @@ private struct TitleHeader: View {
     let item: CatalogItem
     let model: TitleModel?
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @State private var trailer: TrailerKey?
+    @Environment(AppModel.self) private var app
+    @State private var youtubeFallback: TrailerKey?
+    @State private var loadingTrailer = false
 
     var body: some View {
         let regular = sizeClass != .compact
@@ -88,9 +90,17 @@ private struct TitleHeader: View {
                     if let model, item.mediaType == .movie {
                         PrimaryActions(model: model, season: nil, episode: nil)
                     }
-                    if let key = detail?.trailerYouTubeKey {
-                        Button { trailer = TrailerKey(key: key) } label: { Label("Trailer", systemImage: "play.rectangle.fill") }
-                            .buttonStyle(.glassPill)
+                    if detail?.imdbID != nil || detail?.trailerYouTubeKey != nil {
+                        Button { Task { await playTrailer() } } label: {
+                            if loadingTrailer {
+                                ProgressView().controlSize(.small).frame(minWidth: 60)
+                            } else {
+                                Label("Trailer", systemImage: "play.rectangle.fill")
+                            }
+                        }
+                        .buttonStyle(.glassPill)
+                        .disabled(loadingTrailer)
+                        .accessibilityLabel("Trailer")
                     }
                 }
                 .padding(.top, 6)
@@ -102,7 +112,19 @@ private struct TitleHeader: View {
             .padding(.horizontal, Metrics.gutter(sizeClass))
             .padding(.bottom, 24)
         }
-        .fullScreenCover(item: $trailer) { TrailerSheet(youtubeKey: $0.key) { trailer = nil }.ignoresSafeArea() }
+        .fullScreenCover(item: $youtubeFallback) { YouTubeFallback(youtubeKey: $0.key) { youtubeFallback = nil }.ignoresSafeArea() }
+    }
+
+    /// IMDb trailer in Apple's player when available; YouTube only as a fallback.
+    private func playTrailer() async {
+        guard let detail = model?.detail else { return }
+        loadingTrailer = true
+        defer { loadingTrailer = false }
+        if let imdbID = detail.imdbID, let video = await app.trailer(imdbID: imdbID) {
+            TrailerPlayer.present(video.url)
+        } else if let key = detail.trailerYouTubeKey {
+            youtubeFallback = TrailerKey(key: key)
+        }
     }
 }
 

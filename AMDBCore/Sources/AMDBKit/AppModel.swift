@@ -8,6 +8,7 @@ public struct ServiceFactory: Sendable {
     public var makeProvider: @Sendable (SourceConfig, _ chillToken: String?) -> (any SourceProvider)?
     public var makeRatings: @Sendable (String) -> any RatingsService
     public var makeCharts: @Sendable (String) -> any ChartsService
+    public var trailers: any TrailerService
 
     public init(makePutio: @escaping @Sendable (String) -> any PutioService,
                 makeCatalog: @escaping @Sendable (String) -> any CatalogService,
@@ -17,12 +18,14 @@ public struct ServiceFactory: Sendable {
                 },
                 makeCharts: @escaping @Sendable (String) -> any ChartsService = {
                     TraktClient(clientID: $0, transport: URLSessionTransport())
-                }) {
+                },
+                trailers: any TrailerService = IMDbTrailerClient(transport: URLSessionTransport())) {
         self.makePutio = makePutio
         self.makeCatalog = makeCatalog
         self.makeProvider = makeProvider
         self.makeRatings = makeRatings
         self.makeCharts = makeCharts
+        self.trailers = trailers
     }
 
     public static let live: ServiceFactory = {
@@ -43,7 +46,8 @@ public struct ServiceFactory: Sendable {
                 }
             },
             makeRatings: { RatingsClient(apiKey: $0, transport: transport) },
-            makeCharts: { TraktClient(clientID: $0, transport: transport) })
+            makeCharts: { TraktClient(clientID: $0, transport: transport) },
+            trailers: IMDbTrailerClient(transport: transport))
     }()
 }
 
@@ -131,6 +135,11 @@ public final class AppModel {
         let entries = try await chartsService.chart(chart)
         chartCache[chart] = entries
         return entries
+    }
+
+    /// A natively playable trailer from IMDb, or nil (caller falls back to YouTube).
+    public func trailer(imdbID: String) async -> TrailerVideo? {
+        try? await factory.trailers.trailer(imdbID: imdbID)
     }
 
     public func notePlayed(_ title: PlayedTitle) async {

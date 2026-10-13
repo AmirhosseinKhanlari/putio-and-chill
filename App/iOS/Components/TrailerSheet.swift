@@ -1,16 +1,31 @@
+import AVKit
 import SafariServices
 import SwiftUI
 
-/// Full-screen YouTube trailer in an in-app browser. (The embed player refuses to run here: YouTube error 153.)
-struct TrailerSheet: UIViewControllerRepresentable {
+/// Plays an IMDb trailer in Apple's player, full screen — same experience as movies (PiP, AirPlay, scrubbing).
+@MainActor
+enum TrailerPlayer {
+    static func present(_ url: URL) {
+        guard let presenter = PlayerPresenter.topViewController() else { return }
+        let player = AVPlayer(url: url)
+        let controller = AVPlayerViewController()
+        controller.player = player
+        controller.allowsPictureInPicturePlayback = true
+        controller.modalPresentationStyle = .fullScreen
+        presenter.present(controller, animated: true) { player.play() }
+    }
+}
+
+/// Fallback when IMDb has no trailer: YouTube's page in an in-app browser.
+/// (YouTube can't be played in AVPlayer, and its embed player stalls inside apps.)
+struct YouTubeFallback: UIViewControllerRepresentable {
     let youtubeKey: String
     let onFinish: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
 
     func makeUIViewController(context: Context) -> SFSafariViewController {
-        let url = URL(string: "https://m.youtube.com/watch?v=\(youtubeKey)")!
-        let controller = SFSafariViewController(url: url)
+        let controller = SFSafariViewController(url: URL(string: "https://m.youtube.com/watch?v=\(youtubeKey)")!)
         controller.preferredBarTintColor = .black
         controller.preferredControlTintColor = .white
         controller.dismissButtonStyle = .done

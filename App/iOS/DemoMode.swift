@@ -89,7 +89,9 @@ struct DemoCatalog: CatalogService {
             CastMember(name: $0, character: "Character", profilePath: nil)
         }
         let seasons = kind == .tv ? (1...2).map { SeasonSummary(number: $0, name: "Season \($0)", episodeCount: 8, posterPath: nil) } : []
-        return TitleDetail(item: item, imdbID: "tt\(id)", runtimeMinutes: kind == .tv ? 55 : 148,
+        // Furiosa uses its real IMDb id so demo mode exercises real IMDb trailers.
+        let imdbID = item.title.hasPrefix("Furiosa") ? "tt12037194" : "tt\(id)"
+        return TitleDetail(item: item, imdbID: imdbID, runtimeMinutes: kind == .tv ? 55 : 148,
                            genres: kind == .tv ? ["Drama", "Mystery"] : ["Action", "Adventure", "Science Fiction"],
                            cast: cast, trailerYouTubeKey: "zSWdZVtXT7E",
                            recommendations: Array(Self.movies.shuffled().prefix(8)), seasons: seasons)
