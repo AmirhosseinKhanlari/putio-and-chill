@@ -1,10 +1,10 @@
-# AMDB: iPad app design
+# AMDB: iPad, iPhone and Apple TV app design
 
-Date: 2026-10-13 · Status: approved in brainstorm, awaiting spec review
+Date: 2026-10-13 · Status: approved. Scope extended to iPhone and Apple TV on 2026-10-13.
 
 ## Goal
 
-A personal, sideloaded iPad app that lets one user find a movie or episode,
+A personal, sideloaded iPad, iPhone and Apple TV app that lets one user find a movie or episode,
 send it to their put.io account, wait for the transfer, and watch it. The
 experience should feel at least as polished as Netflix. Watch progress
 already saved in put.io must carry over.
@@ -14,7 +14,9 @@ already saved in put.io must carry over.
 | Topic | Decision |
 |---|---|
 | Distribution | Personal sideload from Xcode (or TestFlight later). No App Store constraints. |
-| Stack | Native SwiftUI, iPadOS 17+, Swift 6, Observation, SwiftData. No third-party dependencies in v1. |
+| Stack | Native SwiftUI, iOS/iPadOS 17+ and tvOS 17+, Swift 6, Observation, SwiftData. No third-party dependencies in v1. |
+| Platforms | One universal iOS app target for iPad and iPhone (Plan 2), then a separate tvOS app target (Plan 3). All three share `AMDBCore`. |
+| Dev devices | Simulators (iOS 27 and tvOS 27 runtimes). Physical devices are optional. |
 | Accounts | put.io required (OAuth token flow). TMDB API key required. chill optional. |
 | Browsing | TMDB powers all catalog, artwork, and live search. |
 | Releases | Merged from chill (if connected) and in-app adapters (YTS, EZTV, apibay, Knaben), deduped by infohash, each row tagged with its sources. |
@@ -24,8 +26,43 @@ already saved in put.io must carry over.
 | Transfer wait | On the title page: progress ring, then a 5 s countdown, then auto-play. Elsewhere: tab-bar progress pill and a "ready" banner (local notification when backgrounded, best effort). |
 | v1 scope | Movies, TV (episodes and season packs), live search, put.io library, Continue Watching. |
 
-Out of scope for v1: VLCKit fallback, App Store build, iPhone or tvOS layouts,
-downloads for offline viewing, multiple put.io accounts, watchlist sync to TMDB.
+Out of scope for v1: VLCKit fallback, App Store build, Mac app, downloads for offline viewing, multiple put.io accounts, watchlist sync to TMDB.
+
+## Platforms
+
+### iPad (primary layout)
+Everything in **Screens** below describes the iPad layout.
+
+### iPhone (same app target, compact size class)
+The same views adapt by `horizontalSizeClass`. There is no separate code path
+per device.
+- **Tab bar:** the floating glass tab bar stays, with icons only.
+- **Home hero:** 16:9 instead of a full-bleed backdrop. Rows show about 3.2
+  posters per screen width.
+- **Title page:** the backdrop sits on top, with content scrolling underneath.
+- **Versions:** a bottom sheet with `.medium` and `.large` detents.
+- **Search:** suggestions stack above the grid, and the grid has 3 columns.
+- **Library:** a 3-column grid.
+- **Player:** the same `AVPlayerViewController`, which goes full screen in
+  landscape.
+
+### Apple TV (separate tvOS target, Plan 3)
+- **Shares:** all of `AMDBCore`, the app's service layer, and the view models.
+  The views are tvOS-specific and built around the focus engine.
+- **Layout:** a top tab bar (standard on tvOS) over the Cinematic Ambient
+  background. The focused poster's backdrop drives the glow, so the design
+  suits focus navigation directly.
+- **put.io sign-in:** tvOS has no web view, so the TV uses put.io's
+  device-code flow. The app requests a code
+  (`GET /v2/oauth2/oob/code?app_id=9877`), shows "go to put.io/link and enter
+  CODE", and polls `GET /v2/oauth2/oob/code/{code}` until it returns the token.
+  Plan 3 starts with a spike that verifies these endpoints.
+- **chill and TMDB tokens:** both are synced from the iOS app through iCloud
+  Keychain (`kSecAttrSynchronizable`), with the same Apple ID and the same
+  keychain access group. If the TV has no synced token, it falls back to
+  typing the TMDB token on the TV and skipping chill.
+- **Player:** `AVPlayerViewController` on tvOS, with Siri Remote scrubbing.
+  Top Shelf is out of scope.
 
 ## Accounts and secrets
 
@@ -117,7 +154,7 @@ struct Release: Hashable, Sendable {
 | Provider | Request | Notes |
 |---|---|---|
 | `ChillProvider` | `POST https://api.chill.institute/v4/chill.v4.UserService/<Method>` with JSON, `Content-Type: application/json`, `Authorization: Bearer <chill token>` | Movies and text: `GetIndexers` once, then `Search {query, indexerId}` per enabled indexer. Episodes: `GetTVShowEpisodeDownload {imdbId, seasonNumber, episodeNumber}`. Seasons: `GetTVShowSeasonDownloads {imdbId, seasonNumber}`. Uses chill's `releaseInfo` when present. Tag: `chill·<indexer>`. |
-| `YTSProvider` | `GET {base}/api/v2/list_movies.json?query_term=<imdbID>` | Movies only. Builds magnets from `hash` plus standard trackers. Default base `https://yts.mx`. |
+| `YTSProvider` | `GET {base}/api/v2/list_movies.json?query_term=<imdbID>` | Movies only. Builds magnets from `hash` plus standard trackers. Default base `https://movies-api.accel.li`; `yts.mx` is dead, and yts.lt, .am and .ag redirect to yts.gg. |
 | `EZTVProvider` | `GET {base}/api/get-torrents?imdb_id=<digits>&limit=100&page=n` | TV only. Filters by season and episode. Default base `https://eztvx.to`. |
 | `ApibayProvider` | `GET {base}/q.php?q=<query>&cat=0` | A single `id:"0"` row means no results. Default base `https://apibay.org`. |
 | `KnabenProvider` | `POST {base}/v1` JSON `{search_type:"100%", search_field:"title", query, size:50, hide_unsafe:true, hide_xxx:true}` | Default base `https://api.knaben.org`. |
@@ -277,3 +314,22 @@ are never committed. The spike confirms:
 5. Each provider's default base URL responds from the user's network.
 
 Findings update this spec before the plan continues.
+
+## Spike findings (2026-10-13)
+
+Results of `amdb-spike`, run by the user on their own network and account.
+
+| Check | Result | Consequence |
+|---|---|---|
+| put.io `Authorization: token …` | Works | Keep it. |
+| `start_from` exposure | Present on **every file in `files/list`** and on `files/{id}`. Other fields: `first_accessed_at`, `updated_at`, `screenshot`, `is_mp4_available`. | Continue Watching comes free from the `LibraryIndex` folder walk; no per-file calls. Order by `updated_at`; `first_accessed_at` marks a file as played at least once. |
+| HLS of an MKV (HEVC x265, 5.1) in `AVPlayer` | `isPlayable = true` | The native player is enough. No VLCKit. |
+| TMDB v4 read token, `search/multi` | Works (20 results for "dune") | No change. |
+| YTS `yts.mx` | DNS fails. yts.lt, .am and .ag redirect to yts.gg, and the API itself announces `https://movies-api.accel.li/api/v2/`. | Default base changed to `https://movies-api.accel.li`. It returns the same schema. |
+| EZTV (`eztvx.to`) | Episode: 7 releases | No change. |
+| apibay | Movie: 57 releases, episode: 18 | No change. |
+| Knaben | Movie: 50 releases, episode: 18 | No change. |
+| chill | Indexers: EZTV, LimeTorrents, Nyaa.si, The Pirate Bay, TheRARBG, TorrentGalaxyClone, Torrents.csv, YTS. Movie search: 171 releases; episode download: 1. | Chill adds the most coverage, so it should stay a first-class optional source. |
+| chill `ResolvePlayback`, `GetTransfer` | Both exist (200 / 400 invalid id) | Informational only; put.io direct covers both. |
+| Aggregate (direct sources, Furiosa) | 76 merged; the top rows carry both `Knaben` and `TPB` tags | Cross-source merge by infohash works on live data. |
+| "?" resolution rows | Some Knaben titles carry no resolution token | The Versions sheet shows these under "All" only, with a "?" badge. |
