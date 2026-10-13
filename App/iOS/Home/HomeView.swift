@@ -33,6 +33,7 @@ struct HomeView: View {
             .padding(.bottom, 120)
         }
         .ignoresSafeArea(edges: .top)
+        .ignoresSafeArea(.keyboard)
         .ambientBackground()
         .toolbar(.hidden, for: .navigationBar)
         .refreshable {

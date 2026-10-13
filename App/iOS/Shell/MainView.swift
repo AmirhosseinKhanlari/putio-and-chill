@@ -71,9 +71,12 @@ private struct TabStack: View {
     var body: some View {
         NavigationStack(path: $path) {
             root
+                // Keeps content clear of the floating tab bar; full-bleed screens ignore it on purpose.
+                .safeAreaInset(edge: sizeClass == .compact ? .bottom : .top, spacing: 0) {
+                    Color.clear.frame(height: Metrics.tabBarInset(sizeClass))
+                }
                 .navigationDestination(for: CatalogItem.self) { TitleView(item: $0) }
         }
-        .safeAreaPadding(sizeClass == .compact ? .bottom : .top, Metrics.tabBarInset(sizeClass))
     }
 
     @ViewBuilder private var root: some View {

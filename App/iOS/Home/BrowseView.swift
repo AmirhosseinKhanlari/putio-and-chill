@@ -23,6 +23,7 @@ struct BrowseView: View {
             }
             .padding(.bottom, 120)
         }
+        .ignoresSafeArea(.keyboard)
         .ambientBackground()
         .toolbar(.hidden, for: .navigationBar)
         .task {

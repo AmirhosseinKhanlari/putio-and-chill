@@ -1,5 +1,146 @@
+import AMDBCore
+import AMDBKit
 import SwiftUI
 
 struct SearchView: View {
-    var body: some View { Text("Search").font(.largeTitle).frame(maxWidth: .infinity, maxHeight: .infinity).ambientBackground() }
+    @Environment(AppModel.self) private var app
+    @State private var model: SearchModel?
+    @State private var trending: [CatalogItem] = []
+
+    var body: some View {
+        Group {
+            if let model { SearchContent(model: model, trending: trending) } else { Color.clear }
+        }
+        .ambientBackground()
+        .toolbar(.hidden, for: .navigationBar)
+        .task {
+            guard model == nil, let catalog = app.catalog else { return }
+            let search = SearchModel(catalog: catalog, store: app.store)
+            model = search
+            await search.loadRecent()
+            trending = ((try? await catalog.trending(nil)) ?? []).filter { $0.mediaType != .person }
+        }
+    }
+}
+
+private struct SearchContent: View {
+    @Bindable var model: SearchModel
+    let trending: [CatalogItem]
+    @Environment(Router.self) private var router
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let compact = sizeClass == .compact
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.white.opacity(0.6))
+                    TextField("Movies, shows, people", text: $model.query)
+                        .focused($focused)
+                        .submitLabel(.search)
+                        .autocorrectionDisabled()
+                        .onSubmit { Task { await model.commit() } }
+                        .font(.title3)
+                    if model.isSearching { ProgressView() }
+                    if !model.query.isEmpty {
+                        Button { model.query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.5)) }
+                            .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 18).padding(.vertical, 14)
+                .glassRounded(22)
+
+                if let releaseQuery = model.releaseQuery {
+                    Button {
+                        Task { await model.commit() }
+                        router.versions = VersionsRequest(query: releaseQuery, target: nil, playNow: [])
+                    } label: {
+                        Label("Search releases for “\(model.query.trimmingCharacters(in: .whitespaces))”", systemImage: "antenna.radiowaves.left.and.right")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.glassPill)
+
+                    if compact {
+                        suggestions
+                        grid(model.grid)
+                    } else {
+                        HStack(alignment: .top, spacing: 28) {
+                            suggestions.frame(width: 260)
+                            grid(model.grid)
+                        }
+                    }
+                    if model.results.isEmpty && !model.isSearching {
+                        Text("No titles match. Try “Search releases” for anything TMDB doesn't know.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                } else {
+                    if !model.recent.isEmpty {
+                        Text("Recent").font(.headline)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(model.recent, id: \.self) { recent in
+                                    Button(recent) { model.query = recent }
+                                        .font(.subheadline)
+                                        .padding(.horizontal, 14).padding(.vertical, 8)
+                                        .background(.white.opacity(0.1), in: Capsule())
+                                        .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    if !trending.isEmpty {
+                        Text("Popular searches").font(.headline)
+                        grid(trending)
+                    }
+                }
+            }
+            .padding(.horizontal, Metrics.gutter(sizeClass))
+            .padding(.top, 12)
+            .padding(.bottom, 120)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .onAppear { focused = true }
+    }
+
+    private var suggestions: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Top suggestions").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.bottom, 4)
+            ForEach(model.suggestions) { item in
+                Button { open(item) } label: {
+                    HStack(spacing: 10) {
+                        RemoteImage(path: item.posterPath, size: "w92", seed: item.title)
+                            .frame(width: 30, height: 45).clipShape(RoundedRectangle(cornerRadius: 4))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.title).font(.subheadline.weight(.medium)).lineLimit(1)
+                            Text([item.year.map(String.init), item.mediaType == .tv ? "Series" : "Film"].compactMap { $0 }.joined(separator: " · "))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func grid(_ items: [CatalogItem]) -> some View {
+        let width = Metrics.poster(sizeClass)
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: width, maximum: width + 30), spacing: 12, alignment: .top)],
+                         alignment: .leading, spacing: 18) {
+            ForEach(items) { item in
+                Button { open(item) } label: { PosterCard(item: item, width: width) }
+                    .buttonStyle(.lift)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: items.map(\.id))
+    }
+
+    private func open(_ item: CatalogItem) {
+        Task { await model.commit() }
+        router.open(item)
+    }
 }
