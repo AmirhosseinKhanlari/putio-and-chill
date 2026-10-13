@@ -585,42 +585,54 @@ import AMDBCore
 import SwiftUI
 
 /// Remote artwork with a colored placeholder seeded from the title, so missing art still looks intentional.
+/// The view always takes exactly the size it is offered: artwork larger than that is cropped (fill) or
+/// scaled down (fit), never allowed to widen the surrounding layout.
 struct RemoteImage: View {
     private let url: URL?
     private let seed: String
     private let contentMode: ContentMode
+    private let alignment: Alignment
     @State private var image: UIImage?
 
-    init(path: String?, size: String, seed: String, contentMode: ContentMode = .fill) {
+    init(path: String?, size: String, seed: String, contentMode: ContentMode = .fill, alignment: Alignment = .center) {
         self.url = CatalogClient.imageURL(path, size: size)
         self.seed = seed
         self.contentMode = contentMode
+        self.alignment = alignment
     }
 
     init(url: URL?, seed: String) {
         self.url = url
         self.seed = seed
         self.contentMode = .fill
+        self.alignment = .center
     }
 
     var body: some View {
-        ZStack {
-            if contentMode == .fill {
-                let palette = AmbientPalette.seeded(seed)
-                LinearGradient(colors: [palette.primary.color, palette.secondary.color], startPoint: .topLeading, endPoint: .bottomTrailing)
+        base
+            .overlay(alignment: alignment) {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: contentMode)
+                        .transition(.opacity)
+                }
             }
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
-                    .transition(.opacity)
+            .clipped()
+            .task(id: url) {
+                image = nil
+                guard let url else { return }
+                let loaded = await ImagePipeline.shared.image(for: url)
+                withAnimation(.easeOut(duration: 0.25)) { image = loaded }
             }
-        }
-        .task(id: url) {
-            image = nil
-            guard let url else { return }
-            let loaded = await ImagePipeline.shared.image(for: url)
-            withAnimation(.easeOut(duration: 0.25)) { image = loaded }
+    }
+
+    @ViewBuilder private var base: some View {
+        if contentMode == .fill {
+            let palette = AmbientPalette.seeded(seed)
+            LinearGradient(colors: [palette.primary.color, palette.secondary.color], startPoint: .topLeading, endPoint: .bottomTrailing)
+        } else {
+            Color.clear
         }
     }
 }
@@ -1817,6 +1829,9 @@ private struct HeroPage: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
                 LinearGradient(colors: [Theme.background.opacity(regular ? 0.8 : 0.35), .clear], startPoint: .leading, endPoint: .trailing)
+                // Scrim behind the text block so titles stay readable over bright artwork.
+                LinearGradient(stops: [.init(color: .clear, location: 0.35), .init(color: Theme.background.opacity(0.85), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
             }
             .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.5),
                                          .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
@@ -2135,12 +2150,14 @@ private struct TitleHeader: View {
                     .frame(maxWidth: .infinity)
                     .clipped()
                 LinearGradient(colors: [Theme.background.opacity(regular ? 0.8 : 0.3), .clear], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(stops: [.init(color: .clear, location: 0.35), .init(color: Theme.background.opacity(0.85), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
             }
             .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45),
                                          .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
             VStack(alignment: .leading, spacing: 12) {
                 if let logo = detail?.logoPath {
-                    RemoteImage(path: logo, size: "w500", seed: item.title, contentMode: .fit)
+                    RemoteImage(path: logo, size: "w500", seed: item.title, contentMode: .fit, alignment: .leading)
                         .frame(maxWidth: regular ? 420 : 260, maxHeight: regular ? 150 : 90, alignment: .leading)
                 } else {
                     Text(item.title.uppercased())
@@ -2296,10 +2313,10 @@ struct DownloadStatus: View {
 
     private var headline: String {
         switch transfer.phase {
-        case .queued: "Waiting for put.io"
+        case .queued: "Queued"
         case .finishing: "Finishing up"
-        case .completed: "Preparing to play"
-        default: transfer.isStalled ? "Stalled: no peers" : "put.io is downloading"
+        case .completed: "Preparing"
+        default: transfer.isStalled ? "Stalled: no peers" : "Downloading"
         }
     }
 
@@ -3090,7 +3107,7 @@ struct PlayerScreen: View {
             if !ready && failure == nil && !askingResume {
                 VStack(spacing: 12) {
                     ProgressView().controlSize(.large)
-                    Text("put.io is preparing this video…").font(.footnote).foregroundStyle(.white.opacity(0.7))
+                    Text("Preparing…").font(.footnote).foregroundStyle(.white.opacity(0.7))
                 }
             }
             if askingResume {

@@ -2,42 +2,54 @@ import AMDBCore
 import SwiftUI
 
 /// Remote artwork with a colored placeholder seeded from the title, so missing art still looks intentional.
+/// The view always takes exactly the size it is offered: artwork larger than that is cropped (fill) or
+/// scaled down (fit), never allowed to widen the surrounding layout.
 struct RemoteImage: View {
     private let url: URL?
     private let seed: String
     private let contentMode: ContentMode
+    private let alignment: Alignment
     @State private var image: UIImage?
 
-    init(path: String?, size: String, seed: String, contentMode: ContentMode = .fill) {
+    init(path: String?, size: String, seed: String, contentMode: ContentMode = .fill, alignment: Alignment = .center) {
         self.url = CatalogClient.imageURL(path, size: size)
         self.seed = seed
         self.contentMode = contentMode
+        self.alignment = alignment
     }
 
     init(url: URL?, seed: String) {
         self.url = url
         self.seed = seed
         self.contentMode = .fill
+        self.alignment = .center
     }
 
     var body: some View {
-        ZStack {
-            if contentMode == .fill {
-                let palette = AmbientPalette.seeded(seed)
-                LinearGradient(colors: [palette.primary.color, palette.secondary.color], startPoint: .topLeading, endPoint: .bottomTrailing)
+        base
+            .overlay(alignment: alignment) {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: contentMode)
+                        .transition(.opacity)
+                }
             }
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
-                    .transition(.opacity)
+            .clipped()
+            .task(id: url) {
+                image = nil
+                guard let url else { return }
+                let loaded = await ImagePipeline.shared.image(for: url)
+                withAnimation(.easeOut(duration: 0.25)) { image = loaded }
             }
-        }
-        .task(id: url) {
-            image = nil
-            guard let url else { return }
-            let loaded = await ImagePipeline.shared.image(for: url)
-            withAnimation(.easeOut(duration: 0.25)) { image = loaded }
+    }
+
+    @ViewBuilder private var base: some View {
+        if contentMode == .fill {
+            let palette = AmbientPalette.seeded(seed)
+            LinearGradient(colors: [palette.primary.color, palette.secondary.color], startPoint: .topLeading, endPoint: .bottomTrailing)
+        } else {
+            Color.clear
         }
     }
 }

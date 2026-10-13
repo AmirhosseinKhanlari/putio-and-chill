@@ -60,12 +60,14 @@ private struct TitleHeader: View {
                     .frame(maxWidth: .infinity)
                     .clipped()
                 LinearGradient(colors: [Theme.background.opacity(regular ? 0.8 : 0.3), .clear], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(stops: [.init(color: .clear, location: 0.35), .init(color: Theme.background.opacity(0.85), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
             }
             .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45),
                                          .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
             VStack(alignment: .leading, spacing: 12) {
                 if let logo = detail?.logoPath {
-                    RemoteImage(path: logo, size: "w500", seed: item.title, contentMode: .fit)
+                    RemoteImage(path: logo, size: "w500", seed: item.title, contentMode: .fit, alignment: .leading)
                         .frame(maxWidth: regular ? 420 : 260, maxHeight: regular ? 150 : 90, alignment: .leading)
                 } else {
                     Text(item.title.uppercased())

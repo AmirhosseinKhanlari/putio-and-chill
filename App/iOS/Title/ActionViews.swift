@@ -83,10 +83,10 @@ struct DownloadStatus: View {
 
     private var headline: String {
         switch transfer.phase {
-        case .queued: "Waiting for put.io"
+        case .queued: "Queued"
         case .finishing: "Finishing up"
-        case .completed: "Preparing to play"
-        default: transfer.isStalled ? "Stalled: no peers" : "put.io is downloading"
+        case .completed: "Preparing"
+        default: transfer.isStalled ? "Stalled: no peers" : "Downloading"
         }
     }
 

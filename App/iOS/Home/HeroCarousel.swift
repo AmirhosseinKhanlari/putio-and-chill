@@ -53,6 +53,9 @@ private struct HeroPage: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
                 LinearGradient(colors: [Theme.background.opacity(regular ? 0.8 : 0.35), .clear], startPoint: .leading, endPoint: .trailing)
+                // Scrim behind the text block so titles stay readable over bright artwork.
+                LinearGradient(stops: [.init(color: .clear, location: 0.35), .init(color: Theme.background.opacity(0.85), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
             }
             .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.5),
                                          .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))

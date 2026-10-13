@@ -22,7 +22,7 @@ struct PlayerScreen: View {
             if !ready && failure == nil && !askingResume {
                 VStack(spacing: 12) {
                     ProgressView().controlSize(.large)
-                    Text("put.io is preparing this video…").font(.footnote).foregroundStyle(.white.opacity(0.7))
+                    Text("Preparing…").font(.footnote).foregroundStyle(.white.opacity(0.7))
                 }
             }
             if askingResume {
