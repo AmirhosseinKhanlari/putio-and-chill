@@ -3,7 +3,7 @@ import AMDBKit
 import Foundation
 
 /// `-demo` swaps in fake services so every screen can be exercised without credentials.
-/// `-demoScreen title|show|versions|search|library|countdown` opens a screen at launch.
+/// `-demoScreen title|show|versions|search|library|movies|player` opens a screen at launch.
 enum DemoMode {
     static var isEnabled: Bool { ProcessInfo.processInfo.arguments.contains("-demo") }
 
@@ -35,6 +35,9 @@ enum DemoMode {
         case "search": router.tab = .search
         case "library": router.tab = .library
         case "movies": router.tab = .movies
+        case "player":
+            router.player = PlayerRequest(file: PutioFile(id: 1, name: "Interstellar.2014.1080p.BluRay.x264.mkv", fileType: "VIDEO"),
+                                          title: "Interstellar", resumeFrom: 4360, played: nil, next: nil)
         default: break
         }
     }
