@@ -4,6 +4,7 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(AppModel.self) private var app
+    @Environment(Router.self) private var router
     @State private var model: HomeModel?
 
     var body: some View {
@@ -19,7 +20,9 @@ struct HomeView: View {
                     EntryRowView(title: "Continue Watching", entries: app.library.continueWatching)
                 }
                 if !app.myList.items.isEmpty {
-                    CatalogRowView(row: CatalogRow(id: "mylist", title: "My List", items: app.myList.items.map(\.catalogItem)))
+                    CatalogRowView(row: CatalogRow(id: "mylist", title: "My List", items: app.myList.items.map(\.catalogItem))) {
+                        router.openMyList()
+                    }
                 }
                 if !app.library.recentlyAdded.isEmpty {
                     EntryRowView(title: "Recently Added to put.io", entries: app.library.recentlyAdded)

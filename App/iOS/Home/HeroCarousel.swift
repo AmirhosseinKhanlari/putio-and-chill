@@ -77,7 +77,7 @@ private struct HeroPage: View {
                     primaryButton
                     Button { router.open(item) } label: { Label("More Info", systemImage: "info.circle") }
                         .buttonStyle(.glassPill)
-                    MyListButton(item: item, iconOnly: true)
+                    MyListButton(item: item, iconOnly: sizeClass == .compact)
                 }
                 .padding(.top, 4)
             }

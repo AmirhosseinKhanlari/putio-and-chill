@@ -104,7 +104,8 @@ public final class AppModel {
     public init(tokens: any TokenStore, defaults: UserDefaults = .standard, store: LocalStore, factory: ServiceFactory = .live,
                 bundledTMDBToken: String? = nil, ratingsCache: RatingsCache = RatingsCache(fileURL: nil),
                 bundledTraktClientID: String? = nil, bundledOpenSubtitlesKey: String? = nil,
-                subtitleCache: SubtitleFileCache = SubtitleFileCache(directory: nil)) {
+                subtitleCache: SubtitleFileCache = SubtitleFileCache(directory: nil),
+                libraryCache: LibraryCache = LibraryCache(fileURL: nil)) {
         self.tokens = tokens
         self.userDefaults = defaults
         self.store = store
@@ -120,7 +121,7 @@ public final class AppModel {
         let trakt = bundledTraktClientID?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.chartsService = (trakt?.isEmpty ?? true) ? nil : trakt.map(factory.makeCharts)
         settings = AppSettings.load(from: defaults)
-        library = LibraryIndex(store: store)
+        library = LibraryIndex(store: store, cache: libraryCache)
         transfers = TransferMonitor(store: store)
         myList = MyList(store: store)
         downloads = DownloadsIndex(store: store)
@@ -141,6 +142,39 @@ public final class AppModel {
         settings = newSettings
         newSettings.save(to: userDefaults)
         rebuild()
+    }
+
+    /// Updates the library from put.io when automatic updates are on and it's older than the chosen interval
+    /// (or always, when `force`). Returns whether it ran.
+    @discardableResult
+    public func refreshLibraryIfDue(force: Bool = false, now: Date = Date()) async -> Bool {
+        guard putio != nil else { return false }
+        let due = library.isStale(maxAge: TimeInterval(settings.libraryUpdateMinutes * 60), now: now)
+        guard force || (settings.libraryAutoUpdate && due) || library.lastUpdated == nil else { return false }
+        await library.refresh()
+        return true
+    }
+
+    /// What "Organize library" would move, using `layout` (the Settings being edited).
+    public func planOrganize(layout: FolderLayout) async throws -> OrganizePlan {
+        guard let putio else { throw AppError.unauthorized(service: "putio") }
+        if library.folderTree.isEmpty { await library.refresh() }
+        return try await LibraryOrganizer.plan(entries: library.entries, layout: layout, putio: putio, store: store,
+                                               tree: library.folderTree)
+    }
+
+    /// Moves the planned items, then re-reads the library so the new locations show up. Returns how many moved.
+    public func applyOrganize(_ plan: OrganizePlan, layout: FolderLayout) async throws -> Int {
+        guard let putio else { throw AppError.unauthorized(service: "putio") }
+        let moved = try await LibraryOrganizer.apply(plan, layout: layout, putio: putio, store: store)
+        await library.refresh()
+        return moved
+    }
+
+    /// Saves the subtitle look without rebuilding services (safe mid-playback).
+    public func updateSubtitleStyle(_ style: SubtitleStyle) {
+        settings.subtitleStyle = style
+        settings.save(to: userDefaults)
     }
 
     public func validateTMDB(_ token: String) async throws {
@@ -292,5 +326,6 @@ public final class AppModel {
         searcher = ReleaseAggregator(providers: providers)
         library.configure(putio: putio, catalog: catalog)
         transfers.configure(putio: putio, library: library)
+        transfers.layout = FolderLayout(settings: settings)
     }
 }

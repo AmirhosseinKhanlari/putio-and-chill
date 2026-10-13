@@ -197,7 +197,7 @@ struct SurprisePage: View {
         HStack(spacing: 12) {
             Button { open(pick) } label: { Label("Watch This", systemImage: "play.fill") }
                 .buttonStyle(.primaryPill)
-            MyListButton(item: pick, iconOnly: true)
+            MyListButton(item: pick, iconOnly: !regular)
             Spacer(minLength: 0)
             shuffleButton
         }

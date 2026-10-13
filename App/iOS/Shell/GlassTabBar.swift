@@ -27,6 +27,7 @@ struct GlassTabBar: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(tab.title)
             }
+            LibraryUpdatePill()
             TransferPill()
             Button { router.showSettings = true } label: {
                 Image(systemName: "gearshape.fill").font(.system(size: 15, weight: .semibold))
@@ -38,6 +39,30 @@ struct GlassTabBar: View {
         .padding(5)
         .glassCapsule()
         .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
+    }
+}
+
+/// Shows while the library is being updated from put.io in the background.
+private struct LibraryUpdatePill: View {
+    @Environment(AppModel.self) private var app
+    @Environment(Router.self) private var router
+    @State private var spin = false
+
+    var body: some View {
+        if app.library.isRefreshing, !app.library.entries.isEmpty {
+            Button { router.tab = .library } label: {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 13, weight: .semibold))
+                    .rotationEffect(.degrees(spin ? 360 : 0))
+                    .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: spin)
+                    .onAppear { spin = true }
+                    .frame(width: 34, height: 34)
+                    .background(.white.opacity(0.1), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .transition(.scale.combined(with: .opacity))
+            .accessibilityLabel("Updating library from put.io")
+        }
     }
 }
 

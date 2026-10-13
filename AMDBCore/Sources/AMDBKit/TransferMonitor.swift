@@ -16,8 +16,6 @@ public struct TransferTarget: Sendable, Hashable {
         self.tmdbID = tmdbID; self.kind = kind; self.title = title; self.posterPath = posterPath
         self.backdropPath = backdropPath; self.season = season; self.episode = episode
     }
-
-    public var folderPath: [String] { kind == .tv ? ["AMDB", "TV", title] : ["AMDB", "Movies"] }
 }
 
 public struct TrackedTransfer: Identifiable, Sendable, Equatable {
@@ -46,6 +44,8 @@ public final class TransferMonitor {
     private let pollInterval: Duration
     private let now: @Sendable () -> Date
     private var putio: (any PutioService)?
+    /// Where transfers are saved (from Settings).
+    @ObservationIgnored public var layout = FolderLayout.standard
     @ObservationIgnored private weak var library: LibraryIndex?
     private var detectors: [Int64: StallDetector] = [:]
     private var loop: Task<Void, Never>?
@@ -79,12 +79,14 @@ public final class TransferMonitor {
         guard let putio else { throw AppError.unauthorized(service: "putio") }
         let transfer: PutioTransfer
         do {
-            let folder = try await FolderResolver.folderID(path: target.folderPath, putio: putio, store: store)
+            let folder = try await layout.destinationID(kind: target.kind, title: target.title, season: target.season,
+                                                        putio: putio, store: store)
             transfer = try await putio.addTransfer(url: release.link, saveParentID: folder)
         } catch AppError.http {
-            // The cached folder may have been deleted in put.io; resolve it again once.
-            await FolderResolver.forget(path: target.folderPath, store: store)
-            let folder = try await FolderResolver.folderID(path: target.folderPath, putio: putio, store: store)
+            // A cached folder may have been deleted in put.io; resolve again once.
+            await FolderResolver.forgetAll(store: store)
+            let folder = try await layout.destinationID(kind: target.kind, title: target.title, season: target.season,
+                                                        putio: putio, store: store)
             transfer = try await putio.addTransfer(url: release.link, saveParentID: folder)
         }
         let pending = PendingTransfer(transferID: transfer.id, tmdbID: target.tmdbID, kind: target.kind, title: target.title,

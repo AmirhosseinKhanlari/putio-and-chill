@@ -22,7 +22,8 @@ struct AMDBApp: App {
                        ratingsCache: RatingsCache(fileURL: RatingsCache.defaultURL()),
                        bundledTraktClientID: Bundle.main.object(forInfoDictionaryKey: "TraktClientID") as? String,
                        bundledOpenSubtitlesKey: Bundle.main.object(forInfoDictionaryKey: "OpenSubtitlesAPIKey") as? String,
-                       subtitleCache: SubtitleFileCache(directory: SubtitleFileCache.defaultDirectory()))
+                       subtitleCache: SubtitleFileCache(directory: SubtitleFileCache.defaultDirectory()),
+                       libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL()))
         _model = State(initialValue: model)
         _downloader = State(initialValue: OfflineDownloader(app: model))
         let router = Router()
@@ -51,10 +52,11 @@ struct AMDBApp: App {
                     case .active where model.isReady:
                         Task {
                             await model.transfers.restore()
-                            await model.library.refresh()
+                            // Cached library is already on screen; fetch only when the update interval has passed.
+                            await model.refreshLibraryIfDue()
                         }
                     case .background:
-                        BackgroundRefresh.schedule()
+                        BackgroundRefresh.schedule(every: model.settings.libraryUpdateMinutes)
                     default:
                         break
                     }

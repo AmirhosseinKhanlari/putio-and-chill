@@ -46,7 +46,7 @@ import Testing
         let (model, _, _, _) = rig()
         await model.load()
         #expect(model.query() == .movie(imdbID: "tt15239678", title: "Dune: Part Two", year: 2024))
-        #expect(model.target().folderPath == ["AMDB", "Movies"])
+        #expect(model.target().kind == .movie)
     }
 
     @Test func tvLoadsFirstSeasonAndBuildsEpisodeQuery() async {
@@ -60,7 +60,8 @@ import Testing
         #expect(model.episodes.map(\.number) == [4])
         #expect(model.query(season: 2, episode: 4) == .episode(imdbID: "tt11280740", title: "Severance", season: 2, episode: 4))
         #expect(model.query(season: 2) == .season(imdbID: "tt11280740", title: "Severance", season: 2))
-        #expect(model.target(season: 2, episode: 4).folderPath == ["AMDB", "TV", "Severance"])
+        let tv = model.target(season: 2, episode: 4)
+        #expect(FolderLayout.standard.displayPath(kind: tv.kind, title: tv.title, season: tv.season) == "AMDB/TV/Severance/Season 2")
     }
 
     @Test func missingDetailReportsError() async {

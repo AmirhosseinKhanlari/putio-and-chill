@@ -51,70 +51,86 @@ enum PlayerPresenter {
     }
 }
 
+/// Runs one playback: the app's player screen, put.io progress sync, subtitles, next episode, Picture in Picture.
 @MainActor
-final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelegate {
+final class PlayerCoordinator {
     static var current: PlayerCoordinator?
 
     let request: PlayerRequest
-    private let controller = AVPlayerViewController()
+    private let engine: PlayerEngine
+    private let chrome: PlayerChrome
+    private let controller: PlayerViewController
     private let session: PlaybackSession
     private let putio: any PutioService
     private let app: AppModel
     private let router: Router
     private var progressTask: Task<Void, Never>?
-    private var nextHost: UIViewController?
-    private var preparingHost: UIViewController?
-    private var countdownHost: UIViewController?
     private var countdownDismissed = false
     private var appliedLanguages = false
     private var inPictureInPicture = false
     private var triedFallback = false
     private var finished = false
-    private let localURL: URL?
-    private let subtitles: SubtitleFinder
-    private let subtitleLine = SubtitleLine()
-    private var subtitleButtonHost: UIViewController?
-    private var subtitleButtonHideTask: Task<Void, Never>?
-    private var timeObserver: Any?
-    private var playbackObservation: NSKeyValueObservation?
 
     init(request: PlayerRequest, putio: any PutioService, app: AppModel, router: Router, localURL: URL? = nil) {
         self.request = request
         self.putio = putio
         self.app = app
         self.router = router
-        self.localURL = localURL
         session = PlaybackSession(fileID: request.file.id, resumeFrom: request.resumeFrom, putio: putio,
                                   library: app.library, store: app.store)
-        subtitles = app.subtitleFinder(for: request.subtitleContext, fileSize: request.file.size)
+        // Offline copy when downloaded; otherwise put.io's HLS stream.
+        engine = PlayerEngine(url: localURL ?? session.streamURL)
+        let episode = request.season.map { season in request.episode.map { "Season \(season) · Episode \($0)" } ?? "Season \(season)" }
+        chrome = PlayerChrome(title: request.played?.title ?? request.title, subtitle: episode,
+                              subtitles: app.subtitleFinder(for: request.subtitleContext, fileSize: request.file.size))
+        chrome.nextLabel = request.next?.label
+        chrome.subtitleStyle = app.settings.subtitleStyle
+        chrome.failureLink = URL(string: "https://app.put.io/files/\(request.file.id)")
+        controller = PlayerViewController(engine: engine, chrome: chrome)
     }
 
     func start(from seconds: Int, on presenter: UIViewController) {
-        // Offline copy when downloaded; otherwise put.io's HLS stream.
-        let player = AVPlayer(url: localURL ?? session.streamURL)
-        controller.player = player
-        controller.allowsPictureInPicturePlayback = true
-        controller.canStartPictureInPictureAutomaticallyFromInline = true
-        controller.delegate = self
-        controller.modalPresentationStyle = .fullScreen
-        if seconds > 0 { player.seek(to: CMTime(seconds: Double(seconds), preferredTimescale: 600)) }
-        presenter.present(controller, animated: true) { player.play() }
+        chrome.onClose = { [weak self] in self?.controller.dismiss(animated: true) }
+        chrome.onNext = { [weak self] in
+            guard let self, let next = request.next else { return }
+            advance(to: next)
+        }
+        chrome.onStyleChanged = { [weak app] style in app?.updateSubtitleStyle(style) }
+        chrome.onCancelCountdown = { [weak self] in
+            self?.countdownDismissed = true
+            self?.chrome.showCountdown = false
+        }
+        controller.onPiPChanged = { [weak self] active in
+            guard let self else { return }
+            inPictureInPicture = active
+            // Picture in Picture frees the app: get the full-screen player out of the way.
+            if active, controller.presentingViewController != nil { controller.dismiss(animated: true) }
+        }
+        controller.onPiPRestore = { [weak self] completion in
+            guard let self, controller.presentingViewController == nil, let presenter = PlayerPresenter.topViewController() else {
+                completion(true)
+                return
+            }
+            presenter.present(controller, animated: true) { completion(true) }
+        }
+        engine.enableNowPlaying(title: chrome.title)
+        if seconds > 0 { engine.seek(to: Double(seconds)) }
+        presenter.present(controller, animated: true) { [engine] in engine.play() }
         progressTask = Task { [weak self] in await self?.run() }
-        installSubtitles(on: player)
+        Task { await chrome.subtitles?.restore() }
     }
 
     private func run() async {
         var waitedForReady = 0
         while !Task.isCancelled, !finished {
             try? await Task.sleep(for: .seconds(1))
-            guard let player = controller.player else { continue }
             if controller.presentingViewController == nil, !inPictureInPicture {
                 finish()
                 return
             }
-            let status = player.currentItem?.status
-            updatePreparingLabel(visible: status != .readyToPlay && !triedFallback)
-            if status == .readyToPlay, !appliedLanguages, let item = player.currentItem {
+            let status = engine.status
+            chrome.preparing = status != .readyToPlay && !triedFallback
+            if status == .readyToPlay, !appliedLanguages, let item = engine.player.currentItem {
                 appliedLanguages = true
                 await applyLanguagePreferences(to: item)
             }
@@ -123,13 +139,14 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
                 await handleUnplayable()
                 waitedForReady = 0
             }
-            let position = player.currentTime().seconds
-            let duration = player.currentItem?.duration.seconds ?? 0
-            let total = duration.isFinite ? duration : 0
-            if position.isFinite, position > 0 { await session.tick(seconds: position, duration: total) }
-            let remaining = total > 0 && position.isFinite ? total - position : .infinity
-            updateNextButton(remaining: remaining)
-            if remaining < 1.5 { showNextEpisodeCountdown() }
+            let position = engine.position
+            let total = engine.duration
+            if position > 0 { await session.tick(seconds: position, duration: total) }
+            let remaining = total > 0 ? total - position : .infinity
+            chrome.showNextButton = request.next != nil && remaining < 30
+            if remaining < 1.5, request.next != nil, app.settings.autoPlayNextEpisode, !countdownDismissed {
+                chrome.showCountdown = true
+            }
         }
     }
 
@@ -137,11 +154,10 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
         guard !triedFallback else { return }
         triedFallback = true
         if request.file.contentType == "video/mp4", let original = try? await putio.originalURL(fileID: request.file.id) {
-            controller.player?.replaceCurrentItem(with: AVPlayerItem(url: original))
-            controller.player?.play()
+            engine.replace(with: original)
         } else {
-            updatePreparingLabel(visible: false)
-            showFailure("This video isn't ready to stream yet. Try again in a few minutes.")
+            chrome.preparing = false
+            chrome.failure = "This video isn't ready to stream yet. Try again in a few minutes."
         }
     }
 
@@ -149,125 +165,28 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
         guard !finished else { return }
         finished = true
         progressTask?.cancel()
-        subtitleButtonHideTask?.cancel()
-        let player = controller.player
-        if let timeObserver { player?.removeTimeObserver(timeObserver) }
-        playbackObservation?.invalidate()
-        playbackObservation = nil
-        timeObserver = nil
-        player?.pause()
-        let position = player?.currentTime().seconds ?? 0
-        let duration = player?.currentItem?.duration.seconds ?? 0
+        let position = engine.position
+        let duration = engine.duration
+        engine.tearDown()
         let session = session
-        if position.isFinite, position > 0 {
-            Task { await session.finish(seconds: position, duration: duration.isFinite ? duration : 0) }
+        if position > 0 {
+            Task { await session.finish(seconds: position, duration: duration) }
         }
         if router.player?.id == request.id { router.player = nil }
         if Self.current === self { Self.current = nil }
     }
 
-    // MARK: Overlays
-
-    private func updateNextButton(remaining: Double) {
-        guard let next = request.next else { return }
-        if remaining < 30, nextHost == nil {
-            let button = Button { [weak self] in self?.advance(to: next) } label: {
-                Label("Next: \(next.label)", systemImage: "forward.end.fill")
-            }
-            .buttonStyle(.primaryPill)
-            .padding(4)
-            let host = UIHostingController(rootView: AnyView(button))
-            host.sizingOptions = .intrinsicContentSize
-            embed(host) { view, container in
-                [view.trailingAnchor.constraint(equalTo: container.safeAreaLayoutGuide.trailingAnchor, constant: -32),
-                 view.bottomAnchor.constraint(equalTo: container.safeAreaLayoutGuide.bottomAnchor, constant: -96)]
-            }
-            nextHost = host
-        } else if remaining >= 30, let host = nextHost {
-            host.willMove(toParent: nil)
-            host.view.removeFromSuperview()
-            host.removeFromParent()
-            nextHost = nil
-        }
-    }
-
     /// Picks the preferred audio track (Settings → Playback). Subtitles are drawn by the app (put.io + OpenSubtitles),
     /// so any subtitle track inside the stream (older offline copies) stays off.
     private func applyLanguagePreferences(to item: AVPlayerItem) async {
-        let settings = app.settings
         if let group = try? await item.asset.loadMediaSelectionGroup(for: .legible), group.allowsEmptySelection {
             item.select(nil, in: group)
         }
-        if let language = settings.audioLanguage, let group = try? await item.asset.loadMediaSelectionGroup(for: .audible),
+        if let language = app.settings.audioLanguage, let group = try? await item.asset.loadMediaSelectionGroup(for: .audible),
            let index = LanguageMatcher.bestIndex(available: group.options.map { $0.extendedLanguageTag ?? $0.locale?.identifier },
                                                  preferred: language) {
             item.select(group.options[index], in: group)
         }
-    }
-
-    /// End of an episode: "Next episode in 5…" with Play Now / Cancel (Settings → Auto-play next episode).
-    private func showNextEpisodeCountdown() {
-        guard let next = request.next, app.settings.autoPlayNextEpisode, countdownHost == nil, !countdownDismissed else { return }
-        let view = NextEpisodeCountdown(label: next.label,
-                                        onPlay: { [weak self] in self?.advance(to: next) },
-                                        onCancel: { [weak self] in self?.dismissCountdown() })
-        let host = UIHostingController(rootView: AnyView(view))
-        embed(host) { view, container in
-            [view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-             view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-             view.topAnchor.constraint(equalTo: container.topAnchor),
-             view.bottomAnchor.constraint(equalTo: container.bottomAnchor)]
-        }
-        countdownHost = host
-    }
-
-    private func dismissCountdown() {
-        countdownDismissed = true
-        guard let host = countdownHost else { return }
-        host.willMove(toParent: nil)
-        host.view.removeFromSuperview()
-        host.removeFromParent()
-        countdownHost = nil
-    }
-
-    private func updatePreparingLabel(visible: Bool) {
-        if visible, preparingHost == nil {
-            let label = Text("Preparing…").font(.callout.weight(.medium)).foregroundStyle(.white.opacity(0.8))
-                .padding(.horizontal, 14).padding(.vertical, 7).glassCapsule()
-            let host = UIHostingController(rootView: AnyView(label))
-            host.sizingOptions = .intrinsicContentSize
-            host.view.isUserInteractionEnabled = false
-            embed(host) { view, container in
-                [view.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-                 view.centerYAnchor.constraint(equalTo: container.centerYAnchor, constant: 90)]
-            }
-            preparingHost = host
-        } else if !visible, let host = preparingHost {
-            host.willMove(toParent: nil)
-            host.view.removeFromSuperview()
-            host.removeFromParent()
-            preparingHost = nil
-        }
-    }
-
-    private func showFailure(_ message: String) {
-        let fileID = request.file.id
-        let view = PlayerFailureView(message: message, fileID: fileID) { [weak self] in self?.controller.dismiss(animated: true) }
-        embed(UIHostingController(rootView: AnyView(view))) { view, container in
-            [view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-             view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-             view.topAnchor.constraint(equalTo: container.topAnchor),
-             view.bottomAnchor.constraint(equalTo: container.bottomAnchor)]
-        }
-    }
-
-    private func embed(_ host: UIViewController, constraints: (UIView, UIView) -> [NSLayoutConstraint]) {
-        host.view.backgroundColor = .clear
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        controller.addChild(host)
-        controller.view.addSubview(host.view)
-        NSLayoutConstraint.activate(constraints(host.view, controller.view))
-        host.didMove(toParent: controller)
     }
 
     private func advance(to next: NextEpisode) {
@@ -280,192 +199,5 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
                 router.versions = VersionsRequest(query: query, target: next.target, playNow: [])
             }
         }
-    }
-
-    // MARK: OpenSubtitles
-
-    private func installSubtitles(on player: AVPlayer) {
-        let overlay = UIHostingController(rootView: SubtitleOverlayView(line: subtitleLine))
-        overlay.view.backgroundColor = .clear
-        overlay.view.isUserInteractionEnabled = false
-        if let content = controller.contentOverlayView {
-            overlay.view.frame = content.bounds
-            overlay.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            controller.addChild(overlay)
-            content.addSubview(overlay.view)
-            overlay.didMove(toParent: controller)
-        }
-        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 10), queue: .main) { [weak self] time in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                let text = self.subtitles.text(at: time.seconds)
-                if self.subtitleLine.text != text { self.subtitleLine.text = text }
-                // videoBounds is in the player view's space; the overlay lives in contentOverlayView.
-                let bounds = self.controller.contentOverlayView.map {
-                    self.controller.view.convert(self.controller.videoBounds, to: $0)
-                } ?? self.controller.videoBounds
-                if self.subtitleLine.videoBounds != bounds { self.subtitleLine.videoBounds = bounds }
-            }
-        }
-        Task {
-            await subtitles.restore()
-            refreshSubtitleButton()
-        }
-        let host = UIHostingController(rootView: AnyView(EmptyView()))
-        host.sizingOptions = .intrinsicContentSize
-        subtitleButtonHost = host
-        refreshSubtitleButton()
-        embed(host) { view, container in
-            [view.trailingAnchor.constraint(equalTo: container.safeAreaLayoutGuide.trailingAnchor, constant: -20),
-             view.centerYAnchor.constraint(equalTo: container.centerYAnchor)]
-        }
-        host.view.alpha = 0
-        // AVKit keeps its tap gestures to itself, so the button follows playback instead: always shown while
-        // paused (when AVKit's controls stay up too), and for a few seconds whenever playback starts or resumes.
-        playbackObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
-            let status = player.timeControlStatus
-            Task { @MainActor in self?.playbackChanged(status) }
-        }
-    }
-
-    private func playbackChanged(_ status: AVPlayer.TimeControlStatus) {
-        showSubtitleButton(autoHide: status != .paused)
-    }
-
-    private func refreshSubtitleButton() {
-        (subtitleButtonHost as? UIHostingController<AnyView>)?.rootView = AnyView(
-            SubtitlesButton(active: subtitles.isShowing) { [weak self] in self?.openSubtitleSheet() }
-        )
-    }
-
-    private func showSubtitleButton(autoHide: Bool) {
-        guard let view = subtitleButtonHost?.view else { return }
-        UIView.animate(withDuration: 0.2) { view.alpha = 1 }
-        subtitleButtonHideTask?.cancel()
-        guard autoHide else { return }
-        subtitleButtonHideTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(4))
-            guard !Task.isCancelled else { return }
-            self?.hideSubtitleButton()
-        }
-    }
-
-    private func hideSubtitleButton() {
-        subtitleButtonHideTask?.cancel()
-        guard let view = subtitleButtonHost?.view else { return }
-        UIView.animate(withDuration: 0.25) { view.alpha = 0 }
-    }
-
-    private func openSubtitleSheet() {
-        subtitleButtonHideTask?.cancel()
-        let sheet = UIHostingController(rootView: SubtitleSheet(finder: subtitles) { [weak self] in
-            Task { @MainActor in await self?.useOpenSubtitles() }
-        })
-        sheet.modalPresentationStyle = .pageSheet
-        if let presentation = sheet.sheetPresentationController {
-            presentation.detents = [.medium(), .large()]
-            presentation.prefersGrabberVisible = true
-        }
-        sheet.presentationController?.delegate = self
-        controller.present(sheet, animated: true)
-    }
-
-    /// Turns off put.io's own subtitle track so the two don't stack.
-    private func useOpenSubtitles() async {
-        refreshSubtitleButton()
-        guard let item = controller.player?.currentItem,
-              let group = try? await item.asset.loadMediaSelectionGroup(for: .legible), group.allowsEmptySelection else { return }
-        item.select(nil, in: group)
-    }
-
-    // MARK: Picture in Picture
-
-    func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
-        inPictureInPicture = true
-    }
-
-    func playerViewControllerDidStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
-        inPictureInPicture = false
-    }
-
-    func playerViewController(_ playerViewController: AVPlayerViewController,
-                              restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
-        guard controller.presentingViewController == nil, let presenter = PlayerPresenter.topViewController() else {
-            completionHandler(true)
-            return
-        }
-        presenter.present(controller, animated: true) { completionHandler(true) }
-    }
-}
-
-extension PlayerCoordinator: @MainActor UIAdaptivePresentationControllerDelegate {
-    /// Subtitle sheet closed (swipe or Done): refresh the button and show it briefly.
-    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-        refreshSubtitleButton()
-        showSubtitleButton(autoHide: controller.player?.timeControlStatus != .paused)
-    }
-}
-
-private struct PlayerFailureView: View {
-    let message: String
-    let fileID: Int64
-    let close: () -> Void
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.6).ignoresSafeArea()
-            VStack(spacing: 14) {
-                Text(message).multilineTextAlignment(.center)
-                Link("Open in put.io", destination: URL(string: "https://app.put.io/files/\(fileID)")!)
-                    .buttonStyle(.glassPill)
-                Button("Close", action: close).buttonStyle(.primaryPill)
-            }
-            .padding(28)
-            .glassRounded(24)
-            .padding(40)
-        }
-    }
-}
-
-private struct NextEpisodeCountdown: View {
-    let label: String
-    let onPlay: () -> Void
-    let onCancel: () -> Void
-    @State private var remaining = 5
-    @State private var started = false
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea()
-            VStack(spacing: 16) {
-                ZStack {
-                    ProgressRing(progress: Double(5 - remaining) / 5, lineWidth: 5)
-                    Text("\(remaining)").font(.system(size: 34, weight: .ultraLight)).monospacedDigit()
-                }
-                .frame(width: 88, height: 88)
-                Text("Next episode").font(.caption.weight(.semibold)).tracking(2).foregroundStyle(.white.opacity(0.7))
-                Text(label).font(.title3.weight(.semibold))
-                HStack(spacing: 12) {
-                    Button { go() } label: { Label("Play Now", systemImage: "play.fill") }.buttonStyle(.primaryPill)
-                    Button("Cancel", action: onCancel).buttonStyle(.glassPill)
-                }
-            }
-            .padding(32)
-            .glassRounded(28)
-        }
-        .task {
-            while remaining > 0 {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
-                remaining -= 1
-            }
-            go()
-        }
-    }
-
-    private func go() {
-        guard !started else { return }
-        started = true
-        onPlay()
     }
 }

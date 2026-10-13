@@ -39,10 +39,37 @@ import Testing
         #expect(rig.monitor.latest(tmdbID: 693134)?.id == tracked.id)
     }
 
-    @Test func tvTargetsUseShowFolder() {
+    @Test func tvGoesToShowAndSeasonFolders() async throws {
+        let rig = Rig()
         let tv = TransferTarget(tmdbID: 1, kind: .tv, title: "Severance", posterPath: nil, backdropPath: nil, season: 2, episode: 4)
-        #expect(tv.folderPath == ["AMDB", "TV", "Severance"])
-        #expect(target.folderPath == ["AMDB", "Movies"])
+        _ = try await rig.monitor.send(makeRelease("b", seeders: 5, name: "Severance.S02E04"), target: tv)
+        rig.monitor.stop()
+        #expect(rig.putio.createdFolders == ["AMDB", "TV", "Severance", "Season 2"])
+        #expect(rig.putio.added.first?.parent == (await rig.store.snapshot.folderIDs["AMDB/TV/Severance/Season 2"]))
+
+        // Season folders off: straight into the show folder.
+        rig.monitor.layout = FolderLayout(movies: nil, tv: nil, seasonFolders: false)
+        _ = try await rig.monitor.send(makeRelease("c", seeders: 5, name: "Severance.S02E05"), target: tv)
+        rig.monitor.stop()
+        #expect(rig.putio.added.last?.parent == (await rig.store.snapshot.folderIDs["AMDB/TV/Severance"]))
+    }
+
+    @Test func customBaseFoldersFromSettings() async throws {
+        let rig = Rig()
+        rig.putio.add(PutioFile(id: 50, name: "Films", fileType: "FOLDER", parentId: 0), to: 0)
+        rig.putio.add(PutioFile(id: 60, name: "TV Series", fileType: "FOLDER", parentId: 0), to: 0)
+        rig.monitor.layout = FolderLayout(movies: PutioFolderRef(id: 50, path: "Films"), tv: PutioFolderRef(id: 60, path: "TV Series"),
+                                          seasonFolders: true)
+        _ = try await rig.monitor.send(makeRelease("a", seeders: 10, name: "Dune.Part.Two.2024.1080p"), target: target)
+        rig.monitor.stop()
+        #expect(rig.putio.added.first?.parent == 50)
+        #expect(rig.putio.createdFolders.isEmpty)
+        let tv = TransferTarget(tmdbID: 1, kind: .tv, title: "Severance", posterPath: nil, backdropPath: nil, season: 1, episode: nil)
+        _ = try await rig.monitor.send(makeRelease("d", seeders: 5, name: "Severance.S01"), target: tv)
+        rig.monitor.stop()
+        #expect(rig.putio.createdFolders == ["Severance", "Season 1"])
+        #expect(FolderLayout(movies: nil, tv: PutioFolderRef(id: 60, path: "TV Series"), seasonFolders: true)
+            .displayPath(kind: .tv, title: "AC/DC: Live", season: 1) == "TV Series/AC-DC: Live/Season 1")
     }
 
     @Test func pollTracksProgressThenCompletes() async throws {

@@ -33,6 +33,7 @@ enum Route: Hashable {
     case chart(IMDbChart)
     case person(Int)
     case collection(Int)
+    case myList
 }
 
 struct NextEpisode: Hashable {
@@ -102,6 +103,7 @@ final class Router {
     func open(_ chart: IMDbChart) { push(.chart(chart)) }
     func openPerson(_ id: Int) { push(.person(id)) }
     func openCollection(_ id: Int) { push(.collection(id)) }
+    func openMyList() { push(.myList) }
 
     private func push(_ route: Route) {
         switch tab {

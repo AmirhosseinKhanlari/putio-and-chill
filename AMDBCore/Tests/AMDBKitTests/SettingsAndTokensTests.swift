@@ -19,6 +19,19 @@ import Testing
         #expect(AppSettings.load(from: defaults) == settings)
     }
 
+    @Test func subtitleStyleRoundTripsAndToleratesUnknownValues() throws {
+        let defaults = testDefaults()
+        var settings = AppSettings.defaults
+        settings.subtitleStyle = SubtitleStyle(size: .large, background: .solid, color: .yellow, typeface: .rounded)
+        settings.save(to: defaults)
+        #expect(AppSettings.load(from: defaults).subtitleStyle == settings.subtitleStyle)
+
+        let odd = #"{"size":"huge","background":"none","color":"white"}"#
+        let decoded = try JSONDecoder().decode(SubtitleStyle.self, from: Data(odd.utf8))
+        #expect(decoded == SubtitleStyle(size: .medium, background: .none, color: .white, typeface: .standard))
+        #expect(AppSettings.defaults.subtitleStyle == .standard)
+    }
+
     @Test func loadAddsNewlyIntroducedSources() {
         let defaults = testDefaults()
         var settings = AppSettings.defaults

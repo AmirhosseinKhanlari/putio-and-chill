@@ -15,6 +15,7 @@ extension LibraryFilter {
 
 struct LibraryView: View {
     @Environment(AppModel.self) private var app
+    @Environment(Router.self) private var router
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var filter: LibraryFilter = .all
 
@@ -23,12 +24,33 @@ struct LibraryView: View {
         let width = Metrics.poster(sizeClass)
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 22) {
-                Text("Library").font(.system(size: sizeClass == .compact ? 34 : 48, weight: .ultraLight)).tracking(3)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Library").font(.system(size: sizeClass == .compact ? 34 : 48, weight: .ultraLight)).tracking(3)
+                    LibraryFreshness()
+                }
                 StorageMeter()
                 if !app.downloads.records.isEmpty {
                     Text("On this device").font(.title3.weight(.semibold))
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) { ForEach(app.downloads.records) { DownloadCard(record: $0) } }
+                    }
+                }
+                if !app.myList.items.isEmpty {
+                    HStack {
+                        Text("My List").font(.title3.weight(.semibold))
+                        Spacer()
+                        Button("See all") { router.openMyList() }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.75))
+                            .accessibilityLabel("See all My List")
+                    }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(app.myList.items.map(\.catalogItem)) { item in
+                                Button { router.open(item) } label: { PosterCard(item: item, width: width * 0.8) }
+                                    .buttonStyle(.lift)
+                            }
+                        }
                     }
                 }
                 if !app.transfers.tracked.isEmpty {
@@ -199,5 +221,30 @@ private struct DownloadCard: View {
         case .done: "Available offline"
         case let .failed(message): "Failed: \(message)"
         }
+    }
+}
+
+/// "Updated 12 min ago" / "Updating from put.io…" under the Library title.
+struct LibraryFreshness: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            HStack(spacing: 6) {
+                if app.library.isRefreshing {
+                    ProgressView().controlSize(.mini).tint(.white)
+                    Text("Updating from put.io…")
+                } else if let updated = app.library.lastUpdated {
+                    Image(systemName: "checkmark.icloud")
+                    Text("Updated \(Self.relative(updated, now: context.date))")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.white.opacity(0.6))
+        }
+    }
+
+    static func relative(_ date: Date, now: Date) -> String {
+        now.timeIntervalSince(date) < 60 ? "just now" : RelativeDateTimeFormatter().localizedString(for: date, relativeTo: now)
     }
 }

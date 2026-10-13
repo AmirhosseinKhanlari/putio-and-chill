@@ -8,8 +8,13 @@ enum BackgroundRefresh {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: .main) { task in
             nonisolated(unsafe) let task = task
             MainActor.assumeIsolated {
-                schedule()
-                let work = Task { await model.transfers.pollOnce() }
+                schedule(every: model.settings.libraryUpdateMinutes)
+                let work = Task {
+                    await model.transfers.pollOnce()
+                    // Keeps the cached library fresh, so the next launch shows new files right away.
+                    await model.library.loadCached()
+                    await model.refreshLibraryIfDue()
+                }
                 task.expirationHandler = { work.cancel() }
                 Task {
                     await work.value
@@ -19,9 +24,10 @@ enum BackgroundRefresh {
         }
     }
 
-    static func schedule() {
+    /// iOS decides the actual time; transfers want frequent checks, the library its own interval.
+    static func schedule(every libraryMinutes: Int = 60) {
         let request = BGAppRefreshTaskRequest(identifier: identifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 5 * 60)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: Double(min(libraryMinutes, 15)) * 60)
         try? BGTaskScheduler.shared.submit(request)
     }
 }

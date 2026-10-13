@@ -116,7 +116,7 @@ private struct TitleHeader: View {
 
     @ViewBuilder private var secondaryActions: some View {
         let detail = model?.detail
-        if detail != nil { MyListButton(item: item, iconOnly: true) }
+        if detail != nil { MyListButton(item: item) }
         if detail?.imdbID != nil || detail?.trailerYouTubeKey != nil {
             Button { Task { await playTrailer() } } label: {
                 if loadingTrailer {
@@ -137,7 +137,7 @@ private struct TitleHeader: View {
         loadingTrailer = true
         defer { loadingTrailer = false }
         if let imdbID = detail.imdbID, let video = await app.trailer(imdbID: imdbID) {
-            TrailerPlayer.present(video.url)
+            TrailerPlayer.present(video.url, title: item.title)
         } else if let key = detail.trailerYouTubeKey {
             youtubeFallback = TrailerKey(key: key)
         }

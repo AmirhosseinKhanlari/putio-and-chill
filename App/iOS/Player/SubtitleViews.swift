@@ -2,71 +2,62 @@ import AMDBCore
 import AMDBKit
 import SwiftUI
 
-/// The line currently on screen; updated by the player's time observer.
-@Observable @MainActor
-final class SubtitleLine {
-    var text: String?
-    /// Where the picture is drawn inside the player (letterboxing excluded), so text sits on the video.
-    var videoBounds: CGRect = .zero
-}
-
-/// OpenSubtitles text drawn over the video (inside AVKit's content overlay, below its controls).
+/// Subtitles drawn on the picture (put.io or OpenSubtitles, picked in the subtitles menu).
+/// Sits near the bottom of the video and moves up while the controls are showing.
 struct SubtitleOverlayView: View {
-    let line: SubtitleLine
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    let finder: SubtitleFinder
+    let engine: PlayerEngine
+    let videoRect: CGRect
+    var style: SubtitleStyle = .standard
+    /// Distance to keep clear of the screen bottom (the control bar), 0 when controls are hidden.
+    let liftedBy: CGFloat
 
     var body: some View {
         GeometryReader { proxy in
-            let video = line.videoBounds.isEmpty ? CGRect(origin: .zero, size: proxy.size) : line.videoBounds
-            let compact = video.height < 400
+            let compact = videoRect.height < 400
             VStack {
                 Spacer()
-                if let text = line.text {
-                    Text(text)
-                        .font(.system(size: compact ? 15 : (sizeClass == .compact ? 18 : 26), weight: .semibold))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.white)
-                        .shadow(color: .black, radius: 2)
-                        .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 6))
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, max(proxy.size.height - video.maxY, 0) + video.height * 0.06)
+                if let text = finder.text(at: engine.position) {
+                    StyledSubtitleText(text: text, style: style, compact: compact)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, max(proxy.size.height - videoRect.maxY + videoRect.height * 0.06, liftedBy))
+                        .animation(.easeInOut(duration: 0.2), value: liftedBy)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .ignoresSafeArea()
         .allowsHitTesting(false)
-    }
-}
-
-/// Floating "Subtitles" button shown alongside AVKit's controls.
-struct SubtitlesButton: View {
-    let active: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: active ? "captions.bubble.fill" : "captions.bubble")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(.white)
-                .frame(width: 48, height: 48)
-                .glassCapsule()
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Subtitles")
     }
 }
 
 /// The one subtitles menu: off, put.io's tracks, or an OpenSubtitles search; plus timing for what's showing.
 struct SubtitleSheet: View {
     let finder: SubtitleFinder
+    var engine: PlayerEngine?
+    var style: Binding<SubtitleStyle>?
     let onPicked: () -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
+                if let engine, engine.audioOptions.count > 1 {
+                    Section("Audio") {
+                        ForEach(engine.audioOptions, id: \.self) { option in
+                            Button { engine.selectAudio(option) } label: {
+                                HStack {
+                                    Text(option.displayName).foregroundStyle(.primary)
+                                    Spacer()
+                                    if engine.currentAudio == option {
+                                        Image(systemName: "checkmark").foregroundStyle(Theme.good).fontWeight(.semibold)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
                 if let choice = finder.choice, !choice.isOff, finder.isShowing {
                     Section("Showing") {
                         VStack(alignment: .leading, spacing: 4) {
@@ -97,6 +88,11 @@ struct SubtitleSheet: View {
                 }
 
                 Section {
+                    if let style {
+                        NavigationLink { SubtitleStyleEditor(style: style) } label: {
+                            LabeledContent("Style", value: Self.summary(style.wrappedValue))
+                        }
+                    }
                     Button { Task { await finder.turnOff(); onPicked() } } label: {
                         HStack {
                             Text("Off").foregroundStyle(.primary)
@@ -161,7 +157,7 @@ struct SubtitleSheet: View {
                     } header: { Text("OpenSubtitles") }
                 }
             }
-            .navigationTitle("Subtitles")
+            .navigationTitle((engine?.audioOptions.count ?? 0) > 1 ? "Audio & Subtitles" : "Subtitles")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
@@ -193,6 +189,12 @@ struct SubtitleSheet: View {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    static func summary(_ style: SubtitleStyle) -> String {
+        let size = ["small": "Small", "medium": "Medium", "large": "Large", "extraLarge": "Extra large"][style.size.rawValue] ?? ""
+        let background = ["none": "no box", "translucent": "see-through box", "solid": "solid box"][style.background.rawValue] ?? ""
+        return "\(size), \(background)"
     }
 
     private func putioRow(_ track: PutioSubtitle) -> some View {

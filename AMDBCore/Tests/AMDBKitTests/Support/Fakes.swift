@@ -66,6 +66,22 @@ final class FakePutio: PutioService, @unchecked Sendable {
         return folder
     }
 
+    private(set) var moved: [(ids: [Int64], parent: Int64)] = []
+    func moveFiles(ids: [Int64], to parentID: Int64) async throws {
+        lock.withLock {
+            moved.append((ids, parentID))
+            for id in ids {
+                guard let file = filesByID[id] else { continue }
+                for key in children.keys { children[key]?.removeAll { $0.id == id } }
+                let movedFile = PutioFile(id: file.id, name: file.name, fileType: file.fileType, contentType: file.contentType,
+                                          size: file.size, parentId: parentID, createdAt: file.createdAt, updatedAt: file.updatedAt,
+                                          startFrom: file.startFrom)
+                filesByID[id] = movedFile
+                children[parentID, default: []].append(movedFile)
+            }
+        }
+    }
+
     private(set) var deleted: [Int64] = []
     func deleteFiles(ids: [Int64]) async throws {
         lock.withLock {

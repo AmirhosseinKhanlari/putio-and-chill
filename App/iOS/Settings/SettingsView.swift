@@ -22,6 +22,8 @@ struct SettingsView: View {
     @State private var subtitlesPassword = ""
     @State private var subtitlesStatus: String?
     @State private var signingIn = false
+    @State private var libraryStatus: String?
+    @State private var organizing = false
 
     private var openSubtitlesSection: some View {
         Section {
@@ -153,6 +155,9 @@ struct SettingsView: View {
                         Text("Off").tag(String?.none)
                         ForEach(Self.languages, id: \.code) { Text($0.name).tag(String?.some($0.code)) }
                     }
+                    NavigationLink { SubtitleStyleEditor(style: $draft.subtitleStyle) } label: {
+                        LabeledContent("Subtitle style", value: SubtitleSheet.summary(draft.subtitleStyle))
+                    }
                 } header: {
                     Text("Playback")
                 } footer: {
@@ -173,6 +178,62 @@ struct SettingsView: View {
                     Text("Storage")
                 } footer: {
                     Text("Only movies you watched to the end in AMDB are deleted from put.io, never shows or unwatched files. You'll see the list before the first cleanup. Data saver keeps offline downloads small (about 1 GB per hour).")
+                }
+
+                Section {
+                    NavigationLink {
+                        PutioFolderPicker(title: "Movies Folder", defaultPath: "AMDB/Movies", selection: $draft.moviesFolder)
+                    } label: {
+                        LabeledContent("Movies", value: draft.moviesFolder?.path ?? "AMDB/Movies")
+                    }
+                    NavigationLink {
+                        PutioFolderPicker(title: "TV Folder", defaultPath: "AMDB/TV", selection: $draft.tvFolder)
+                    } label: {
+                        LabeledContent("TV shows", value: draft.tvFolder?.path ?? "AMDB/TV")
+                    }
+                    Toggle("Season folders", isOn: $draft.seasonFolders)
+                    Button("Organize library…") { organizing = true }
+                        .disabled(app.putio == nil || app.library.entries.isEmpty)
+                } header: {
+                    Text("put.io Folders")
+                } footer: {
+                    Text("New downloads go to \(FolderLayout(settings: draft).displayPath(kind: .movie, title: "", season: nil)) and \(FolderLayout(settings: draft).displayPath(kind: .tv, title: "Show", season: draft.seasonFolders ? 1 : nil)). Organize library moves files you added elsewhere into these folders; you'll see the list first.")
+                }
+
+                Section {
+                    Toggle("Update automatically", isOn: $draft.libraryAutoUpdate)
+                    if draft.libraryAutoUpdate {
+                        Picker("Check put.io every", selection: $draft.libraryUpdateMinutes) {
+                            Text("15 minutes").tag(15)
+                            Text("30 minutes").tag(30)
+                            Text("Hour").tag(60)
+                            Text("6 hours").tag(360)
+                            Text("Day").tag(1440)
+                        }
+                    }
+                    Button {
+                        Task {
+                            libraryStatus = "Updating…"
+                            let before = app.library.entries.count
+                            await app.refreshLibraryIfDue(force: true)
+                            let difference = app.library.entries.count - before
+                            libraryStatus = app.library.lastError != nil ? "Couldn't reach put.io."
+                                : difference > 0 ? "Updated · \(difference) new" : "Up to date"
+                        }
+                    } label: {
+                        HStack {
+                            Text("Update now")
+                            Spacer()
+                            if app.library.isRefreshing { ProgressView() }
+                        }
+                    }
+                    .disabled(app.library.isRefreshing || app.putio == nil)
+                    LabeledContent("Last updated", value: libraryStatus ?? app.library.lastUpdated
+                        .map { LibraryFreshness.relative($0, now: .now).capitalizedFirst } ?? "Never")
+                } header: {
+                    Text("Library")
+                } footer: {
+                    Text("Your put.io library is saved on this device so the app opens instantly. With automatic updates on, it checks put.io at this interval while the app is open and now and then in the background, and tells you when something new arrives.")
                 }
 
                 Section {
@@ -220,6 +281,11 @@ struct SettingsView: View {
                 username = try? await app.putio?.accountInfo().username
             }
             .sheet(isPresented: $showChill) { ChillConnectView() }
+            .sheet(isPresented: $organizing) { OrganizeSheet(layout: FolderLayout(settings: draft)) }
         }
     }
+}
+
+private extension String {
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

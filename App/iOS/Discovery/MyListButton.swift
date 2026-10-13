@@ -2,7 +2,7 @@ import AMDBCore
 import AMDBKit
 import SwiftUI
 
-/// ＋ / ✓ My List toggle. `iconOnly` for tight spots like the hero.
+/// "＋ My List" / "✓ In My List" toggle (saves the title to the My List row on Home). `iconOnly` for tight spots.
 struct MyListButton: View {
     let item: CatalogItem
     var iconOnly = false
@@ -16,7 +16,7 @@ struct MyListButton: View {
             if iconOnly {
                 Image(systemName: saved ? "checkmark" : "plus").font(.headline).frame(width: 22, height: 22)
             } else {
-                Label("My List", systemImage: saved ? "checkmark" : "plus")
+                Label(saved ? "In My List" : "My List", systemImage: saved ? "checkmark" : "plus")
             }
         }
         .buttonStyle(.glassPill)

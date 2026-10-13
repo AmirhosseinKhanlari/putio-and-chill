@@ -21,6 +21,45 @@ public struct SmartGetRule: Codable, Sendable, Equatable, Hashable {
     public static let recommended = SmartGetRule(resolution: 1080, maxSizeGB: 10)
 }
 
+/// A put.io folder picked by the user, with its path for display ("Media/Movies").
+public struct PutioFolderRef: Codable, Sendable, Hashable {
+    public var id: Int64
+    public var path: String
+
+    public init(id: Int64, path: String) { self.id = id; self.path = path }
+}
+
+/// How the app draws subtitles: size, background box, text color and typeface.
+public struct SubtitleStyle: Codable, Sendable, Hashable {
+    public enum Size: String, Codable, Sendable, CaseIterable { case small, medium, large, extraLarge }
+    public enum Background: String, Codable, Sendable, CaseIterable { case none, translucent, solid }
+    public enum TextColor: String, Codable, Sendable, CaseIterable { case white, yellow, cyan, green }
+    public enum Typeface: String, Codable, Sendable, CaseIterable { case standard, rounded, serif, monospaced }
+
+    public var size: Size
+    public var background: Background
+    public var color: TextColor
+    public var typeface: Typeface
+
+    public init(size: Size = .medium, background: Background = .translucent, color: TextColor = .white,
+                typeface: Typeface = .standard) {
+        self.size = size; self.background = background; self.color = color; self.typeface = typeface
+    }
+
+    public static let standard = SubtitleStyle()
+
+    /// Unknown or missing values fall back to the defaults.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        size = (try? c.decodeIfPresent(Size.self, forKey: .size)) ?? .medium
+        background = (try? c.decodeIfPresent(Background.self, forKey: .background)) ?? .translucent
+        color = (try? c.decodeIfPresent(TextColor.self, forKey: .color)) ?? .white
+        typeface = (try? c.decodeIfPresent(Typeface.self, forKey: .typeface)) ?? .standard
+    }
+
+    enum CodingKeys: String, CodingKey { case size, background, color, typeface }
+}
+
 public struct AppSettings: Codable, Sendable, Equatable {
     public var sources: [SourceConfig]
     /// Resolution raw value (2160, 1080, 720, 480) preselected in the Versions sheet; nil means "All".
@@ -39,6 +78,16 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var autoCleanConfirmed = false
     /// Offline downloads: highest quality, or a smaller data-saver stream.
     public var downloadDataSaver = false
+    public var subtitleStyle = SubtitleStyle.standard
+    /// Keep the put.io library up to date on its own (while open, and in the background).
+    public var libraryAutoUpdate = true
+    /// How often the automatic library update runs.
+    public var libraryUpdateMinutes = 60
+    /// Where movies and shows are saved in put.io; nil = AMDB/Movies and AMDB/TV.
+    public var moviesFolder: PutioFolderRef?
+    public var tvFolder: PutioFolderRef?
+    /// Episodes go into "Season N" folders inside the show's folder.
+    public var seasonFolders = true
 
     public init(sources: [SourceConfig], defaultResolution: Int?, autoPlayCountdown: Bool) {
         self.sources = sources; self.defaultResolution = defaultResolution; self.autoPlayCountdown = autoPlayCountdown
@@ -46,7 +95,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case sources, defaultResolution, autoPlayCountdown, autoPlayNextEpisode, oneTapGet, smartGet, audioLanguage, subtitleLanguage
-        case autoCleanDays, autoCleanConfirmed, downloadDataSaver
+        case autoCleanDays, autoCleanConfirmed, downloadDataSaver, subtitleStyle, libraryAutoUpdate, libraryUpdateMinutes
+        case moviesFolder, tvFolder, seasonFolders
     }
 
     /// Settings saved by older versions keep their values and pick up defaults for new options.
@@ -63,6 +113,12 @@ public struct AppSettings: Codable, Sendable, Equatable {
         autoCleanDays = try c.decodeIfPresent(Int.self, forKey: .autoCleanDays)
         autoCleanConfirmed = try c.decodeIfPresent(Bool.self, forKey: .autoCleanConfirmed) ?? false
         downloadDataSaver = try c.decodeIfPresent(Bool.self, forKey: .downloadDataSaver) ?? false
+        subtitleStyle = (try? c.decodeIfPresent(SubtitleStyle.self, forKey: .subtitleStyle)) ?? .standard
+        libraryAutoUpdate = try c.decodeIfPresent(Bool.self, forKey: .libraryAutoUpdate) ?? true
+        libraryUpdateMinutes = max(try c.decodeIfPresent(Int.self, forKey: .libraryUpdateMinutes) ?? 60, 5)
+        moviesFolder = try? c.decodeIfPresent(PutioFolderRef.self, forKey: .moviesFolder)
+        tvFolder = try? c.decodeIfPresent(PutioFolderRef.self, forKey: .tvFolder)
+        seasonFolders = try c.decodeIfPresent(Bool.self, forKey: .seasonFolders) ?? true
     }
 
     public static let defaults = AppSettings(sources: [

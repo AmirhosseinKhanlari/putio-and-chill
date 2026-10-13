@@ -44,7 +44,7 @@ public struct PutioTransfer: Decodable, Sendable, Equatable, Identifiable {
     }
 }
 
-public struct PutioFile: Decodable, Sendable, Hashable, Identifiable {
+public struct PutioFile: Codable, Sendable, Hashable, Identifiable {
     public let id: Int64
     public let name: String
     public let fileType: String?

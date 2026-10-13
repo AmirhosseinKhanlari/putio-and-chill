@@ -47,14 +47,23 @@ struct MainView: View {
         .fullScreenCover(isPresented: $router.showSurprise) { SurprisePage() }
         .task {
             wireEvents()
+            // The saved library first, so Home and Library fill instantly; put.io is checked afterwards.
+            await app.library.loadCached()
             await app.myList.load()
             await app.downloads.load()
             downloader.restore()
             DemoMode.apply(to: router)
             await app.transfers.restore()
-            await app.library.refresh()
+            await app.refreshLibraryIfDue()
             await runAutoClean()
             await WidgetPublisher.publish(app.library)
+        }
+        .task {
+            // While the app is open, update the library whenever the chosen interval has passed.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                if UIApplication.shared.applicationState == .active { await app.refreshLibraryIfDue() }
+            }
         }
         .onChange(of: app.transfers.tracked) { _, tracked in liveActivities.sync(tracked) }
         .onChange(of: app.library.continueWatching.map(\.id)) { _, _ in Task { await WidgetPublisher.publish(app.library) } }
@@ -135,6 +144,17 @@ struct MainView: View {
     }
 
     private func wireEvents() {
+        app.library.onUpdated = { [router, app] change in
+            // The very first fetch isn't news; later ones say what changed.
+            guard change.added != app.library.entries.count else { return }
+            let message: String? = switch (change.added, change.removed) {
+            case (0, 0): nil
+            case let (added, 0): "Library updated · \(added) new"
+            case let (0, removed): "Library updated · \(removed) removed"
+            case let (added, removed): "Library updated · \(added) new, \(removed) removed"
+            }
+            if let message { withAnimation { router.toast = message } }
+        }
         app.transfers.onEvent = { [router, app] event in
             let active = UIApplication.shared.applicationState == .active
             switch event {
@@ -170,6 +190,7 @@ private struct TabStack: View {
                     case let .chart(chart): ChartPage(chart: chart)
                     case let .person(id): PersonPage(personID: id)
                     case let .collection(id): CollectionPage(collectionID: id)
+                    case .myList: MyListPage()
                     }
                 }
         }

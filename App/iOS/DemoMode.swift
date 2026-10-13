@@ -161,6 +161,7 @@ final class DemoPutio: PutioService, @unchecked Sendable {
         PutioAccount(username: "demo", disk: .init(avail: 640_000_000_000, size: 1_000_000_000_000, used: 360_000_000_000))
     }
     func deleteFiles(ids: [Int64]) async throws {}
+    func moveFiles(ids: [Int64], to parentID: Int64) async throws {}
 
     func addTransfer(url: String, saveParentID: Int64?) async throws -> PutioTransfer {
         let id = lock.withLock { () -> Int64 in

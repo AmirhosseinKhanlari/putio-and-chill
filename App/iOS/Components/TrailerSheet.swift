@@ -2,17 +2,19 @@ import AVKit
 import SafariServices
 import SwiftUI
 
-/// Plays an IMDb trailer in Apple's player, full screen — same experience as movies (PiP, AirPlay, scrubbing).
+/// Plays an IMDb trailer full screen in the app's own player — same controls as movies (AirPlay, PiP, scrubbing).
 @MainActor
 enum TrailerPlayer {
-    static func present(_ url: URL) {
+    static func present(_ url: URL, title: String = "Trailer") {
         guard let presenter = PlayerPresenter.topViewController() else { return }
-        let player = AVPlayer(url: url)
-        let controller = AVPlayerViewController()
-        controller.player = player
-        controller.allowsPictureInPicturePlayback = true
-        controller.modalPresentationStyle = .fullScreen
-        presenter.present(controller, animated: true) { player.play() }
+        let engine = PlayerEngine(url: url)
+        let chrome = PlayerChrome(title: title, subtitle: "Trailer")
+        let controller = PlayerViewController(engine: engine, chrome: chrome)
+        chrome.onClose = { [weak controller] in
+            engine.tearDown()
+            controller?.dismiss(animated: true)
+        }
+        presenter.present(controller, animated: true) { engine.play() }
     }
 }
 
