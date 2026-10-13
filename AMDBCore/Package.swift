@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "AMDBCore",
-    platforms: [.iOS(.v17), .macOS(.v14)],
+    platforms: [.iOS(.v17), .tvOS(.v17), .macOS(.v14)],
     products: [.library(name: "AMDBCore", targets: ["AMDBCore"])],
     targets: [
         .target(name: "AMDBCore"),
