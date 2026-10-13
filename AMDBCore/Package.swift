@@ -7,6 +7,7 @@ let package = Package(
     products: [.library(name: "AMDBCore", targets: ["AMDBCore"])],
     targets: [
         .target(name: "AMDBCore"),
+        .executableTarget(name: "amdb-spike", dependencies: ["AMDBCore"]),
         .testTarget(name: "AMDBCoreTests", dependencies: ["AMDBCore"]),
     ]
 )
