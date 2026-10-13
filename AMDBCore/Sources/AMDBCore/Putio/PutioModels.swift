@@ -4,6 +4,10 @@ public struct PutioAccount: Decodable, Sendable, Equatable {
     public let username: String
     public let mail: String?
     public let userId: Int64?
+
+    public init(username: String, mail: String? = nil, userId: Int64? = nil) {
+        self.username = username; self.mail = mail; self.userId = userId
+    }
 }
 
 public struct PutioTransfer: Decodable, Sendable, Equatable, Identifiable {
@@ -39,8 +43,17 @@ public struct PutioFile: Decodable, Sendable, Equatable, Identifiable {
     public let parentId: Int64?
     public let createdAt: String?
     public let updatedAt: String?
+    public let firstAccessedAt: String?
     public let startFrom: Int?
     public let screenshot: String?
+
+    public init(id: Int64, name: String, fileType: String? = nil, contentType: String? = nil, size: Int64? = nil,
+                parentId: Int64? = nil, createdAt: String? = nil, updatedAt: String? = nil,
+                firstAccessedAt: String? = nil, startFrom: Int? = nil, screenshot: String? = nil) {
+        self.id = id; self.name = name; self.fileType = fileType; self.contentType = contentType; self.size = size
+        self.parentId = parentId; self.createdAt = createdAt; self.updatedAt = updatedAt
+        self.firstAccessedAt = firstAccessedAt; self.startFrom = startFrom; self.screenshot = screenshot
+    }
 
     public var isFolder: Bool { fileType == "FOLDER" }
     public var isVideo: Bool { fileType == "VIDEO" }
@@ -49,6 +62,8 @@ public struct PutioFile: Decodable, Sendable, Equatable, Identifiable {
 public struct PutioFileList: Decodable, Sendable, Equatable {
     public let parent: PutioFile?
     public let files: [PutioFile]
+
+    public init(parent: PutioFile?, files: [PutioFile]) { self.parent = parent; self.files = files }
 }
 
 public struct PutioSubtitle: Decodable, Sendable, Equatable {

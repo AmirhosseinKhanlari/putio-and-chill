@@ -7,15 +7,22 @@ public protocol CatalogSearching: Sendable {
 
 extension CatalogClient: CatalogSearching {}
 
-public struct LibraryMatch: Sendable, Equatable, Hashable {
+public struct LibraryMatch: Sendable, Equatable, Hashable, Codable {
     public let tmdbID: Int
     public let mediaType: MediaKind
     public let season: Int?
     public let episode: Int?
     public let confidence: Double
+    public let title: String
+    public let year: Int?
+    public let posterPath: String?
+    public let backdropPath: String?
 
-    public init(tmdbID: Int, mediaType: MediaKind, season: Int?, episode: Int?, confidence: Double) {
-        self.tmdbID = tmdbID; self.mediaType = mediaType; self.season = season; self.episode = episode; self.confidence = confidence
+    public init(tmdbID: Int, mediaType: MediaKind, season: Int?, episode: Int?, confidence: Double,
+                title: String = "", year: Int? = nil, posterPath: String? = nil, backdropPath: String? = nil) {
+        self.tmdbID = tmdbID; self.mediaType = mediaType; self.season = season; self.episode = episode
+        self.confidence = confidence; self.title = title; self.year = year
+        self.posterPath = posterPath; self.backdropPath = backdropPath
     }
 }
 
@@ -33,7 +40,9 @@ public struct LibraryMatcher: Sendable {
             : try await catalog.searchMovie(title: parsed.title, year: parsed.year)
         guard let best = Self.pick(results, title: parsed.title, year: isTV ? nil : parsed.year) else { return nil }
         return LibraryMatch(tmdbID: best.item.tmdbID, mediaType: isTV ? .tv : .movie,
-                            season: parsed.season, episode: parsed.episode, confidence: best.confidence)
+                            season: parsed.season, episode: parsed.episode, confidence: best.confidence,
+                            title: best.item.title, year: best.item.year,
+                            posterPath: best.item.posterPath, backdropPath: best.item.backdropPath)
     }
 
     public static func normalize(_ text: String) -> String {

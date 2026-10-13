@@ -21,7 +21,8 @@ func item(_ id: Int, _ title: String, _ year: Int?, kind: MediaKind = .movie) ->
     @Test func exactTitleAndYear() async throws {
         let catalog = FakeCatalog(movies: [item(1, "Dune", 1984), item(2, "Dune: Part Two", 2024)])
         let match = try await LibraryMatcher(catalog: catalog).match(fileName: "Dune.Part.Two.2024.1080p.WEB.h264-ETHEL.mkv")
-        #expect(match == LibraryMatch(tmdbID: 2, mediaType: .movie, season: nil, episode: nil, confidence: 1.0))
+        #expect(match == LibraryMatch(tmdbID: 2, mediaType: .movie, season: nil, episode: nil, confidence: 1.0,
+                                      title: "Dune: Part Two", year: 2024))
     }
 
     @Test func tvEpisodeWithDiacritics() async throws {
@@ -49,5 +50,12 @@ func item(_ id: Int, _ title: String, _ year: Int?, kind: MediaKind = .movie) ->
         #expect(LibraryMatcher.normalize("Shōgun") == "shogun")
         #expect(LibraryMatcher.normalize("Dune: Part Two") == "duneparttwo")
         #expect(LibraryMatcher.normalize("Fast & Furious") == "fastandfurious")
+    }
+
+    @Test func libraryMatchIsCodable() throws {
+        let match = LibraryMatch(tmdbID: 7, mediaType: .tv, season: 1, episode: 2, confidence: 0.7,
+                                 title: "Show", year: 2020, posterPath: "/p.jpg", backdropPath: nil)
+        let data = try JSONEncoder().encode(match)
+        #expect(try JSONDecoder().decode(LibraryMatch.self, from: data) == match)
     }
 }

@@ -17,6 +17,14 @@ public struct CatalogItem: Sendable, Hashable, Identifiable, Decodable {
 
     public var id: String { "\(mediaType.rawValue)-\(tmdbID)" }
 
+    public init(tmdbID: Int, mediaType: MediaKind, title: String, overview: String = "", posterPath: String? = nil,
+                backdropPath: String? = nil, profilePath: String? = nil, year: Int? = nil, voteAverage: Double? = nil,
+                genreIDs: [Int] = [], knownFor: [CatalogItem] = []) {
+        self.tmdbID = tmdbID; self.mediaType = mediaType; self.title = title; self.overview = overview
+        self.posterPath = posterPath; self.backdropPath = backdropPath; self.profilePath = profilePath
+        self.year = year; self.voteAverage = voteAverage; self.genreIDs = genreIDs; self.knownFor = knownFor
+    }
+
     // Keys are camelCase because decoding uses .convertFromSnakeCase.
     enum CodingKeys: String, CodingKey {
         case id, mediaType, title, name, overview, posterPath, backdropPath, profilePath
@@ -42,8 +50,26 @@ public struct CatalogItem: Sendable, Hashable, Identifiable, Decodable {
     }
 }
 
-public struct CastMember: Sendable, Hashable { public let name: String; public let character: String?; public let profilePath: String? }
-public struct SeasonSummary: Sendable, Hashable { public let number: Int; public let name: String; public let episodeCount: Int; public let posterPath: String? }
+public struct CastMember: Sendable, Hashable {
+    public let name: String
+    public let character: String?
+    public let profilePath: String?
+
+    public init(name: String, character: String?, profilePath: String?) {
+        self.name = name; self.character = character; self.profilePath = profilePath
+    }
+}
+
+public struct SeasonSummary: Sendable, Hashable {
+    public let number: Int
+    public let name: String
+    public let episodeCount: Int
+    public let posterPath: String?
+
+    public init(number: Int, name: String, episodeCount: Int, posterPath: String?) {
+        self.number = number; self.name = name; self.episodeCount = episodeCount; self.posterPath = posterPath
+    }
+}
 public struct Episode: Sendable, Hashable, Identifiable {
     public let number: Int
     public let name: String
@@ -52,6 +78,12 @@ public struct Episode: Sendable, Hashable, Identifiable {
     public let runtimeMinutes: Int?
     public let airDate: String?
     public var id: Int { number }
+
+    public init(number: Int, name: String, overview: String = "", stillPath: String? = nil,
+                runtimeMinutes: Int? = nil, airDate: String? = nil) {
+        self.number = number; self.name = name; self.overview = overview; self.stillPath = stillPath
+        self.runtimeMinutes = runtimeMinutes; self.airDate = airDate
+    }
 }
 
 public struct TitleDetail: Sendable, Equatable {
@@ -64,6 +96,14 @@ public struct TitleDetail: Sendable, Equatable {
     public let logoPath: String?
     public let recommendations: [CatalogItem]
     public let seasons: [SeasonSummary]
+
+    public init(item: CatalogItem, imdbID: String?, runtimeMinutes: Int? = nil, genres: [String] = [],
+                cast: [CastMember] = [], trailerYouTubeKey: String? = nil, logoPath: String? = nil,
+                recommendations: [CatalogItem] = [], seasons: [SeasonSummary] = []) {
+        self.item = item; self.imdbID = imdbID; self.runtimeMinutes = runtimeMinutes; self.genres = genres
+        self.cast = cast; self.trailerYouTubeKey = trailerYouTubeKey; self.logoPath = logoPath
+        self.recommendations = recommendations; self.seasons = seasons
+    }
 }
 
 struct DetailRaw: Decodable {
