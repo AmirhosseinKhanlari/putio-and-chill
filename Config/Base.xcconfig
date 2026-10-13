@@ -1,4 +1,5 @@
 // Shared build settings. Secrets live in Secrets.xcconfig (gitignored); copy Secrets.example.xcconfig to create it.
 TMDB_READ_TOKEN =
 TRAKT_CLIENT_ID =
+OPENSUBTITLES_API_KEY =
 #include? "Secrets.xcconfig"

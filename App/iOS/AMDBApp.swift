@@ -20,7 +20,9 @@ struct AMDBApp: App {
             : AppModel(tokens: KeychainTokenStore(), store: LocalStore(fileURL: LocalStore.defaultURL()),
                        bundledTMDBToken: Bundle.main.object(forInfoDictionaryKey: "TMDBReadToken") as? String,
                        ratingsCache: RatingsCache(fileURL: RatingsCache.defaultURL()),
-                       bundledTraktClientID: Bundle.main.object(forInfoDictionaryKey: "TraktClientID") as? String)
+                       bundledTraktClientID: Bundle.main.object(forInfoDictionaryKey: "TraktClientID") as? String,
+                       bundledOpenSubtitlesKey: Bundle.main.object(forInfoDictionaryKey: "OpenSubtitlesAPIKey") as? String,
+                       subtitleCache: SubtitleFileCache(directory: SubtitleFileCache.defaultDirectory()))
         _model = State(initialValue: model)
         _downloader = State(initialValue: OfflineDownloader(app: model))
         let router = Router()

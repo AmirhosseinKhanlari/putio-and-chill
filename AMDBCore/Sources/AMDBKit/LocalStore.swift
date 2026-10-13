@@ -94,10 +94,12 @@ public struct LocalState: Codable, Sendable, Equatable {
     public var myList: [SavedTitle] = []
     public var finished: [FinishedFile] = []
     public var downloads: [DownloadRecord] = []
+    /// OpenSubtitles pick per put.io file ID.
+    public var subtitleChoices: [Int64: SubtitleChoice] = [:]
     public init() {}
 
     enum CodingKeys: String, CodingKey {
-        case matches, unmatched, pending, recentSearches, lastPlayed, folderIDs, myList, finished, downloads
+        case matches, unmatched, pending, recentSearches, lastPlayed, folderIDs, myList, finished, downloads, subtitleChoices
     }
 
     /// Every field is optional on disk, so files written by older versions keep loading.
@@ -112,6 +114,7 @@ public struct LocalState: Codable, Sendable, Equatable {
         myList = try c.decodeIfPresent([SavedTitle].self, forKey: .myList) ?? []
         finished = try c.decodeIfPresent([FinishedFile].self, forKey: .finished) ?? []
         downloads = try c.decodeIfPresent([DownloadRecord].self, forKey: .downloads) ?? []
+        subtitleChoices = try c.decodeIfPresent([Int64: SubtitleChoice].self, forKey: .subtitleChoices) ?? [:]
     }
 }
 

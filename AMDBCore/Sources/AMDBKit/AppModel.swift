@@ -10,6 +10,7 @@ public struct ServiceFactory: Sendable {
     public var makeCharts: @Sendable (String) -> any ChartsService
     public var trailers: any TrailerService
     public var episodeRatings: any EpisodeRatingsService
+    public var makeSubtitles: @Sendable (String) -> any SubtitleService
 
     public init(makePutio: @escaping @Sendable (String) -> any PutioService,
                 makeCatalog: @escaping @Sendable (String) -> any CatalogService,
@@ -21,7 +22,10 @@ public struct ServiceFactory: Sendable {
                     TraktClient(clientID: $0, transport: URLSessionTransport())
                 },
                 trailers: any TrailerService = IMDbTrailerClient(transport: URLSessionTransport()),
-                episodeRatings: any EpisodeRatingsService = IMDbEpisodeRatingsClient(transport: URLSessionTransport())) {
+                episodeRatings: any EpisodeRatingsService = IMDbEpisodeRatingsClient(transport: URLSessionTransport()),
+                makeSubtitles: @escaping @Sendable (String) -> any SubtitleService = {
+                    OpenSubtitlesClient(apiKey: $0, transport: URLSessionTransport())
+                }) {
         self.makePutio = makePutio
         self.makeCatalog = makeCatalog
         self.makeProvider = makeProvider
@@ -29,6 +33,7 @@ public struct ServiceFactory: Sendable {
         self.makeCharts = makeCharts
         self.trailers = trailers
         self.episodeRatings = episodeRatings
+        self.makeSubtitles = makeSubtitles
     }
 
     public static let live: ServiceFactory = {
@@ -51,7 +56,8 @@ public struct ServiceFactory: Sendable {
             makeRatings: { RatingsClient(apiKey: $0, transport: transport) },
             makeCharts: { TraktClient(clientID: $0, transport: transport) },
             trailers: IMDbTrailerClient(transport: transport),
-            episodeRatings: IMDbEpisodeRatingsClient(transport: transport))
+            episodeRatings: IMDbEpisodeRatingsClient(transport: transport),
+            makeSubtitles: { OpenSubtitlesClient(apiKey: $0, transport: transport) })
     }()
 }
 
@@ -62,6 +68,14 @@ public final class AppModel {
     public private(set) var settings: AppSettings
     public private(set) var hasChill = false
     public private(set) var hasRatings = false
+    /// OpenSubtitles search is available (built-in or user API key).
+    public private(set) var hasSubtitleSearch = false
+    /// True when the app ships an OpenSubtitles API key.
+    public let usesBundledOpenSubtitles: Bool
+    /// Signed-in OpenSubtitles username, if any.
+    public private(set) var openSubtitlesUser: String?
+    /// Account level and daily limit from the last sign-in this session.
+    public var openSubtitlesAccount: OpenSubtitlesLogin? { openSubtitlesLogin }
     /// True when the app ships a TMDB token, so users never have to enter one.
     public let usesBundledTMDB: Bool
     /// IMDb Top 250 charts are available (a Trakt client ID is built in).
@@ -82,10 +96,15 @@ public final class AppModel {
     @ObservationIgnored private let chartsService: (any ChartsService)?
     @ObservationIgnored private var chartCache: [IMDbChart: [ChartEntry]] = [:]
     @ObservationIgnored private var episodeRatingsCache: [String: [Int: EpisodeRating]] = [:]
+    @ObservationIgnored private var subtitleService: (any SubtitleService)?
+    @ObservationIgnored private let bundledOpenSubtitlesKey: String?
+    @ObservationIgnored private var openSubtitlesLogin: OpenSubtitlesLogin?
+    @ObservationIgnored private let subtitleCache: SubtitleFileCache
 
     public init(tokens: any TokenStore, defaults: UserDefaults = .standard, store: LocalStore, factory: ServiceFactory = .live,
                 bundledTMDBToken: String? = nil, ratingsCache: RatingsCache = RatingsCache(fileURL: nil),
-                bundledTraktClientID: String? = nil) {
+                bundledTraktClientID: String? = nil, bundledOpenSubtitlesKey: String? = nil,
+                subtitleCache: SubtitleFileCache = SubtitleFileCache(directory: nil)) {
         self.tokens = tokens
         self.userDefaults = defaults
         self.store = store
@@ -94,6 +113,10 @@ public final class AppModel {
         self.bundledTMDBToken = (bundled?.isEmpty ?? true) ? nil : bundled
         self.usesBundledTMDB = self.bundledTMDBToken != nil
         self.ratingsCache = ratingsCache
+        let subtitlesKey = bundledOpenSubtitlesKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.bundledOpenSubtitlesKey = (subtitlesKey?.isEmpty ?? true) ? nil : subtitlesKey
+        self.usesBundledOpenSubtitles = self.bundledOpenSubtitlesKey != nil
+        self.subtitleCache = subtitleCache
         let trakt = bundledTraktClientID?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.chartsService = (trakt?.isEmpty ?? true) ? nil : trakt.map(factory.makeCharts)
         settings = AppSettings.load(from: defaults)
@@ -181,6 +204,50 @@ public final class AppModel {
         return fetched
     }
 
+    /// Subtitle search for one video, wired to the signed-in OpenSubtitles account and the file's hash.
+    public func subtitleFinder(for context: SubtitleContext, fileSize: Int64?) -> SubtitleFinder {
+        let language = settings.subtitleLanguage ?? Locale.current.language.languageCode?.identifier ?? "en"
+        let putio = putio
+        let hasher: (@Sendable () async -> String?)? = putio.flatMap { putio in
+            guard let size = fileSize else { return nil }
+            return {
+                guard let url = try? await putio.originalURL(fileID: context.fileID) else { return nil }
+                return try? await OpenSubtitlesHash.compute(url: url, size: size, transport: URLSessionTransport())
+            }
+        }
+        return SubtitleFinder(context: context, service: subtitleService, store: store, cache: subtitleCache, language: language,
+                              signedIn: openSubtitlesUser != nil, session: { [weak self] in await self?.openSubtitlesSession() },
+                              hasher: hasher)
+    }
+
+    /// Signs in to OpenSubtitles and remembers the account in the Keychain.
+    public func signInToOpenSubtitles(username: String, password: String) async throws -> OpenSubtitlesLogin {
+        guard let subtitleService else { throw OpenSubtitlesError.badCredentials }
+        let login = try await subtitleService.login(username: username, password: password)
+        tokens.write(username, for: .opensubtitlesUsername)
+        tokens.write(password, for: .opensubtitlesPassword)
+        openSubtitlesUser = username
+        openSubtitlesLogin = login
+        return login
+    }
+
+    public func signOutOfOpenSubtitles() {
+        tokens.write(nil, for: .opensubtitlesUsername)
+        tokens.write(nil, for: .opensubtitlesPassword)
+        openSubtitlesUser = nil
+        openSubtitlesLogin = nil
+    }
+
+    /// Signed-in session for downloads; signs in again with the saved account when needed. Nil when signed out.
+    private func openSubtitlesSession() async -> OpenSubtitlesLogin? {
+        if let openSubtitlesLogin { return openSubtitlesLogin }
+        guard let subtitleService, let username = tokens.read(.opensubtitlesUsername),
+              let password = tokens.read(.opensubtitlesPassword),
+              let login = try? await subtitleService.login(username: username, password: password) else { return nil }
+        openSubtitlesLogin = login
+        return login
+    }
+
     public func notePlayed(_ title: PlayedTitle) async {
         await store.update { $0.lastPlayed = title }
     }
@@ -198,6 +265,10 @@ public final class AppModel {
         putio = tokens.read(.putio).map(factory.makePutio)
         catalog = (tokens.read(.tmdb) ?? bundledTMDBToken).map(factory.makeCatalog)
         ratingsService = tokens.read(.mdblist).map(factory.makeRatings)
+        subtitleService = (tokens.read(.opensubtitles) ?? bundledOpenSubtitlesKey).map(factory.makeSubtitles)
+        hasSubtitleSearch = subtitleService != nil
+        openSubtitlesUser = tokens.read(.opensubtitlesUsername)
+        openSubtitlesLogin = nil
         hasRatings = ratingsService != nil
         let chillToken = tokens.read(.chill)
         hasChill = chillToken != nil

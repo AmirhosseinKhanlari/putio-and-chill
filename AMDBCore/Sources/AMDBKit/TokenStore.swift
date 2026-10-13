@@ -3,6 +3,8 @@ import Security
 
 public enum TokenKey: String, CaseIterable, Sendable {
     case putio, tmdb, chill, mdblist
+    /// OpenSubtitles API key (overrides the built-in one) and optional account, which raises the daily download limit.
+    case opensubtitles, opensubtitlesUsername, opensubtitlesPassword
 
     /// TMDB, chill and MDBList tokens sync through iCloud Keychain so the Apple TV app can reuse them.
     var synchronizes: Bool { self != .putio }

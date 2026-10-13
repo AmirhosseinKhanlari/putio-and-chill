@@ -17,6 +17,68 @@ struct SettingsView: View {
     @State private var showChill = false
     @State private var tmdbDraft = ""
     @State private var mdblistDraft = ""
+    @State private var subtitlesKeyDraft = ""
+    @State private var subtitlesUser = ""
+    @State private var subtitlesPassword = ""
+    @State private var subtitlesStatus: String?
+    @State private var signingIn = false
+
+    private var openSubtitlesSection: some View {
+        Section {
+            LabeledContent("Search", value: app.hasSubtitleSearch ? (app.usesBundledOpenSubtitles ? "Built in" : "Connected") : "Not connected")
+            if !app.usesBundledOpenSubtitles {
+                if app.token(.opensubtitles) != nil {
+                    Button("Remove OpenSubtitles API key", role: .destructive) { app.setToken(nil, for: .opensubtitles) }
+                } else {
+                    HStack {
+                        SecureField("OpenSubtitles API key", text: $subtitlesKeyDraft)
+                        Button("Save") {
+                            app.setToken(subtitlesKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines), for: .opensubtitles)
+                            subtitlesKeyDraft = ""
+                        }
+                        .disabled(subtitlesKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+            }
+            if let user = app.openSubtitlesUser {
+                LabeledContent("Account", value: app.openSubtitlesAccount?.isVIP == true ? "\(user) · VIP" : user)
+                Button("Sign out of OpenSubtitles", role: .destructive) { app.signOutOfOpenSubtitles(); subtitlesStatus = nil }
+            } else if app.hasSubtitleSearch {
+                TextField("OpenSubtitles username", text: $subtitlesUser)
+                    .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
+                SecureField("Password", text: $subtitlesPassword).textContentType(.password)
+                Button {
+                    Task { await signInToOpenSubtitles() }
+                } label: {
+                    if signingIn { ProgressView() } else { Text("Sign in") }
+                }
+                .disabled(subtitlesUser.isEmpty || subtitlesPassword.isEmpty || signingIn)
+            }
+            if let subtitlesStatus { Text(subtitlesStatus).font(.footnote).foregroundStyle(.secondary) }
+        } header: {
+            Text("OpenSubtitles")
+        } footer: {
+            Text("In the player, the subtitles button searches OpenSubtitles when put.io's subtitles are missing or out of sync. "
+                 + "Without an account you get a few downloads a day; a free account gives 20, OpenSubtitles VIP about 1,000. "
+                 + (app.usesBundledOpenSubtitles ? "" : "Get an API key at opensubtitles.com → API consumers."))
+        }
+    }
+
+    private func signInToOpenSubtitles() async {
+        signingIn = true
+        defer { signingIn = false }
+        do {
+            let login = try await app.signInToOpenSubtitles(username: subtitlesUser.trimmingCharacters(in: .whitespaces),
+                                                            password: subtitlesPassword)
+            subtitlesPassword = ""
+            let level = login.isVIP ? "VIP" : "Free account"
+            subtitlesStatus = login.allowedDownloads.map { "Signed in (\(level)). \($0) downloads a day." } ?? "Signed in (\(level))."
+        } catch OpenSubtitlesError.badCredentials {
+            subtitlesStatus = "Wrong username or password."
+        } catch {
+            subtitlesStatus = "Couldn't reach OpenSubtitles. Try again."
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -96,6 +158,8 @@ struct SettingsView: View {
                 } footer: {
                     Text("Subtitles come from put.io. Choose which languages put.io fetches in put.io → Settings → Subtitles.")
                 }
+
+                openSubtitlesSection
 
                 Section {
                     Picker("Delete finished movies", selection: $draft.autoCleanDays) {

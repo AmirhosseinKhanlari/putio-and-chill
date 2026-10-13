@@ -47,7 +47,14 @@ struct PlayerRequest: Identifiable {
     let resumeFrom: Int
     let played: PlayedTitle?
     let next: NextEpisode?
+    var season: Int? = nil
+    var episode: Int? = nil
     var id: Int64 { file.id }
+
+    var subtitleContext: SubtitleContext {
+        SubtitleContext(fileID: file.id, fileName: file.name, title: played?.title ?? title, tmdbID: played?.tmdbID,
+                        kind: played?.kind, season: season, episode: episode)
+    }
 }
 
 struct VersionsRequest: Identifiable {
@@ -118,13 +125,15 @@ final class Router {
 
     func play(_ entry: LibraryEntry, resumeFrom: Int, next: NextEpisode? = nil) {
         let played = entry.match.map { PlayedTitle(tmdbID: $0.tmdbID, kind: $0.mediaType, title: $0.title) }
-        player = PlayerRequest(file: entry.file, title: entry.displayTitle, resumeFrom: resumeFrom, played: played, next: next)
+        player = PlayerRequest(file: entry.file, title: entry.displayTitle, resumeFrom: resumeFrom, played: played, next: next,
+                               season: entry.match?.season, episode: entry.match?.episode)
     }
 
     func play(_ transfer: TrackedTransfer) {
         guard let file = transfer.playableFile else { return }
         let pending = transfer.pending
         let played = pending.tmdbID > 0 ? PlayedTitle(tmdbID: pending.tmdbID, kind: pending.kind, title: pending.title) : nil
-        player = PlayerRequest(file: file, title: pending.title, resumeFrom: 0, played: played, next: nil)
+        player = PlayerRequest(file: file, title: pending.title, resumeFrom: 0, played: played, next: nil,
+                               season: pending.season, episode: pending.episode)
     }
 }

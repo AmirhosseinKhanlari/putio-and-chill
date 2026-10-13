@@ -20,10 +20,12 @@ enum DemoMode {
             makeCatalog: { _ in DemoCatalog() },
             makeProvider: { config, _ in DemoProvider(id: config.id) },
             makeCharts: { _ in DemoCharts() },
-            episodeRatings: DemoEpisodeRatings())
+            episodeRatings: DemoEpisodeRatings(),
+            makeSubtitles: { _ in DemoSubtitles() })
         return AppModel(tokens: InMemoryTokenStore([.putio: "demo", .tmdb: "demo", .chill: "demo"]),
                         defaults: UserDefaults(suiteName: "amdb.demo") ?? .standard,
-                        store: LocalStore(fileURL: nil), factory: factory, bundledTraktClientID: "demo")
+                        store: LocalStore(fileURL: nil), factory: factory, bundledTraktClientID: "demo",
+                        bundledOpenSubtitlesKey: "demo")
     }
 
     @MainActor static func apply(to router: Router) {
@@ -233,6 +235,35 @@ struct DemoProvider: SourceProvider {
             return Release(name: "\(title).\(variant.0)", link: "magnet:?xt=urn:btih:\(hash)", sizeBytes: variant.1,
                            seeders: variant.2, sources: [tag])
         }
+    }
+}
+
+struct DemoSubtitles: SubtitleService {
+    func search(_ search: SubtitleSearch) async throws -> [SubtitleResult] {
+        try await Task.sleep(for: .milliseconds(400))
+        return [
+            SubtitleResult(fileID: 1, language: search.languages.first ?? "en", release: "Interstellar.2014.1080p.BluRay.x264",
+                           downloads: 48_200, trusted: true, hashMatch: true),
+            SubtitleResult(fileID: 2, language: search.languages.first ?? "en", release: "Interstellar.2014.IMAX.WEB-DL",
+                           downloads: 12_900, hearingImpaired: true),
+            SubtitleResult(fileID: 3, language: search.languages.first ?? "en", release: "Interstellar (2014)", downloads: 310,
+                           machineTranslated: true),
+        ]
+    }
+    func download(fileID: Int, login: OpenSubtitlesLogin?) async throws -> SubtitleDownload {
+        SubtitleDownload(link: URL(string: "https://demo.invalid/\(fileID).srt")!, remaining: 4)
+    }
+    func text(at link: URL) async throws -> String {
+        // A line every 4 seconds for three hours, so any position shows text.
+        (0..<2700).map { i in
+            "\(i + 1)\n\(Self.clock(i * 4)) --> \(Self.clock(i * 4 + 3))\nDemo subtitle line \(i + 1)\n"
+        }.joined(separator: "\n")
+    }
+    func login(username: String, password: String) async throws -> OpenSubtitlesLogin {
+        OpenSubtitlesLogin(token: "demo", allowedDownloads: 20)
+    }
+    private static func clock(_ seconds: Int) -> String {
+        String(format: "%02d:%02d:%02d,000", seconds / 3600, seconds / 60 % 60, seconds % 60)
     }
 }
 
