@@ -14,6 +14,7 @@ struct OnboardingView: View {
     @AppStorage("amdb.onboarded") private var onboarded = false
     @State private var putioPaste = ""
     @State private var tmdbToken = ""
+    @State private var mdblistKey = ""
     @State private var busy = false
     @State private var errorText: String?
     @State private var showChill = false
@@ -40,6 +41,7 @@ struct OnboardingView: View {
                     .font(.footnote)
                 }
 
+                if !app.usesBundledTMDB {
                 StepCard(number: 2, title: "Add your TMDB token", done: app.catalog != nil) {
                     Text("Free: themoviedb.org → Settings → API → **API Read Access Token**.")
                         .font(.footnote).foregroundStyle(.white.opacity(0.7))
@@ -51,7 +53,20 @@ struct OnboardingView: View {
                     }
                 }
 
-                StepCard(number: 3, title: "Connect chill (optional)", done: app.hasChill) {
+                }
+
+                StepCard(number: app.usesBundledTMDB ? 2 : 3, title: "IMDb & Rotten Tomatoes scores (optional)", done: app.hasRatings) {
+                    Text("Free key: mdblist.com → sign in → Preferences → **API key**.")
+                        .font(.footnote).foregroundStyle(.white.opacity(0.7))
+                    HStack {
+                        SecureField("MDBList API key", text: $mdblistKey).textFieldStyle(.roundedBorder)
+                        Button { Task { await saveMDBList() } } label: { busy ? AnyView(ProgressView()) : AnyView(Text("Verify")) }
+                            .buttonStyle(.glassPill)
+                            .disabled(mdblistKey.isEmpty || busy)
+                    }
+                }
+
+                StepCard(number: app.usesBundledTMDB ? 3 : 4, title: "Connect chill (optional)", done: app.hasChill) {
                     Text("Adds chill's eight indexers to every search. You can do this later in Settings.")
                         .font(.footnote).foregroundStyle(.white.opacity(0.7))
                     Button("Connect chill") { showChill = true }.buttonStyle(.glassPill)
@@ -94,6 +109,19 @@ struct OnboardingView: View {
             return
         } catch {
             errorText = error.localizedDescription
+        }
+    }
+
+    private func saveMDBList() async {
+        busy = true
+        defer { busy = false }
+        let key = mdblistKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            try await app.validateMDBList(key)
+            app.setToken(key, for: .mdblist)
+            errorText = nil
+        } catch {
+            errorText = "MDBList rejected that key. Copy it from mdblist.com → Preferences."
         }
     }
 

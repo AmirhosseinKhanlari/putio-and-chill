@@ -44,6 +44,7 @@ private struct HeroPage: View {
     @Environment(AppModel.self) private var app
     @Environment(Router.self) private var router
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var ratings: Ratings?
 
     var body: some View {
         let regular = sizeClass != .compact
@@ -66,7 +67,7 @@ private struct HeroPage: View {
                     .font(.system(size: regular ? 58 : 34, weight: .ultraLight))
                     .tracking(regular ? 5 : 2)
                     .lineLimit(2).minimumScaleFactor(0.6)
-                MetaLine(item: item, detail: nil)
+                MetaLine(item: item, detail: nil, ratings: ratings)
                 if !item.overview.isEmpty {
                     Text(item.overview).font(.callout).foregroundStyle(.white.opacity(0.8)).lineLimit(3)
                         .frame(maxWidth: 520, alignment: .leading)
@@ -80,6 +81,11 @@ private struct HeroPage: View {
             }
             .padding(.horizontal, Metrics.gutter(sizeClass))
             .padding(.bottom, 44)
+        }
+        .task(id: item.id) {
+            guard app.hasRatings, let catalog = app.catalog,
+                  let imdbID = try? await catalog.detail(item.mediaType, id: item.tmdbID).imdbID else { return }
+            ratings = await app.ratings(imdbID: imdbID, kind: item.mediaType)
         }
     }
 
@@ -100,12 +106,16 @@ private struct HeroPage: View {
 struct MetaLine: View {
     let item: CatalogItem
     let detail: TitleDetail?
+    var ratings: Ratings?
 
     var body: some View {
         HStack(spacing: 8) {
             if let year = item.year { Text(String(year)) }
             if let runtime = Format.runtime(detail?.runtimeMinutes) { Text("·"); Text(runtime) }
-            if let rating = item.voteAverage, rating > 0 {
+            if let ratings, !ratings.isEmpty {
+                Text("·")
+                RatingsBadges(ratings: ratings)
+            } else if let rating = item.voteAverage, rating > 0 {
                 Text("·")
                 Label(String(format: "%.1f", rating), systemImage: "star.fill").labelStyle(.titleAndIcon)
             }

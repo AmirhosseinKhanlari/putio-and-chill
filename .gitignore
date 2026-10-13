@@ -9,3 +9,4 @@ AMDBCore/.spike-out/
 AMDB.xcodeproj/
 build/
 App/iOS/Info.plist
+Config/Secrets.xcconfig

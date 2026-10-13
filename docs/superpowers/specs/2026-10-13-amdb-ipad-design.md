@@ -20,6 +20,7 @@ already saved in put.io must carry over.
 | Accounts | put.io required (OAuth token flow). TMDB API key required. chill optional. |
 | Browsing | TMDB powers all catalog, artwork, and live search. |
 | Releases | Merged from chill (if connected) and in-app adapters (YTS, EZTV, apibay, Knaben), deduped by infohash, each row tagged with its sources. |
+| Ratings | IMDb rating plus Rotten Tomatoes critics (🍅) and audience (🍿) scores from MDBList (free API key, optional). Shown on title pages and the Home hero; cached on device for 7 days. Not fetched per poster, to stay inside the free daily quota. |
 | Release choice | The Versions sheet always opens; there is no auto-pick. |
 | Watch state | put.io `start_from` per file is the source of truth. chill stores no watch state. |
 | Visual direction | "Cinematic Ambient": the background glows with the focused title's colors; floating glass tab bar; focused poster scales up; hero shows live put.io state. |

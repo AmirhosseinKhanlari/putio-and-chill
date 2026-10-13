@@ -151,3 +151,29 @@ func makeRelease(_ hashChar: Character, seeders: Int, name: String) -> Release {
 }
 
 func testDefaults() -> UserDefaults { UserDefaults(suiteName: "amdb.test.\(UUID().uuidString)")! }
+
+final class FakeRatings: RatingsService, @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    let result: Ratings
+    var fail = false
+
+    init(result: Ratings = Ratings(imdb: 8.1, tomatoes: 91, popcorn: 88)) { self.result = result }
+
+    var calls: Int { lock.withLock { count } }
+
+    func ratings(imdbID: String, kind: MediaKind) async throws -> Ratings {
+        lock.withLock { count += 1 }
+        if fail { throw AppError.unauthorized(service: "mdblist") }
+        return result
+    }
+
+    func validate() async throws { if fail { throw AppError.unauthorized(service: "mdblist") } }
+}
+
+final class TokenLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+    func record(_ value: String) { lock.withLock { values.append(value) } }
+    var all: [String] { lock.withLock { values } }
+}

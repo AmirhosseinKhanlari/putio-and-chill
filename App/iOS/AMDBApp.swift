@@ -14,7 +14,9 @@ struct AMDBApp: App {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         let model = DemoMode.isEnabled
             ? DemoMode.makeModel()
-            : AppModel(tokens: KeychainTokenStore(), store: LocalStore(fileURL: LocalStore.defaultURL()))
+            : AppModel(tokens: KeychainTokenStore(), store: LocalStore(fileURL: LocalStore.defaultURL()),
+                       bundledTMDBToken: Bundle.main.object(forInfoDictionaryKey: "TMDBReadToken") as? String,
+                       ratingsCache: RatingsCache(fileURL: RatingsCache.defaultURL()))
         _model = State(initialValue: model)
         BackgroundRefresh.register(model: model)
     }

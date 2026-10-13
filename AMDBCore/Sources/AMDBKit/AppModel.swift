@@ -6,13 +6,18 @@ public struct ServiceFactory: Sendable {
     public var makePutio: @Sendable (String) -> any PutioService
     public var makeCatalog: @Sendable (String) -> any CatalogService
     public var makeProvider: @Sendable (SourceConfig, _ chillToken: String?) -> (any SourceProvider)?
+    public var makeRatings: @Sendable (String) -> any RatingsService
 
     public init(makePutio: @escaping @Sendable (String) -> any PutioService,
                 makeCatalog: @escaping @Sendable (String) -> any CatalogService,
-                makeProvider: @escaping @Sendable (SourceConfig, String?) -> (any SourceProvider)?) {
+                makeProvider: @escaping @Sendable (SourceConfig, String?) -> (any SourceProvider)?,
+                makeRatings: @escaping @Sendable (String) -> any RatingsService = {
+                    RatingsClient(apiKey: $0, transport: URLSessionTransport())
+                }) {
         self.makePutio = makePutio
         self.makeCatalog = makeCatalog
         self.makeProvider = makeProvider
+        self.makeRatings = makeRatings
     }
 
     public static let live: ServiceFactory = {
@@ -30,7 +35,8 @@ public struct ServiceFactory: Sendable {
                 case "knaben": return KnabenProvider(baseURL: url, transport: transport)
                 default: return nil
                 }
-            })
+            },
+            makeRatings: { RatingsClient(apiKey: $0, transport: transport) })
     }()
 }
 
@@ -40,6 +46,9 @@ public final class AppModel {
     public private(set) var catalog: (any CatalogService)?
     public private(set) var settings: AppSettings
     public private(set) var hasChill = false
+    public private(set) var hasRatings = false
+    /// True when the app ships a TMDB token, so users never have to enter one.
+    public let usesBundledTMDB: Bool
     public let library: LibraryIndex
     public let transfers: TransferMonitor
     public let store: LocalStore
@@ -48,12 +57,20 @@ public final class AppModel {
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let factory: ServiceFactory
     @ObservationIgnored private var searcher: any ReleaseSearching = ReleaseAggregator(providers: [])
+    @ObservationIgnored private var ratingsService: (any RatingsService)?
+    @ObservationIgnored private let bundledTMDBToken: String?
+    @ObservationIgnored private let ratingsCache: RatingsCache
 
-    public init(tokens: any TokenStore, defaults: UserDefaults = .standard, store: LocalStore, factory: ServiceFactory = .live) {
+    public init(tokens: any TokenStore, defaults: UserDefaults = .standard, store: LocalStore, factory: ServiceFactory = .live,
+                bundledTMDBToken: String? = nil, ratingsCache: RatingsCache = RatingsCache(fileURL: nil)) {
         self.tokens = tokens
         self.userDefaults = defaults
         self.store = store
         self.factory = factory
+        let bundled = bundledTMDBToken?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.bundledTMDBToken = (bundled?.isEmpty ?? true) ? nil : bundled
+        self.usesBundledTMDB = self.bundledTMDBToken != nil
+        self.ratingsCache = ratingsCache
         settings = AppSettings.load(from: defaults)
         library = LibraryIndex(store: store)
         transfers = TransferMonitor(store: store)
@@ -80,6 +97,19 @@ public final class AppModel {
         try await factory.makeCatalog(token).validate()
     }
 
+    public func validateMDBList(_ key: String) async throws {
+        try await factory.makeRatings(key).validate()
+    }
+
+    /// IMDb / Rotten Tomatoes scores, served from the on-device cache when fresh. Nil without an MDBList key or on failure.
+    public func ratings(imdbID: String, kind: MediaKind) async -> Ratings? {
+        guard let ratingsService else { return nil }
+        if let cached = await ratingsCache.fresh(imdbID) { return cached }
+        guard let fetched = try? await ratingsService.ratings(imdbID: imdbID, kind: kind) else { return nil }
+        await ratingsCache.store(fetched, for: imdbID)
+        return fetched
+    }
+
     public func notePlayed(_ title: PlayedTitle) async {
         await store.update { $0.lastPlayed = title }
     }
@@ -95,7 +125,9 @@ public final class AppModel {
 
     private func rebuild() {
         putio = tokens.read(.putio).map(factory.makePutio)
-        catalog = tokens.read(.tmdb).map(factory.makeCatalog)
+        catalog = (tokens.read(.tmdb) ?? bundledTMDBToken).map(factory.makeCatalog)
+        ratingsService = tokens.read(.mdblist).map(factory.makeRatings)
+        hasRatings = ratingsService != nil
         let chillToken = tokens.read(.chill)
         hasChill = chillToken != nil
         let providers = settings.sources.filter(\.enabled).compactMap { factory.makeProvider($0, chillToken) }

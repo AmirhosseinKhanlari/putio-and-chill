@@ -38,7 +38,8 @@ struct TitleView: View {
         .onDisappear { if router.activeTitle == item.tmdbID { router.activeTitle = nil } }
         .task {
             guard model == nil, let catalog = app.catalog else { return }
-            let title = TitleModel(item: item, catalog: catalog, library: app.library, transfers: app.transfers)
+            let title = TitleModel(item: item, catalog: catalog, library: app.library, transfers: app.transfers,
+                                   ratings: { [app] imdbID, kind in await app.ratings(imdbID: imdbID, kind: kind) })
             model = title
             await title.load()
         }
@@ -74,7 +75,7 @@ private struct TitleHeader: View {
                         .font(.system(size: regular ? 54 : 32, weight: .ultraLight)).tracking(regular ? 4 : 2)
                         .lineLimit(3).minimumScaleFactor(0.6)
                 }
-                MetaLine(item: item, detail: detail)
+                MetaLine(item: item, detail: detail, ratings: model?.ratings)
                 Text(detail?.item.overview.isEmpty == false ? detail!.item.overview : item.overview)
                     .font(.callout).foregroundStyle(.white.opacity(0.82)).lineLimit(4)
                 if let genres = detail?.genres, !genres.isEmpty {

@@ -12,10 +12,14 @@ settings:
 packages:
   AMDBCore:
     path: AMDBCore
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
 targets:
   AMDB:
     type: application
     platform: iOS
+    scheme: {}
     sources:
       - path: App/iOS
     dependencies:
@@ -46,6 +50,7 @@ targets:
         UIBackgroundModes: [fetch, audio]
         BGTaskSchedulerPermittedIdentifiers: [app.amdb.refresh]
         UIUserInterfaceStyle: Dark
+        TMDBReadToken: $(TMDB_READ_TOKEN)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.amdb.ios

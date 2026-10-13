@@ -37,3 +37,10 @@ public protocol ReleaseSearching: Sendable {
 }
 
 extension ReleaseAggregator: ReleaseSearching {}
+
+public protocol RatingsService: Sendable {
+    func ratings(imdbID: String, kind: MediaKind) async throws -> Ratings
+    func validate() async throws
+}
+
+extension RatingsClient: RatingsService {}

@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var draft = AppSettings.defaults
     @State private var showChill = false
     @State private var tmdbDraft = ""
+    @State private var mdblistDraft = ""
 
     var body: some View {
         NavigationStack {
@@ -21,7 +22,8 @@ struct SettingsView: View {
                         onboarded = false
                         dismiss()
                     }
-                    LabeledContent("TMDB", value: app.catalog == nil ? "Not connected" : "Connected")
+                    LabeledContent("TMDB", value: app.usesBundledTMDB ? "Built in" : (app.catalog == nil ? "Not connected" : "Connected"))
+                    if !app.usesBundledTMDB {
                     HStack {
                         SecureField("Replace TMDB token", text: $tmdbDraft)
                         Button("Save") {
@@ -31,6 +33,22 @@ struct SettingsView: View {
                             }
                         }
                         .disabled(tmdbDraft.isEmpty)
+                    }
+                    }
+                    LabeledContent("Ratings (MDBList)", value: app.hasRatings ? "Connected" : "Not connected")
+                    if app.hasRatings {
+                        Button("Remove MDBList key", role: .destructive) { app.setToken(nil, for: .mdblist) }
+                    } else {
+                        HStack {
+                            SecureField("MDBList API key", text: $mdblistDraft)
+                            Button("Save") {
+                                Task {
+                                    let key = mdblistDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if (try? await app.validateMDBList(key)) != nil { app.setToken(key, for: .mdblist); mdblistDraft = "" }
+                                }
+                            }
+                            .disabled(mdblistDraft.isEmpty)
+                        }
                     }
                     if app.hasChill {
                         Button("Disconnect chill", role: .destructive) { app.setToken(nil, for: .chill) }

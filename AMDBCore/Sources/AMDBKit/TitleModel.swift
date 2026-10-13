@@ -17,16 +17,20 @@ public final class TitleModel {
     public private(set) var episodes: [Episode] = []
     public private(set) var selectedSeason: Int?
     public private(set) var error: AppError?
+    public private(set) var ratings: Ratings?
 
     private let catalog: any CatalogService
     private let library: LibraryIndex
     private let transfers: TransferMonitor
+    private let ratingsProvider: (@MainActor (String, MediaKind) async -> Ratings?)?
 
-    public init(item: CatalogItem, catalog: any CatalogService, library: LibraryIndex, transfers: TransferMonitor) {
+    public init(item: CatalogItem, catalog: any CatalogService, library: LibraryIndex, transfers: TransferMonitor,
+                ratings: (@MainActor (String, MediaKind) async -> Ratings?)? = nil) {
         self.item = item
         self.catalog = catalog
         self.library = library
         self.transfers = transfers
+        self.ratingsProvider = ratings
     }
 
     public func load() async {
@@ -34,6 +38,9 @@ public final class TitleModel {
             let loaded = try await catalog.detail(item.mediaType, id: item.tmdbID)
             detail = loaded
             error = nil
+            if let ratingsProvider, let imdbID = loaded.imdbID {
+                ratings = await ratingsProvider(imdbID, item.mediaType)
+            }
             if item.mediaType == .tv, let first = loaded.seasons.first?.number {
                 await selectSeason(first)
             }

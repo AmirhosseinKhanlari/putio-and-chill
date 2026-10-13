@@ -2,9 +2,9 @@ import Foundation
 import Security
 
 public enum TokenKey: String, CaseIterable, Sendable {
-    case putio, tmdb, chill
+    case putio, tmdb, chill, mdblist
 
-    /// TMDB and chill tokens sync through iCloud Keychain so the Apple TV app can reuse them.
+    /// TMDB, chill and MDBList tokens sync through iCloud Keychain so the Apple TV app can reuse them.
     var synchronizes: Bool { self != .putio }
 }
 
