@@ -7,17 +7,22 @@ public struct ServiceFactory: Sendable {
     public var makeCatalog: @Sendable (String) -> any CatalogService
     public var makeProvider: @Sendable (SourceConfig, _ chillToken: String?) -> (any SourceProvider)?
     public var makeRatings: @Sendable (String) -> any RatingsService
+    public var makeCharts: @Sendable (String) -> any ChartsService
 
     public init(makePutio: @escaping @Sendable (String) -> any PutioService,
                 makeCatalog: @escaping @Sendable (String) -> any CatalogService,
                 makeProvider: @escaping @Sendable (SourceConfig, String?) -> (any SourceProvider)?,
                 makeRatings: @escaping @Sendable (String) -> any RatingsService = {
                     RatingsClient(apiKey: $0, transport: URLSessionTransport())
+                },
+                makeCharts: @escaping @Sendable (String) -> any ChartsService = {
+                    TraktClient(clientID: $0, transport: URLSessionTransport())
                 }) {
         self.makePutio = makePutio
         self.makeCatalog = makeCatalog
         self.makeProvider = makeProvider
         self.makeRatings = makeRatings
+        self.makeCharts = makeCharts
     }
 
     public static let live: ServiceFactory = {
@@ -37,7 +42,8 @@ public struct ServiceFactory: Sendable {
                 default: return nil
                 }
             },
-            makeRatings: { RatingsClient(apiKey: $0, transport: transport) })
+            makeRatings: { RatingsClient(apiKey: $0, transport: transport) },
+            makeCharts: { TraktClient(clientID: $0, transport: transport) })
     }()
 }
 
@@ -50,6 +56,8 @@ public final class AppModel {
     public private(set) var hasRatings = false
     /// True when the app ships a TMDB token, so users never have to enter one.
     public let usesBundledTMDB: Bool
+    /// IMDb Top 250 charts are available (a Trakt client ID is built in).
+    public var hasCharts: Bool { chartsService != nil }
     public let library: LibraryIndex
     public let transfers: TransferMonitor
     public let store: LocalStore
@@ -61,9 +69,12 @@ public final class AppModel {
     @ObservationIgnored private var ratingsService: (any RatingsService)?
     @ObservationIgnored private let bundledTMDBToken: String?
     @ObservationIgnored private let ratingsCache: RatingsCache
+    @ObservationIgnored private let chartsService: (any ChartsService)?
+    @ObservationIgnored private var chartCache: [IMDbChart: [ChartEntry]] = [:]
 
     public init(tokens: any TokenStore, defaults: UserDefaults = .standard, store: LocalStore, factory: ServiceFactory = .live,
-                bundledTMDBToken: String? = nil, ratingsCache: RatingsCache = RatingsCache(fileURL: nil)) {
+                bundledTMDBToken: String? = nil, ratingsCache: RatingsCache = RatingsCache(fileURL: nil),
+                bundledTraktClientID: String? = nil) {
         self.tokens = tokens
         self.userDefaults = defaults
         self.store = store
@@ -72,6 +83,8 @@ public final class AppModel {
         self.bundledTMDBToken = (bundled?.isEmpty ?? true) ? nil : bundled
         self.usesBundledTMDB = self.bundledTMDBToken != nil
         self.ratingsCache = ratingsCache
+        let trakt = bundledTraktClientID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.chartsService = (trakt?.isEmpty ?? true) ? nil : trakt.map(factory.makeCharts)
         settings = AppSettings.load(from: defaults)
         library = LibraryIndex(store: store)
         transfers = TransferMonitor(store: store)
@@ -109,6 +122,15 @@ public final class AppModel {
         guard let fetched = try? await ratingsService.ratings(imdbID: imdbID, kind: kind) else { return nil }
         await ratingsCache.store(fetched, for: imdbID)
         return fetched
+    }
+
+    /// IMDb chart entries, fetched once per app session.
+    public func chart(_ chart: IMDbChart) async throws -> [ChartEntry] {
+        if let cached = chartCache[chart] { return cached }
+        guard let chartsService else { return [] }
+        let entries = try await chartsService.chart(chart)
+        chartCache[chart] = entries
+        return entries
     }
 
     public func notePlayed(_ title: PlayedTitle) async {

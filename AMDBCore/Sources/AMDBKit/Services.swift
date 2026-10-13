@@ -28,6 +28,7 @@ public protocol CatalogService: CatalogSearching {
     func discover(_ kind: MediaKind, genreID: Int) async throws -> [CatalogItem]
     func detail(_ kind: MediaKind, id: Int) async throws -> TitleDetail
     func season(tvID: Int, number: Int) async throws -> [Episode]
+    func item(_ kind: MediaKind, id: Int) async throws -> CatalogItem
 }
 
 extension CatalogClient: CatalogService {}
@@ -44,3 +45,9 @@ public protocol RatingsService: Sendable {
 }
 
 extension RatingsClient: RatingsService {}
+
+public protocol ChartsService: Sendable {
+    func chart(_ chart: IMDbChart) async throws -> [ChartEntry]
+}
+
+extension TraktClient: ChartsService {}

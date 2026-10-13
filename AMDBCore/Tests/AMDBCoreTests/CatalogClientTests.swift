@@ -85,4 +85,13 @@ import Testing
         #expect(CatalogClient.imageURL("/p.jpg", size: "w780")?.absoluteString == "https://image.tmdb.org/t/p/w780/p.jpg")
         #expect(CatalogClient.imageURL(nil, size: "w780") == nil)
     }
+
+    @Test func itemFetchesSingleTitle() async throws {
+        let stub = StubTransport(json: #"{"id":278,"title":"The Shawshank Redemption","poster_path":"/s.jpg","release_date":"1994-09-23"}"#)
+        let item = try await CatalogClient(accessToken: "K", transport: stub).item(.movie, id: 278)
+        #expect(item.title == "The Shawshank Redemption")
+        #expect(item.mediaType == .movie)
+        #expect(item.posterPath == "/s.jpg")
+        #expect(stub.requests.first?.url?.path == "/3/movie/278")
+    }
 }

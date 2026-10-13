@@ -99,6 +99,10 @@ struct FakeCatalog: CatalogService {
         return try guarded(detail)
     }
     func season(tvID: Int, number: Int) async throws -> [Episode] { try guarded(seasons[number] ?? []) }
+    func item(_ kind: MediaKind, id: Int) async throws -> CatalogItem {
+        if let detail = details[id] { return try guarded(detail.item) }
+        return try guarded(CatalogItem(tmdbID: id, mediaType: kind, title: "Title \(id)", posterPath: "/p\(id).jpg"))
+    }
     func searchMovie(title: String, year: Int?) async throws -> [CatalogItem] { try guarded(movieSearch[title.lowercased()] ?? []) }
     func searchTV(title: String, year: Int?) async throws -> [CatalogItem] { try guarded(tvSearch[title.lowercased()] ?? []) }
 }
@@ -176,4 +180,15 @@ final class TokenLog: @unchecked Sendable {
     private var values: [String] = []
     func record(_ value: String) { lock.withLock { values.append(value) } }
     var all: [String] { lock.withLock { values } }
+}
+
+final class FakeCharts: ChartsService, @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var calls: Int { lock.withLock { count } }
+    func chart(_ chart: IMDbChart) async throws -> [ChartEntry] {
+        lock.withLock { count += 1 }
+        return [ChartEntry(rank: 1, kind: chart.kind, title: "First", year: 1994, imdbID: "tt1", tmdbID: 278),
+                ChartEntry(rank: 2, kind: chart.kind, title: "No TMDB", year: 2000, imdbID: "tt2", tmdbID: nil)]
+    }
 }

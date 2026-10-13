@@ -8,6 +8,7 @@ struct BrowseView: View {
     @Environment(AmbientController.self) private var ambient
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var model: BrowseModel?
+    @State private var chart: ChartModel?
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -16,6 +17,7 @@ struct BrowseView: View {
                     .font(.system(size: sizeClass == .compact ? 34 : 48, weight: .ultraLight)).tracking(3)
                     .padding(.horizontal, Metrics.gutter(sizeClass))
                     .padding(.top, 12)
+                if let chart { ChartRowView(model: chart) }
                 if model?.isLoading == true && model?.rows.isEmpty == true {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
                 }
@@ -30,6 +32,11 @@ struct BrowseView: View {
             guard model == nil, let catalog = app.catalog else { return }
             let browse = BrowseModel(kind: kind, catalog: catalog)
             model = browse
+            if app.hasCharts {
+                let top = ChartModel(chart: kind == .tv ? .top250TV : .top250Movies, app: app, catalog: catalog)
+                chart = top
+                Task { await top.load() }
+            }
             await browse.load()
             if let first = browse.rows.first?.items.first { ambient.focus(first) }
         }

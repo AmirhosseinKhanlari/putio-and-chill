@@ -16,7 +16,8 @@ struct AMDBApp: App {
             ? DemoMode.makeModel()
             : AppModel(tokens: KeychainTokenStore(), store: LocalStore(fileURL: LocalStore.defaultURL()),
                        bundledTMDBToken: Bundle.main.object(forInfoDictionaryKey: "TMDBReadToken") as? String,
-                       ratingsCache: RatingsCache(fileURL: RatingsCache.defaultURL()))
+                       ratingsCache: RatingsCache(fileURL: RatingsCache.defaultURL()),
+                       bundledTraktClientID: Bundle.main.object(forInfoDictionaryKey: "TraktClientID") as? String)
         _model = State(initialValue: model)
         BackgroundRefresh.register(model: model)
     }

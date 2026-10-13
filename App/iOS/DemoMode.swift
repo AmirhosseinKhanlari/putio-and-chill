@@ -18,10 +18,11 @@ enum DemoMode {
         let factory = ServiceFactory(
             makePutio: { _ in putio },
             makeCatalog: { _ in DemoCatalog() },
-            makeProvider: { config, _ in DemoProvider(id: config.id) })
+            makeProvider: { config, _ in DemoProvider(id: config.id) },
+            makeCharts: { _ in DemoCharts() })
         return AppModel(tokens: InMemoryTokenStore([.putio: "demo", .tmdb: "demo", .chill: "demo"]),
                         defaults: UserDefaults(suiteName: "amdb.demo") ?? .standard,
-                        store: LocalStore(fileURL: nil), factory: factory)
+                        store: LocalStore(fileURL: nil), factory: factory, bundledTraktClientID: "demo")
     }
 
     @MainActor static func apply(to router: Router) {
@@ -95,6 +96,10 @@ struct DemoCatalog: CatalogService {
     }
     func season(tvID: Int, number: Int) async throws -> [Episode] {
         (1...8).map { Episode(number: $0, name: "Episode \($0)", overview: "Things get complicated at Lumon.", runtimeMinutes: 50 + $0) }
+    }
+    func item(_ kind: MediaKind, id: Int) async throws -> CatalogItem {
+        guard let item = Self.everything.first(where: { $0.tmdbID == id }) else { throw AppError.http(service: "tmdb", status: 404) }
+        return item
     }
     func searchMovie(title: String, year: Int?) async throws -> [CatalogItem] {
         Self.movies.filter { LibraryMatcher.normalize($0.title) == LibraryMatcher.normalize(title) }
@@ -196,6 +201,15 @@ struct DemoProvider: SourceProvider {
             let hash = String(repeating: String(index), count: 40)
             return Release(name: "\(title).\(variant.0)", link: "magnet:?xt=urn:btih:\(hash)", sizeBytes: variant.1,
                            seeders: variant.2, sources: [tag])
+        }
+    }
+}
+
+struct DemoCharts: ChartsService {
+    func chart(_ chart: IMDbChart) async throws -> [ChartEntry] {
+        let pool = chart.kind == .tv ? DemoCatalog.shows : DemoCatalog.movies
+        return pool.enumerated().map { index, item in
+            ChartEntry(rank: index + 1, kind: chart.kind, title: item.title, year: item.year, imdbID: "tt\(item.tmdbID)", tmdbID: item.tmdbID)
         }
     }
 }

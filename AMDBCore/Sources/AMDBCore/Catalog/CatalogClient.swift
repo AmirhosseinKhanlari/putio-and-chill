@@ -78,6 +78,11 @@ public struct CatalogClient: Sendable {
         }
     }
 
+    /// Light single-title lookup (no credits/videos), used to show chart posters.
+    public func item(_ kind: MediaKind, id: Int) async throws -> CatalogItem {
+        try await http.decode(CatalogItem.self, request("\(kind.rawValue)/\(id)"), decoder: .snakeCase)
+    }
+
     public func season(tvID: Int, number: Int) async throws -> [Episode] {
         let raw = try await http.decode(SeasonRaw.self, request("tv/\(tvID)/season/\(number)"), decoder: .snakeCase)
         return (raw.episodes ?? []).map {

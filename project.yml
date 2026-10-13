@@ -53,6 +53,7 @@ targets:
         BGTaskSchedulerPermittedIdentifiers: [app.amdb.refresh]
         UIUserInterfaceStyle: Dark
         TMDBReadToken: $(TMDB_READ_TOKEN)
+        TraktClientID: $(TRAKT_CLIENT_ID)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.amdb.ios
