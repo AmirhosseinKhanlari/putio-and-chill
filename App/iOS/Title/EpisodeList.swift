@@ -82,8 +82,25 @@ private struct EpisodeRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(episode.number). \(episode.name)").font(.headline).lineLimit(1)
-                if let runtime = Format.runtime(episode.runtimeMinutes) {
-                    Text(runtime).font(.caption).foregroundStyle(.white.opacity(0.55))
+                HStack(spacing: 10) {
+                    if let score = model.episodeRatings[episode.number] {
+                        IMDbScore(rating: score.rating).font(.caption.weight(.semibold))
+                    }
+                    if let runtime = Format.runtime(episode.runtimeMinutes) {
+                        Text(runtime).font(.caption).foregroundStyle(.white.opacity(0.55))
+                    }
+                    if isBestOfSeason {
+                        Group {
+                            if regular {
+                                Label("Best of season", systemImage: "star.fill").font(.caption2.weight(.semibold)).lineLimit(1)
+                            } else {
+                                Image(systemName: "star.fill").font(.caption2)
+                            }
+                        }
+                        .foregroundStyle(Color(red: 0.96, green: 0.77, blue: 0.09))
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Best of season")
+                    }
                 }
                 if regular, !episode.overview.isEmpty {
                     Text(episode.overview).font(.footnote).foregroundStyle(.white.opacity(0.7)).lineLimit(2)
@@ -94,5 +111,12 @@ private struct EpisodeRow: View {
         }
         .padding(10)
         .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    /// Highest IMDb score in a season with at least three rated episodes.
+    private var isBestOfSeason: Bool {
+        let scores = model.episodeRatings
+        guard scores.count >= 3, let mine = scores[episode.number]?.rating else { return false }
+        return scores.values.allSatisfy { $0.rating <= mine } && scores.values.filter { $0.rating == mine }.count == 1
     }
 }

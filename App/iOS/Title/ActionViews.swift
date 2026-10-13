@@ -89,6 +89,8 @@ struct PrimaryActions: View {
 struct DownloadStatus: View {
     let transfer: TrackedTransfer
     var large = false
+    /// Just the ring, for tight rows (the episode list).
+    var ringOnly = false
     @Environment(AppModel.self) private var app
 
     var body: some View {
@@ -99,12 +101,15 @@ struct DownloadStatus: View {
                 Text("\(transfer.percent)%").font((large ? Font.callout : .caption2).monospacedDigit().weight(.semibold))
             }
             .frame(width: large ? 64 : 34, height: large ? 64 : 34)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(headline).font(large ? .headline : .caption.weight(.semibold)).lineLimit(1).fixedSize()
-                Text(details).font(.caption).foregroundStyle(.white.opacity(0.65)).lineLimit(2)
-                if large {
-                    Button("Cancel", role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } }
-                        .font(.caption.weight(.semibold)).padding(.top, 2)
+            .accessibilityLabel(ringOnly ? "\(headline), \(transfer.percent)%" : "\(transfer.percent)%")
+            if !ringOnly {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(headline).font(large ? .headline : .caption.weight(.semibold)).lineLimit(1).fixedSize(horizontal: large, vertical: false)
+                    Text(details).font(.caption).foregroundStyle(.white.opacity(0.65)).lineLimit(2)
+                    if large {
+                        Button("Cancel", role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } }
+                            .font(.caption.weight(.semibold)).padding(.top, 2)
+                    }
                 }
             }
         }
@@ -151,7 +156,7 @@ struct EpisodeActionButton: View {
         case let .resume(entry, seconds):
             iconButton("play.circle.fill", label: "Resume episode") { router.play(entry, resumeFrom: seconds, next: next) }
         case let .downloading(transfer):
-            DownloadStatus(transfer: transfer).frame(width: 34)
+            DownloadStatus(transfer: transfer, ringOnly: true)
         case .failed:
             iconButton("exclamationmark.arrow.circlepath", label: "Retry episode") { openVersions() }
         }

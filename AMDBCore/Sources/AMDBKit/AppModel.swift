@@ -9,6 +9,7 @@ public struct ServiceFactory: Sendable {
     public var makeRatings: @Sendable (String) -> any RatingsService
     public var makeCharts: @Sendable (String) -> any ChartsService
     public var trailers: any TrailerService
+    public var episodeRatings: any EpisodeRatingsService
 
     public init(makePutio: @escaping @Sendable (String) -> any PutioService,
                 makeCatalog: @escaping @Sendable (String) -> any CatalogService,
@@ -19,13 +20,15 @@ public struct ServiceFactory: Sendable {
                 makeCharts: @escaping @Sendable (String) -> any ChartsService = {
                     TraktClient(clientID: $0, transport: URLSessionTransport())
                 },
-                trailers: any TrailerService = IMDbTrailerClient(transport: URLSessionTransport())) {
+                trailers: any TrailerService = IMDbTrailerClient(transport: URLSessionTransport()),
+                episodeRatings: any EpisodeRatingsService = IMDbEpisodeRatingsClient(transport: URLSessionTransport())) {
         self.makePutio = makePutio
         self.makeCatalog = makeCatalog
         self.makeProvider = makeProvider
         self.makeRatings = makeRatings
         self.makeCharts = makeCharts
         self.trailers = trailers
+        self.episodeRatings = episodeRatings
     }
 
     public static let live: ServiceFactory = {
@@ -47,7 +50,8 @@ public struct ServiceFactory: Sendable {
             },
             makeRatings: { RatingsClient(apiKey: $0, transport: transport) },
             makeCharts: { TraktClient(clientID: $0, transport: transport) },
-            trailers: IMDbTrailerClient(transport: transport))
+            trailers: IMDbTrailerClient(transport: transport),
+            episodeRatings: IMDbEpisodeRatingsClient(transport: transport))
     }()
 }
 
@@ -77,6 +81,7 @@ public final class AppModel {
     @ObservationIgnored private let ratingsCache: RatingsCache
     @ObservationIgnored private let chartsService: (any ChartsService)?
     @ObservationIgnored private var chartCache: [IMDbChart: [ChartEntry]] = [:]
+    @ObservationIgnored private var episodeRatingsCache: [String: [Int: EpisodeRating]] = [:]
 
     public init(tokens: any TokenStore, defaults: UserDefaults = .standard, store: LocalStore, factory: ServiceFactory = .live,
                 bundledTMDBToken: String? = nil, ratingsCache: RatingsCache = RatingsCache(fileURL: nil),
@@ -165,6 +170,15 @@ public final class AppModel {
     /// A natively playable trailer from IMDb, or nil (caller falls back to YouTube).
     public func trailer(imdbID: String) async -> TrailerVideo? {
         try? await factory.trailers.trailer(imdbID: imdbID)
+    }
+
+    /// IMDb score per episode for one season, cached for the app session. Empty on failure.
+    public func episodeRatings(seriesIMDbID: String, season: Int) async -> [Int: EpisodeRating] {
+        let key = "\(seriesIMDbID)-\(season)"
+        if let cached = episodeRatingsCache[key] { return cached }
+        guard let fetched = try? await factory.episodeRatings.ratings(seriesIMDbID: seriesIMDbID, season: season) else { return [:] }
+        if !fetched.isEmpty { episodeRatingsCache[key] = fetched }
+        return fetched
     }
 
     public func notePlayed(_ title: PlayedTitle) async {

@@ -19,7 +19,8 @@ enum DemoMode {
             makePutio: { _ in putio },
             makeCatalog: { _ in DemoCatalog() },
             makeProvider: { config, _ in DemoProvider(id: config.id) },
-            makeCharts: { _ in DemoCharts() })
+            makeCharts: { _ in DemoCharts() },
+            episodeRatings: DemoEpisodeRatings())
         return AppModel(tokens: InMemoryTokenStore([.putio: "demo", .tmdb: "demo", .chill: "demo"]),
                         defaults: UserDefaults(suiteName: "amdb.demo") ?? .standard,
                         store: LocalStore(fileURL: nil), factory: factory, bundledTraktClientID: "demo")
@@ -232,6 +233,13 @@ struct DemoProvider: SourceProvider {
             return Release(name: "\(title).\(variant.0)", link: "magnet:?xt=urn:btih:\(hash)", sizeBytes: variant.1,
                            seeders: variant.2, sources: [tag])
         }
+    }
+}
+
+struct DemoEpisodeRatings: EpisodeRatingsService {
+    func ratings(seriesIMDbID: String, season: Int) async throws -> [Int: EpisodeRating] {
+        let scores = [8.1, 8.4, 7.9, 9.3, 8.6, 8.0, 8.8, 9.0]
+        return Dictionary(uniqueKeysWithValues: scores.enumerated().map { ($0.offset + 1, EpisodeRating(rating: $0.element, votes: 12_000)) })
     }
 }
 

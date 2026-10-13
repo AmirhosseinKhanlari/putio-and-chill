@@ -62,3 +62,9 @@ public protocol TrailerService: Sendable {
 }
 
 extension IMDbTrailerClient: TrailerService {}
+
+public protocol EpisodeRatingsService: Sendable {
+    func ratings(seriesIMDbID: String, season: Int) async throws -> [Int: EpisodeRating]
+}
+
+extension IMDbEpisodeRatingsClient: EpisodeRatingsService {}

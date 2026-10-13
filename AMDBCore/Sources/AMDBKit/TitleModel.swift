@@ -18,19 +18,24 @@ public final class TitleModel {
     public private(set) var selectedSeason: Int?
     public private(set) var error: AppError?
     public private(set) var ratings: Ratings?
+    /// IMDb score per episode number for the selected season.
+    public private(set) var episodeRatings: [Int: EpisodeRating] = [:]
 
     private let catalog: any CatalogService
     private let library: LibraryIndex
     private let transfers: TransferMonitor
     private let ratingsProvider: (@MainActor (String, MediaKind) async -> Ratings?)?
+    private let episodeRatingsProvider: (@MainActor (String, Int) async -> [Int: EpisodeRating])?
 
     public init(item: CatalogItem, catalog: any CatalogService, library: LibraryIndex, transfers: TransferMonitor,
-                ratings: (@MainActor (String, MediaKind) async -> Ratings?)? = nil) {
+                ratings: (@MainActor (String, MediaKind) async -> Ratings?)? = nil,
+                episodeRatings: (@MainActor (String, Int) async -> [Int: EpisodeRating])? = nil) {
         self.item = item
         self.catalog = catalog
         self.library = library
         self.transfers = transfers
         self.ratingsProvider = ratings
+        self.episodeRatingsProvider = episodeRatings
     }
 
     public func load() async {
@@ -53,7 +58,19 @@ public final class TitleModel {
 
     public func selectSeason(_ number: Int) async {
         selectedSeason = number
-        episodes = (try? await catalog.season(tvID: item.tmdbID, number: number)) ?? []
+        episodeRatings = [:]
+        async let loadedRatings = seasonRatings(number)
+        let loaded = (try? await catalog.season(tvID: item.tmdbID, number: number)) ?? []
+        let scores = await loadedRatings
+        // A newer season pick wins over a slow response for an older one.
+        guard selectedSeason == number else { return }
+        episodes = loaded
+        episodeRatings = scores
+    }
+
+    private func seasonRatings(_ number: Int) async -> [Int: EpisodeRating] {
+        guard let episodeRatingsProvider, let imdbID = detail?.imdbID else { return [:] }
+        return await episodeRatingsProvider(imdbID, number)
     }
 
     public func action(season: Int? = nil, episode: Int? = nil) -> TitleAction {
