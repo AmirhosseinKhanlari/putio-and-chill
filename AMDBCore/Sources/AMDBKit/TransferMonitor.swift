@@ -149,9 +149,11 @@ public final class TransferMonitor {
             tracked[index].playableFile = file
             tracked[index].notified = true
             let pending = item.pending
-            await library?.record(file: file, match: LibraryMatch(
-                tmdbID: pending.tmdbID, mediaType: pending.kind, season: pending.season, episode: pending.episode,
-                confidence: 1, title: pending.title, posterPath: pending.posterPath, backdropPath: pending.backdropPath))
+            if pending.tmdbID > 0 {
+                await library?.record(file: file, match: LibraryMatch(
+                    tmdbID: pending.tmdbID, mediaType: pending.kind, season: pending.season, episode: pending.episode,
+                    confidence: 1, title: pending.title, posterPath: pending.posterPath, backdropPath: pending.backdropPath))
+            }
             await store.update { $0.pending.removeAll { $0.transferID == id } }
             if let done = tracked.first(where: { $0.id == id }) { onEvent?(.ready(done)) }
         case .failed:

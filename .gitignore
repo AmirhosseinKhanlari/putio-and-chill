@@ -6,3 +6,6 @@ DerivedData/
 AMDBCore/.build/
 AMDBCore/.spike-out/
 .swiftpm/
+AMDB.xcodeproj/
+build/
+App/iOS/Info.plist

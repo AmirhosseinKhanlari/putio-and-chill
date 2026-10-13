@@ -118,4 +118,17 @@ import Testing
         #expect(rig.monitor.tracked.isEmpty)
         #expect(await rig.store.snapshot.pending.isEmpty)
     }
+
+    @Test func untitledTransfersAreNotRecordedInLibrary() async throws {
+        let rig = Rig()
+        let untitled = TransferTarget(tmdbID: 0, kind: .movie, title: "Some.Release", posterPath: nil, backdropPath: nil,
+                                      season: nil, episode: nil)
+        let tracked = try await rig.monitor.send(makeRelease("a", seeders: 10, name: "x"), target: untitled)
+        rig.monitor.stop()
+        rig.putio.add(PutioFile(id: 700, name: "x.mkv", fileType: "VIDEO", size: 1), to: 0)
+        rig.putio.setTransfer(PutioTransfer(id: tracked.id, status: "COMPLETED", fileId: 700))
+        await rig.monitor.pollOnce()
+        #expect(rig.monitor.tracked.first?.playableFile?.id == 700)
+        #expect(rig.library.matching(tmdbID: 0).isEmpty)
+    }
 }

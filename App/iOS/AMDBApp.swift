@@ -1,0 +1,45 @@
+import AMDBKit
+import AVFoundation
+import SwiftUI
+
+@main
+struct AMDBApp: App {
+    @State private var model: AppModel
+    @State private var router = Router()
+    @State private var ambient = AmbientController()
+    @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        URLCache.shared = URLCache(memoryCapacity: 64 << 20, diskCapacity: 512 << 20)
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        let model = DemoMode.isEnabled
+            ? DemoMode.makeModel()
+            : AppModel(tokens: KeychainTokenStore(), store: LocalStore(fileURL: LocalStore.defaultURL()))
+        _model = State(initialValue: model)
+        BackgroundRefresh.register(model: model)
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            RootView()
+                .environment(model)
+                .environment(router)
+                .environment(ambient)
+                .preferredColorScheme(.dark)
+                .tint(.white)
+                .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .active where model.isReady:
+                        Task {
+                            await model.transfers.restore()
+                            await model.library.refresh()
+                        }
+                    case .background:
+                        BackgroundRefresh.schedule()
+                    default:
+                        break
+                    }
+                }
+        }
+    }
+}
