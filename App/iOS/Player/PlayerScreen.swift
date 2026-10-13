@@ -64,6 +64,9 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
     private var progressTask: Task<Void, Never>?
     private var nextHost: UIViewController?
     private var preparingHost: UIViewController?
+    private var countdownHost: UIViewController?
+    private var countdownDismissed = false
+    private var appliedLanguages = false
     private var inPictureInPicture = false
     private var triedFallback = false
     private var finished = false
@@ -99,6 +102,10 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
             }
             let status = player.currentItem?.status
             updatePreparingLabel(visible: status != .readyToPlay && !triedFallback)
+            if status == .readyToPlay, !appliedLanguages, let item = player.currentItem {
+                appliedLanguages = true
+                await applyLanguagePreferences(to: item)
+            }
             if status != .readyToPlay { waitedForReady += 1 }
             if status == .failed || (status != .readyToPlay && waitedForReady >= 60) {
                 await handleUnplayable()
@@ -108,7 +115,9 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
             let duration = player.currentItem?.duration.seconds ?? 0
             let total = duration.isFinite ? duration : 0
             if position.isFinite, position > 0 { await session.tick(seconds: position, duration: total) }
-            updateNextButton(remaining: total > 0 && position.isFinite ? total - position : .infinity)
+            let remaining = total > 0 && position.isFinite ? total - position : .infinity
+            updateNextButton(remaining: remaining)
+            if remaining < 1.5 { showNextEpisodeCountdown() }
         }
     }
 
@@ -163,6 +172,50 @@ final class PlayerCoordinator: NSObject, @MainActor AVPlayerViewControllerDelega
             host.removeFromParent()
             nextHost = nil
         }
+    }
+
+    /// Picks the preferred audio and subtitle tracks (Settings → Playback); subtitles off when none is chosen.
+    private func applyLanguagePreferences(to item: AVPlayerItem) async {
+        let settings = app.settings
+        if let group = try? await item.asset.loadMediaSelectionGroup(for: .legible) {
+            if let language = settings.subtitleLanguage,
+               let index = LanguageMatcher.bestIndex(available: group.options.map { $0.extendedLanguageTag ?? $0.locale?.identifier },
+                                                     preferred: language) {
+                item.select(group.options[index], in: group)
+            } else if settings.subtitleLanguage == nil, group.allowsEmptySelection {
+                item.select(nil, in: group)
+            }
+        }
+        if let language = settings.audioLanguage, let group = try? await item.asset.loadMediaSelectionGroup(for: .audible),
+           let index = LanguageMatcher.bestIndex(available: group.options.map { $0.extendedLanguageTag ?? $0.locale?.identifier },
+                                                 preferred: language) {
+            item.select(group.options[index], in: group)
+        }
+    }
+
+    /// End of an episode: "Next episode in 5…" with Play Now / Cancel (Settings → Auto-play next episode).
+    private func showNextEpisodeCountdown() {
+        guard let next = request.next, app.settings.autoPlayNextEpisode, countdownHost == nil, !countdownDismissed else { return }
+        let view = NextEpisodeCountdown(label: next.label,
+                                        onPlay: { [weak self] in self?.advance(to: next) },
+                                        onCancel: { [weak self] in self?.dismissCountdown() })
+        let host = UIHostingController(rootView: AnyView(view))
+        embed(host) { view, container in
+            [view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+             view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+             view.topAnchor.constraint(equalTo: container.topAnchor),
+             view.bottomAnchor.constraint(equalTo: container.bottomAnchor)]
+        }
+        countdownHost = host
+    }
+
+    private func dismissCountdown() {
+        countdownDismissed = true
+        guard let host = countdownHost else { return }
+        host.willMove(toParent: nil)
+        host.view.removeFromSuperview()
+        host.removeFromParent()
+        countdownHost = nil
     }
 
     private func updatePreparingLabel(visible: Bool) {
@@ -255,5 +308,48 @@ private struct PlayerFailureView: View {
             .glassRounded(24)
             .padding(40)
         }
+    }
+}
+
+private struct NextEpisodeCountdown: View {
+    let label: String
+    let onPlay: () -> Void
+    let onCancel: () -> Void
+    @State private var remaining = 5
+    @State private var started = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea()
+            VStack(spacing: 16) {
+                ZStack {
+                    ProgressRing(progress: Double(5 - remaining) / 5, lineWidth: 5)
+                    Text("\(remaining)").font(.system(size: 34, weight: .ultraLight)).monospacedDigit()
+                }
+                .frame(width: 88, height: 88)
+                Text("Next episode").font(.caption.weight(.semibold)).tracking(2).foregroundStyle(.white.opacity(0.7))
+                Text(label).font(.title3.weight(.semibold))
+                HStack(spacing: 12) {
+                    Button { go() } label: { Label("Play Now", systemImage: "play.fill") }.buttonStyle(.primaryPill)
+                    Button("Cancel", action: onCancel).buttonStyle(.glassPill)
+                }
+            }
+            .padding(32)
+            .glassRounded(28)
+        }
+        .task {
+            while remaining > 0 {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                remaining -= 1
+            }
+            go()
+        }
+    }
+
+    private func go() {
+        guard !started else { return }
+        started = true
+        onPlay()
     }
 }

@@ -39,6 +39,7 @@ enum DemoMode {
         case "person": router.homePath = [.person(900)]
         case "collection": router.homePath = [.collection(8945)]
         case "surprise": router.showSurprise = true
+        case "settings": router.showSettings = true
         case "chart":
             router.tab = .movies
             router.moviesPath = [.chart(.top250Movies)]

@@ -8,13 +8,23 @@ struct PrimaryActions: View {
     let episode: Int?
     @Environment(AppModel.self) private var app
     @Environment(Router.self) private var router
+    @State private var finding = false
+    @State private var smartError: String?
 
     var body: some View {
         HStack(spacing: 10) {
             switch model.action(season: season, episode: episode) {
             case .get:
-                Button { openVersions() } label: { Label("Get & Watch", systemImage: "play.fill") }
-                    .buttonStyle(.primaryPill)
+                Button { Task { await get() } } label: {
+                    if finding {
+                        HStack(spacing: 8) { ProgressView().controlSize(.small).tint(.black); Text("Finding the best version…") }
+                    } else {
+                        Label("Get & Watch", systemImage: "play.fill")
+                    }
+                }
+                .buttonStyle(.primaryPill)
+                .disabled(finding)
+                if app.settings.oneTapGet { versionsButton }
             case let .play(entry):
                 Button { router.play(entry, resumeFrom: 0) } label: { Label("Play", systemImage: "play.fill") }
                     .buttonStyle(.primaryPill)
@@ -37,6 +47,23 @@ struct PrimaryActions: View {
                     .buttonStyle(.primaryPill)
                 }
             }
+        }
+    }
+
+    /// One-tap Get: best release by the Smart Get rule; falls back to the Versions sheet when nothing fits.
+    private func get() async {
+        guard app.settings.oneTapGet, let query = model.query(season: season, episode: episode) else {
+            openVersions()
+            return
+        }
+        finding = true
+        defer { finding = false }
+        switch await app.smartGet(query, target: model.target(season: season, episode: episode)) {
+        case .sent: break
+        case .noMatch: openVersions()
+        case let .failed(error):
+            smartError = String(describing: error)
+            openVersions()
         }
     }
 
@@ -106,10 +133,17 @@ struct EpisodeActionButton: View {
     @Environment(AppModel.self) private var app
     @Environment(Router.self) private var router
 
+    @State private var finding = false
+
     var body: some View {
         switch model.action(season: season, episode: episode) {
         case .get:
-            iconButton("arrow.down.circle", label: "Get episode") { openVersions() }
+            if finding {
+                ProgressView().frame(width: 34, height: 34)
+            } else {
+                iconButton("arrow.down.circle", label: "Get episode") { Task { await get() } }
+                    .contextMenu { Button("Choose a version…") { openVersions() } }
+            }
         case let .play(entry):
             iconButton("play.circle.fill", label: "Play episode") { router.play(entry, resumeFrom: 0, next: next) }
         case let .resume(entry, seconds):
@@ -118,6 +152,19 @@ struct EpisodeActionButton: View {
             DownloadStatus(transfer: transfer).frame(width: 34)
         case .failed:
             iconButton("exclamationmark.arrow.circlepath", label: "Retry episode") { openVersions() }
+        }
+    }
+
+    private func get() async {
+        guard app.settings.oneTapGet, let query = model.query(season: season, episode: episode) else {
+            openVersions()
+            return
+        }
+        finding = true
+        defer { finding = false }
+        switch await app.smartGet(query, target: model.target(season: season, episode: episode)) {
+        case .sent: break
+        case .noMatch, .failed: openVersions()
         }
     }
 
