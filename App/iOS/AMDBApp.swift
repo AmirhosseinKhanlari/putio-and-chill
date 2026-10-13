@@ -1,11 +1,12 @@
 import AMDBKit
+import AppIntents
 import AVFoundation
 import SwiftUI
 
 @main
 struct AMDBApp: App {
     @State private var model: AppModel
-    @State private var router = Router()
+    @State private var router: Router
     @State private var ambient = AmbientController()
     @State private var charts = ChartCenter()
     @State private var downloader: OfflineDownloader
@@ -22,6 +23,11 @@ struct AMDBApp: App {
                        bundledTraktClientID: Bundle.main.object(forInfoDictionaryKey: "TraktClientID") as? String)
         _model = State(initialValue: model)
         _downloader = State(initialValue: OfflineDownloader(app: model))
+        let router = Router()
+        _router = State(initialValue: router)
+        // Siri / Shortcuts intents run in this process and use the same models.
+        AppDependencyManager.shared.add(dependency: model)
+        AppDependencyManager.shared.add(dependency: router)
         BackgroundRefresh.register(model: model)
     }
 

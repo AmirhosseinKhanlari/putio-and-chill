@@ -24,11 +24,17 @@ targets:
         - AMDBUITests
     sources:
       - path: App/iOS
+      - path: App/Shared
+    entitlements:
+      path: App/iOS/AMDB.entitlements
+      properties:
+        com.apple.security.application-groups: [group.app.amdb]
     dependencies:
       - package: AMDBCore
         product: AMDBCore
       - package: AMDBCore
         product: AMDBKit
+      - target: AMDBWidgets
     info:
       path: App/iOS/Info.plist
       properties:
@@ -54,6 +60,7 @@ targets:
         UIUserInterfaceStyle: Dark
         TMDBReadToken: $(TMDB_READ_TOKEN)
         TraktClientID: $(TRAKT_CLIENT_ID)
+        NSSupportsLiveActivities: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.amdb.ios
@@ -71,3 +78,25 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         TARGETED_DEVICE_FAMILY: "1,2"
+  AMDBWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: App/Widgets
+      - path: App/Shared
+    entitlements:
+      path: App/Widgets/AMDBWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.app.amdb]
+    info:
+      path: App/Widgets/Info.plist
+      properties:
+        CFBundleDisplayName: AMDB
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.amdb.ios.widgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic

@@ -9,6 +9,7 @@ struct MainView: View {
     @Environment(OfflineDownloader.self) private var downloader
     @State private var visited: Set<AppTab> = [.home]
     @State private var cleanupReview: [LibraryEntry]?
+    @State private var liveActivities = LiveActivityManager()
 
     var body: some View {
         @Bindable var router = router
@@ -53,7 +54,11 @@ struct MainView: View {
             await app.transfers.restore()
             await app.library.refresh()
             await runAutoClean()
+            await WidgetPublisher.publish(app.library)
         }
+        .onChange(of: app.transfers.tracked) { _, tracked in liveActivities.sync(tracked) }
+        .onChange(of: app.library.continueWatching.map(\.id)) { _, _ in Task { await WidgetPublisher.publish(app.library) } }
+        .onOpenURL { url in open(DeepLink(url: url)) }
         .sheet(item: Binding(get: { cleanupReview.map(CleanupList.init) }, set: { if $0 == nil { cleanupReview = nil } })) { list in
             AutoCleanReview(entries: list.entries) {
                 cleanupReview = nil
@@ -84,6 +89,25 @@ struct MainView: View {
         case .tv: router.tvPath
         case .search: router.searchPath
         case .library: router.libraryPath
+        }
+    }
+
+    /// Widget / Live Activity / Siri links.
+    private func open(_ link: DeepLink?) {
+        switch link {
+        case let .play(fileID)?:
+            if let entry = app.library.entries.first(where: { $0.id == fileID }) {
+                router.play(entry, resumeFrom: app.library.resumeSeconds(for: entry))
+            } else if let transfer = app.transfers.tracked.first(where: { $0.playableFile?.id == fileID }) {
+                router.play(transfer)
+            }
+        case let .title(tmdbID, kind)?:
+            router.tab = .home
+            router.open(CatalogItem(tmdbID: tmdbID, mediaType: kind, title: ""))
+        case .library?:
+            router.tab = .library
+        case nil:
+            break
         }
     }
 

@@ -100,7 +100,7 @@ struct DownloadStatus: View {
             }
             .frame(width: large ? 64 : 34, height: large ? 64 : 34)
             VStack(alignment: .leading, spacing: 3) {
-                Text(headline).font(large ? .headline : .caption.weight(.semibold))
+                Text(headline).font(large ? .headline : .caption.weight(.semibold)).lineLimit(1).fixedSize()
                 Text(details).font(.caption).foregroundStyle(.white.opacity(0.65)).lineLimit(2)
                 if large {
                     Button("Cancel", role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } }

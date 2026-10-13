@@ -87,22 +87,12 @@ private struct TitleHeader: View {
                 if let genres = detail?.genres, !genres.isEmpty {
                     Text(genres.joined(separator: " · ")).font(.caption).foregroundStyle(.white.opacity(0.55))
                 }
-                HStack(spacing: 10) {
-                    if let model, item.mediaType == .movie {
-                        PrimaryActions(model: model, season: nil, episode: nil)
-                    }
-                    if detail != nil { MyListButton(item: item, iconOnly: true) }
-                    if detail?.imdbID != nil || detail?.trailerYouTubeKey != nil {
-                        Button { Task { await playTrailer() } } label: {
-                            if loadingTrailer {
-                                ProgressView().controlSize(.small).frame(minWidth: 60)
-                            } else {
-                                Label("Trailer", systemImage: "play.rectangle.fill")
-                            }
-                        }
-                        .buttonStyle(.glassPill)
-                        .disabled(loadingTrailer)
-                        .accessibilityLabel("Trailer")
+                // On narrow screens a transfer's progress gets its own line instead of squeezing the buttons.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { primaryActions; secondaryActions }
+                    VStack(alignment: .leading, spacing: 12) {
+                        primaryActions
+                        HStack(spacing: 10) { secondaryActions }
                     }
                 }
                 .padding(.top, 6)
@@ -115,6 +105,29 @@ private struct TitleHeader: View {
             .padding(.bottom, 24)
         }
         .fullScreenCover(item: $youtubeFallback) { YouTubeFallback(youtubeKey: $0.key) { youtubeFallback = nil }.ignoresSafeArea() }
+    }
+
+    @ViewBuilder private var primaryActions: some View {
+        if let model, item.mediaType == .movie {
+            PrimaryActions(model: model, season: nil, episode: nil)
+        }
+    }
+
+    @ViewBuilder private var secondaryActions: some View {
+        let detail = model?.detail
+        if detail != nil { MyListButton(item: item, iconOnly: true) }
+        if detail?.imdbID != nil || detail?.trailerYouTubeKey != nil {
+            Button { Task { await playTrailer() } } label: {
+                if loadingTrailer {
+                    ProgressView().controlSize(.small).frame(minWidth: 60)
+                } else {
+                    Label("Trailer", systemImage: "play.rectangle.fill")
+                }
+            }
+            .buttonStyle(.glassPill)
+            .disabled(loadingTrailer)
+            .accessibilityLabel("Trailer")
+        }
     }
 
     /// IMDb trailer in Apple's player when available; YouTube only as a fallback.
