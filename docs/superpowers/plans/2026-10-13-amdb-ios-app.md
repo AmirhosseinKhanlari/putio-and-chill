@@ -1441,6 +1441,7 @@ struct MainView: View {
             GlassTabBar()
                 .padding(.horizontal, 12)
                 .padding(sizeClass == .compact ? .bottom : .top, 6)
+                .ignoresSafeArea(.keyboard)
         }
         .overlay(alignment: .top) { ReadyBanner() }
         .onChange(of: router.tab, initial: true) { _, tab in visited.insert(tab) }
