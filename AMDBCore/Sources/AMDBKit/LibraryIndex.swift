@@ -88,6 +88,9 @@ public final class LibraryIndex {
     private let parallelism: Int
     private var putio: (any PutioService)?
     private var matcher: LibraryMatcher?
+    /// Files found on put.io that are still being matched to TMDB (not shown yet).
+    public private(set) var pendingMatches = 0
+    private let matchParallelism = 6
     private var progressOverrides: [Int64: Int] = [:]
     /// Order in which files were watched this session (higher = more recent); a counter, so ties can't happen.
     private var touchedOrder: [Int64: Int] = [:]
@@ -138,19 +141,40 @@ public final class LibraryIndex {
             folderTree = FolderTree(folders: folders)
             let state = await store.snapshot
             var result = found.map { LibraryEntry(file: $0.file, match: state.matches[$0.file.id], folderName: $0.folder) }
-            entries = Self.sorted(result)
             lastError = nil
-            guard let matcher else { return }
-            for index in result.indices where result[index].match == nil && !state.unmatched.contains(result[index].id) {
-                let entry = result[index]
-                let match = await Self.match(entry, matcher)
-                result[index].match = match
-                let id = entry.id
-                await store.update { state in
-                    if let match { state.matches[id] = match } else { state.unmatched.insert(id) }
-                }
-                if index % 10 == 9 { entries = Self.sorted(result) }
+            guard let matcher else {
+                entries = Self.sorted(result)
+                return
             }
+            // A file shows once it's matched (or known not to match), never as a raw file name while it waits.
+            var settled = result.map { $0.match != nil || state.unmatched.contains($0.id) }
+            let pending = result.indices.filter { !settled[$0] }
+            pendingMatches = pending.count
+            entries = Self.sorted(result.indices.filter { settled[$0] }.map { result[$0] })
+            await withTaskGroup(of: (Int, LibraryMatch?).self) { group in
+                var next = 0
+                var done = 0
+                func add() {
+                    let index = pending[next]
+                    let entry = result[index]
+                    group.addTask { (index, await Self.match(entry, matcher)) }
+                    next += 1
+                }
+                while next < min(matchParallelism, pending.count) { add() }
+                while let (index, match) = await group.next() {
+                    result[index].match = match
+                    settled[index] = true
+                    let id = result[index].id
+                    await store.update { state in
+                        if let match { state.matches[id] = match } else { state.unmatched.insert(id) }
+                    }
+                    done += 1
+                    pendingMatches -= 1
+                    if done % 6 == 0 { entries = Self.sorted(result.indices.filter { settled[$0] }.map { result[$0] }) }
+                    if next < pending.count { add() }
+                }
+            }
+            pendingMatches = 0
             entries = Self.sorted(result)
             let now = Date()
             lastUpdated = now

@@ -183,11 +183,17 @@ struct DemoCatalog: CatalogService {
         guard let item = Self.everything.first(where: { $0.tmdbID == id }) else { throw AppError.http(service: "tmdb", status: 404) }
         return item
     }
+    /// `-demoSlowLibrary` makes matching slow, to see the first-launch loading row.
+    private func slowIfAsked() async {
+        if ProcessInfo.processInfo.arguments.contains("-demoSlowLibrary") { try? await Task.sleep(for: .seconds(4)) }
+    }
     func searchMovie(title: String, year: Int?) async throws -> [CatalogItem] {
-        Self.movies.filter { LibraryMatcher.normalize($0.title) == LibraryMatcher.normalize(title) }
+        await slowIfAsked()
+        return Self.movies.filter { LibraryMatcher.normalize($0.title) == LibraryMatcher.normalize(title) }
     }
     func searchTV(title: String, year: Int?) async throws -> [CatalogItem] {
-        Self.shows.filter { LibraryMatcher.normalize($0.title) == LibraryMatcher.normalize(title) }
+        await slowIfAsked()
+        return Self.shows.filter { LibraryMatcher.normalize($0.title) == LibraryMatcher.normalize(title) }
     }
 }
 

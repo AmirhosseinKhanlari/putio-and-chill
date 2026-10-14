@@ -5,6 +5,7 @@ import SwiftUI
 struct HomeView: View {
     @Environment(AppModel.self) private var app
     @Environment(Router.self) private var router
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var model: HomeModel?
 
     var body: some View {
@@ -16,7 +17,10 @@ struct HomeView: View {
                     Color.clear.frame(height: 160)
                 }
                 SurpriseCard()
-                if !app.library.continueWatching.isEmpty {
+                if LibraryLoadingRow.isShowing(app.library) {
+                    LibraryLoadingRow(title: "Your put.io", cardSize: CGSize(width: Metrics.poster(sizeClass), height: Metrics.poster(sizeClass) * 1.5),
+                                      gutter: Metrics.gutter(sizeClass))
+                } else if !app.library.continueWatching.isEmpty {
                     EntryRowView(title: "Continue Watching", entries: app.library.continueWatching)
                 }
                 if !app.myList.items.isEmpty {

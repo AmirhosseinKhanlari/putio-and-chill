@@ -53,7 +53,8 @@ struct RemoteImage: View {
         // Design A on the TV: quiet gray while art loads, never colored placeholders.
         if contentMode == .fill { Color(white: 0.1) } else { Color.clear }
         #else
-        if neutral {
+        // Gray while artwork downloads; the colored card only when there is no artwork at all.
+        if neutral || (url != nil && contentMode == .fill) {
             Color.white.opacity(0.08)
         } else if contentMode == .fill {
             let palette = AmbientPalette.seeded(seed)

@@ -112,6 +112,8 @@ struct FakeCatalog: CatalogService {
     var movieSearch: [String: [CatalogItem]] = [:]
     var tvSearch: [String: [CatalogItem]] = [:]
     var failAll = false
+    /// Makes title searches slow, to look at a refresh while it's still matching.
+    var searchDelay: Duration = .zero
     /// Records the rating filters discover was asked for.
     var discoverCalls: DiscoverCalls?
     var multiPages: [String: [Int: [CatalogItem]]] = [:]
@@ -156,8 +158,14 @@ struct FakeCatalog: CatalogService {
         if let detail = details[id] { return try guarded(detail.item) }
         return try guarded(CatalogItem(tmdbID: id, mediaType: kind, title: "Title \(id)", posterPath: "/p\(id).jpg"))
     }
-    func searchMovie(title: String, year: Int?) async throws -> [CatalogItem] { try guarded(movieSearch[title.lowercased()] ?? []) }
-    func searchTV(title: String, year: Int?) async throws -> [CatalogItem] { try guarded(tvSearch[title.lowercased()] ?? []) }
+    func searchMovie(title: String, year: Int?) async throws -> [CatalogItem] {
+        if searchDelay > .zero { try? await Task.sleep(for: searchDelay) }
+        return try guarded(movieSearch[title.lowercased()] ?? [])
+    }
+    func searchTV(title: String, year: Int?) async throws -> [CatalogItem] {
+        if searchDelay > .zero { try? await Task.sleep(for: searchDelay) }
+        return try guarded(tvSearch[title.lowercased()] ?? [])
+    }
 }
 
 struct FakeSearcher: ReleaseSearching {

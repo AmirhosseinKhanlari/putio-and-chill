@@ -15,7 +15,10 @@ struct TVHomeView: View {
                 if let hero = model?.hero, !hero.isEmpty {
                     TVHeroCarousel(items: hero)
                 }
-                if !app.library.continueWatching.isEmpty {
+                if LibraryLoadingRow.isShowing(app.library) {
+                    LibraryLoadingRow(title: "Your put.io", cardSize: TVMetrics.wide, gutter: TVMetrics.edge,
+                                      titleFont: .system(size: 30, weight: .semibold))
+                } else if !app.library.continueWatching.isEmpty {
                     TVEntryShelf(title: "Continue Watching", entries: app.library.continueWatching)
                 }
                 TVShelf(title: "Can't decide?") {

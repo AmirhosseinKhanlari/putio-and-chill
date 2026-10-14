@@ -60,6 +60,19 @@ import Testing
         #expect(index.recentlyAdded(.tv).map(\.id) == [12])
     }
 
+    @Test func filesWaitingForAMatchAreNotShown() async {
+        var slow = Self.catalog
+        slow.searchDelay = .milliseconds(150)
+        let index = makeIndex(catalog: slow)
+        let refresh = Task { await index.refresh() }
+        try? await Task.sleep(for: .milliseconds(60))
+        #expect(index.pendingMatches > 0, "still matching")
+        #expect(index.entries.allSatisfy { $0.match != nil }, "no raw file names while matching")
+        await refresh.value
+        #expect(index.pendingMatches == 0)
+        #expect(index.entries.map(\.id).sorted() == [10, 11, 12, 14])
+    }
+
     @Test func continueWatchingShowsEachTitleOnce() async {
         let putio = Self.tree()
         // A second, older-watched version of Dune and a started episode next to S02E04.
