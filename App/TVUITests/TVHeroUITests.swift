@@ -53,5 +53,8 @@ final class TVHeroUITests: XCTestCase {
         remote.press(.down)
         sleep(2)
         shot("movies-recent")
+        remote.press(.down)
+        sleep(2)
+        shot("movies-latest")
     }
 }

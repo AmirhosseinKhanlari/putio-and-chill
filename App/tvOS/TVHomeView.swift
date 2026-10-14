@@ -144,6 +144,10 @@ struct TVBrowseView: View {
                 if !recent.isEmpty {
                     TVEntryShelf(title: "Recently Added to put.io", entries: recent)
                 }
+                let latest = kind == .tv ? app.chillFeed.shows : app.chillFeed.movies
+                if !latest.isEmpty {
+                    TVCatalogShelf(row: CatalogRow(id: "latest", title: kind == .tv ? "Latest Shows" : "Latest Movies", items: latest))
+                }
                 if model?.isLoading == true, model?.rows.isEmpty == true {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 }
@@ -157,6 +161,7 @@ struct TVBrowseView: View {
             guard model == nil, let catalog = app.catalog else { return }
             let browse = BrowseModel(kind: kind, catalog: catalog)
             model = browse
+            Task { await app.refreshChillFeed() }
             await browse.load()
         }
     }

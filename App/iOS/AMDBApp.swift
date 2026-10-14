@@ -23,7 +23,7 @@ struct AMDBApp: App {
                        bundledTraktClientID: Bundle.main.object(forInfoDictionaryKey: "TraktClientID") as? String,
                        bundledOpenSubtitlesKey: Bundle.main.object(forInfoDictionaryKey: "OpenSubtitlesAPIKey") as? String,
                        subtitleCache: SubtitleFileCache(directory: SubtitleFileCache.defaultDirectory()),
-                       libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL()))
+                       libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL()), chillFeedURL: ChillFeed.defaultURL())
         _model = State(initialValue: model)
         _downloader = State(initialValue: OfflineDownloader(app: model))
         let router = Router()

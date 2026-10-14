@@ -11,6 +11,9 @@ public struct ServiceFactory: Sendable {
     public var trailers: any TrailerService
     public var episodeRatings: any EpisodeRatingsService
     public var makeSubtitles: @Sendable (String) -> any SubtitleService
+    public var makeChillCatalog: @Sendable (String) -> any ChillCatalogService
+    /// Latest-movie lists that need no account (MyMoviz).
+    public var latestMovies: [any LatestMoviesSource]
 
     public init(makePutio: @escaping @Sendable (String) -> any PutioService,
                 makeCatalog: @escaping @Sendable (String) -> any CatalogService,
@@ -25,7 +28,11 @@ public struct ServiceFactory: Sendable {
                 episodeRatings: any EpisodeRatingsService = IMDbEpisodeRatingsClient(transport: URLSessionTransport()),
                 makeSubtitles: @escaping @Sendable (String) -> any SubtitleService = {
                     OpenSubtitlesClient(apiKey: $0, transport: URLSessionTransport())
-                }) {
+                },
+                makeChillCatalog: @escaping @Sendable (String) -> any ChillCatalogService = {
+                    ChillCatalogClient(token: $0, transport: URLSessionTransport())
+                },
+                latestMovies: [any LatestMoviesSource] = [MyMovizClient(transport: URLSessionTransport())]) {
         self.makePutio = makePutio
         self.makeCatalog = makeCatalog
         self.makeProvider = makeProvider
@@ -34,6 +41,8 @@ public struct ServiceFactory: Sendable {
         self.trailers = trailers
         self.episodeRatings = episodeRatings
         self.makeSubtitles = makeSubtitles
+        self.makeChillCatalog = makeChillCatalog
+        self.latestMovies = latestMovies
     }
 
     public static let live: ServiceFactory = {
@@ -85,6 +94,8 @@ public final class AppModel {
     public let store: LocalStore
     public let myList: MyList
     public let downloads: DownloadsIndex
+    /// "Latest on chill" rows (needs a connected chill account).
+    public let chillFeed: ChillFeed
 
     @ObservationIgnored private let tokens: any TokenStore
     @ObservationIgnored private let userDefaults: UserDefaults
@@ -97,6 +108,7 @@ public final class AppModel {
     @ObservationIgnored private var chartCache: [IMDbChart: [ChartEntry]] = [:]
     @ObservationIgnored private var episodeRatingsCache: [String: [Int: EpisodeRating]] = [:]
     @ObservationIgnored private var subtitleService: (any SubtitleService)?
+    @ObservationIgnored private var chillCatalog: (any ChillCatalogService)?
     @ObservationIgnored private let bundledOpenSubtitlesKey: String?
     @ObservationIgnored private var openSubtitlesLogin: OpenSubtitlesLogin?
     @ObservationIgnored private let subtitleCache: SubtitleFileCache
@@ -105,7 +117,7 @@ public final class AppModel {
                 bundledTMDBToken: String? = nil, ratingsCache: RatingsCache = RatingsCache(fileURL: nil),
                 bundledTraktClientID: String? = nil, bundledOpenSubtitlesKey: String? = nil,
                 subtitleCache: SubtitleFileCache = SubtitleFileCache(directory: nil),
-                libraryCache: LibraryCache = LibraryCache(fileURL: nil)) {
+                libraryCache: LibraryCache = LibraryCache(fileURL: nil), chillFeedURL: URL? = nil) {
         self.tokens = tokens
         self.userDefaults = defaults
         self.store = store
@@ -125,6 +137,7 @@ public final class AppModel {
         transfers = TransferMonitor(store: store)
         myList = MyList(store: store)
         downloads = DownloadsIndex(store: store)
+        chillFeed = ChillFeed(fileURL: chillFeedURL)
         rebuild()
     }
 
@@ -299,6 +312,12 @@ public final class AppModel {
         return login
     }
 
+    /// Combined latest lists (chill when connected, plus MyMoviz) for the Movies / TV Shows tabs;
+    /// at most every six hours unless forced.
+    public func refreshChillFeed(force: Bool = false) async {
+        await chillFeed.load(service: chillCatalog, extraMovies: factory.latestMovies, catalog: catalog, force: force)
+    }
+
     public func notePlayed(_ title: PlayedTitle) async {
         await store.update { $0.lastPlayed = title }
     }
@@ -323,6 +342,7 @@ public final class AppModel {
         hasRatings = ratingsService != nil
         let chillToken = tokens.read(.chill)
         hasChill = chillToken != nil
+        chillCatalog = chillToken.map(factory.makeChillCatalog)
         let providers = settings.sources.filter(\.enabled).compactMap { factory.makeProvider($0, chillToken) }
         searcher = ReleaseAggregator(providers: providers)
         library.configure(putio: putio, catalog: catalog)

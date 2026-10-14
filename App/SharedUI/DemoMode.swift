@@ -21,7 +21,9 @@ enum DemoMode {
             makeProvider: { config, _ in DemoProvider(id: config.id) },
             makeCharts: { _ in DemoCharts() },
             episodeRatings: DemoEpisodeRatings(),
-            makeSubtitles: { _ in DemoSubtitles() })
+            makeSubtitles: { _ in DemoSubtitles() },
+            makeChillCatalog: { _ in DemoChill() },
+            latestMovies: [])
         let model = AppModel(tokens: InMemoryTokenStore([.putio: "demo", .tmdb: "demo", .chill: "demo"]),
                              defaults: UserDefaults(suiteName: "amdb.demo") ?? .standard,
                              store: LocalStore(fileURL: nil), factory: factory, bundledTraktClientID: "demo",
@@ -332,5 +334,15 @@ struct DemoCharts: ChartsService {
         return pool.enumerated().map { index, item in
             ChartEntry(rank: index + 1, kind: chart.kind, title: item.title, year: item.year, imdbID: "tt\(item.tmdbID)", tmdbID: item.tmdbID)
         }
+    }
+}
+
+/// chill's combined lists in demo mode: a few of the demo titles, newest first.
+struct DemoChill: ChillCatalogService {
+    func combinedMovies() async throws -> [ChillTitle] {
+        DemoCatalog.movies.reversed().map { ChillTitle(imdbID: nil, title: $0.title, year: $0.year, kind: .movie, source: "DEMO") }
+    }
+    func combinedShows() async throws -> [ChillTitle] {
+        DemoCatalog.shows.map { ChillTitle(imdbID: nil, title: $0.title, year: $0.year, kind: .tv, source: "DEMO") }
     }
 }

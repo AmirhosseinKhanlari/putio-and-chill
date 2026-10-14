@@ -22,6 +22,10 @@ struct BrowseView: View {
                 if !recent.isEmpty {
                     EntryRowView(title: "Recently Added to put.io", entries: recent)
                 }
+                let latest = kind == .tv ? app.chillFeed.shows : app.chillFeed.movies
+                if !latest.isEmpty {
+                    CatalogRowView(row: CatalogRow(id: "latest", title: kind == .tv ? "Latest Shows" : "Latest Movies", items: latest))
+                }
                 if let chart { ChartRowView(model: chart) }
                 if model?.isLoading == true && model?.rows.isEmpty == true {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
@@ -41,6 +45,7 @@ struct BrowseView: View {
                 chart = top
                 Task { await top.load() }
             }
+            Task { await app.refreshChillFeed() }
             await browse.load()
             if let first = browse.rows.first?.items.first { ambient.focus(first) }
         }

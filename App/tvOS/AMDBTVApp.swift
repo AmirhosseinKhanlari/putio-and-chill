@@ -20,7 +20,7 @@ struct AMDBTVApp: App {
             bundledTraktClientID: info.object(forInfoDictionaryKey: "TraktClientID") as? String,
             bundledOpenSubtitlesKey: info.object(forInfoDictionaryKey: "OpenSubtitlesAPIKey") as? String,
             subtitleCache: SubtitleFileCache(directory: SubtitleFileCache.defaultDirectory()),
-            libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL())))
+            libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL()), chillFeedURL: ChillFeed.defaultURL()))
     }
 
     var body: some Scene {
