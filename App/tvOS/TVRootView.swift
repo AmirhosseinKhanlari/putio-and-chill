@@ -95,6 +95,7 @@ struct TVRootView: View {
         case "search": router.tab = .search
         case "settings": router.tab = .settings
         case "movies": router.tab = .movies
+        case "tvshows": router.tab = .tv
         case "player":
             router.player = TVPlayRequest(entry: LibraryEntry(
                 file: PutioFile(id: 2, name: "Severance.S02E04.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO", size: 2_000_000_000),

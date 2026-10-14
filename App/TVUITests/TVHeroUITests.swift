@@ -38,13 +38,18 @@ final class TVHeroUITests: XCTestCase {
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Featured'")).count >= 0)
     }
 
-    /// Movies tab: featured slider on top, then what was recently added to put.io.
-    func testMoviesTab() {
+    /// Movies tab: featured slider on top, then what was recently added to put.io and the latest lists.
+    func testMoviesTab() { browse("movies") }
+
+    /// TV Shows tab: same layout, with Latest Shows.
+    func testTVShowsTab() { browse("tvshows") }
+
+    private func browse(_ screen: String) {
         let app = XCUIApplication()
-        app.launchArguments = ["-demo", "-demoScreen", "movies"]
+        app.launchArguments = ["-demo", "-demoScreen", screen]
         app.launch()
         sleep(6)
-        shot("movies-top")
+        shot("\(screen)-top")
         let remote = XCUIRemote.shared
         remote.press(.down)
         sleep(1)
@@ -52,9 +57,9 @@ final class TVHeroUITests: XCTestCase {
         sleep(1)
         remote.press(.down)
         sleep(2)
-        shot("movies-recent")
+        shot("\(screen)-recent")
         remote.press(.down)
         sleep(2)
-        shot("movies-latest")
+        shot("\(screen)-latest")
     }
 }
