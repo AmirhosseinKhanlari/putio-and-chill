@@ -86,7 +86,7 @@ final class PlayerCoordinator {
         chrome.nextLabel = request.next?.label
         chrome.playingFromDevice = localURL != nil
         chrome.subtitleStyle = app.settings.subtitleStyle
-        chrome.failureLink = URL(string: "https://app.put.io/files/\(request.file.id)")
+        chrome.failureLink = localURL == nil ? URL(string: "https://app.put.io/files/\(request.file.id)") : nil
         controller = PlayerViewController(engine: engine, chrome: chrome)
     }
 
@@ -154,7 +154,10 @@ final class PlayerCoordinator {
     private func handleUnplayable() async {
         guard !triedFallback else { return }
         triedFallback = true
-        if request.file.contentType == "video/mp4", let original = try? await putio.originalURL(fileID: request.file.id) {
+        if chrome.playingFromDevice {
+            chrome.preparing = false
+            chrome.failure = "This download couldn't be played. Remove it and download it again, or stream it from put.io."
+        } else if request.file.contentType == "video/mp4", let original = try? await putio.originalURL(fileID: request.file.id) {
             engine.replace(with: original)
         } else {
             chrome.preparing = false

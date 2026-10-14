@@ -12,6 +12,34 @@ public enum AutoCleaner {
     }
 }
 
+/// Where an offline copy lives, kept relative to the app's home: the container path changes with app updates,
+/// and the download system reports locations under /private/var while the home directory says /var.
+public enum DownloadPaths {
+    /// What to save for a finished download's location.
+    public static func stored(location: String, home: String) -> String {
+        if let library = librarySuffix(location) { return library }
+        let homeVariants = [home, "/private" + home, home.replacingOccurrences(of: "/private", with: "")]
+        for prefix in homeVariants where location.hasPrefix(prefix + "/") {
+            return String(location.dropFirst(prefix.count + 1))
+        }
+        return location
+    }
+
+    /// The absolute path for a saved location in the current container (also fixes records saved by older builds).
+    public static func resolve(stored: String, home: String) -> String {
+        guard stored.hasPrefix("/") else { return home + "/" + stored }
+        if let library = librarySuffix(stored), stored.contains("/Containers/Data/Application/") {
+            return home + "/" + library
+        }
+        return stored
+    }
+
+    private static func librarySuffix(_ path: String) -> String? {
+        guard let range = path.range(of: "/Library/") else { return nil }
+        return String(path[path.index(after: range.lowerBound)...])
+    }
+}
+
 /// Offline copies on this device.
 @Observable @MainActor
 public final class DownloadsIndex {

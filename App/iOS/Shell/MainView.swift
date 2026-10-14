@@ -144,8 +144,14 @@ struct MainView: View {
         case .stream: false
         case .automatic: app.settings.preferDownloads
         }
-        PlayerPresenter.present(request, from: seconds, app: app, router: router,
-                                localURL: useDownload ? downloader.localURL(fileID: request.file.id) : nil)
+        let localURL = useDownload ? downloader.localURL(fileID: request.file.id) : nil
+        // "Play from This Device" never falls back to streaming: offline that can only fail.
+        if request.source == .device, localURL == nil {
+            router.player = nil
+            withAnimation { router.toast = "This download isn't on this device anymore. Download it again." }
+            return
+        }
+        PlayerPresenter.present(request, from: seconds, app: app, router: router, localURL: localURL)
     }
 
     private func wireEvents() {
