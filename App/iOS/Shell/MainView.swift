@@ -68,6 +68,11 @@ struct MainView: View {
         }
         .onChange(of: app.transfers.tracked) { _, tracked in liveActivities.sync(tracked) }
         .onChange(of: app.library.continueWatching.map(\.id)) { _, _ in Task { await WidgetPublisher.publish(app.library) } }
+        // Siri and Spotlight know your put.io and My List titles.
+        .onChange(of: app.library.entries.count + app.myList.items.count) { _, _ in
+            SpotlightIndexer.index(app)
+            AMDBShortcuts.updateAppShortcutParameters()
+        }
         .onOpenURL { url in open(DeepLink(url: url)) }
         // Controls (Control Center, Action button) leave the screen to open in the App Group.
         .onReceive(NotificationCenter.default.publisher(for: PendingLink.notification)) { _ in openPendingLink() }

@@ -64,5 +64,21 @@ struct AMDBShortcuts: AppShortcutsProvider {
             "Continue watching in \(.applicationName)",
             "Resume \(.applicationName)",
         ], shortTitle: "Continue Watching", systemImageName: "play.fill")
+        AppShortcut(intent: PlayTitleIntent(), phrases: [
+            "Play \(\.$target) in \(.applicationName)",
+            "Watch \(\.$target) in \(.applicationName)",
+        ], shortTitle: "Play", systemImageName: "play.circle")
+        AppShortcut(intent: OpenTitleIntent(), phrases: [
+            "Open \(\.$target) in \(.applicationName)",
+            "Show \(\.$target) in \(.applicationName)",
+        ], shortTitle: "Open Title", systemImageName: "film")
+        AppShortcut(intent: OpenSurpriseIntent(), phrases: [
+            "Surprise me in \(.applicationName)",
+            "Pick something to watch in \(.applicationName)",
+        ], shortTitle: "Surprise Me", systemImageName: "dice")
+        AppShortcut(intent: OpenComingUpIntent(), phrases: [
+            "What's coming up in \(.applicationName)",
+            "What's on in \(.applicationName)",
+        ], shortTitle: "Coming Up", systemImageName: "calendar")
     }
 }
