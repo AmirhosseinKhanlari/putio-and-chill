@@ -13,11 +13,17 @@ final class EpisodeDownloadUITests: XCTestCase {
         XCTAssertTrue(seasonMenu.waitForExistence(timeout: 20))
         seasonMenu.tap()
         app.buttons["Season 2"].tap()
-        XCTAssertTrue(app.buttons["Download season"].waitForExistence(timeout: 10))
-        let episodeDownload = app.buttons["Download to this device"].firstMatch
-        for _ in 0..<3 where !(episodeDownload.exists && episodeDownload.isHittable) { app.swipeUp() }
-        XCTAssertTrue(episodeDownload.exists)
-        XCTAssertTrue(app.buttons["Play episode"].exists || app.buttons["Resume episode"].exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Download season' OR label == 'Season downloaded'")).firstMatch.waitForExistence(timeout: 10))
+        let play = app.buttons.matching(NSPredicate(format: "label == 'Play episode' OR label == 'Resume episode'")).firstMatch
+        for _ in 0..<4 where !(play.exists && play.isHittable) { app.swipeUp() }
+        XCTAssertTrue(play.exists)
+        let rowButton = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Download' AND label != 'Download season'")).firstMatch
+        if !rowButton.exists {
+            // iPhone: Download lives in the episode's ⋯ menu.
+            app.buttons["More for episode 4"].tap()
+            let item = app.buttons.matching(NSPredicate(format: "label == 'Download to This Device' OR label == 'Remove Download'")).firstMatch
+            XCTAssertTrue(item.waitForExistence(timeout: 5))
+        }
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "season2"; shot.lifetime = .keepAlways; add(shot)
     }
 }

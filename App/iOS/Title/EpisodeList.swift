@@ -89,9 +89,9 @@ private struct EpisodeRow: View {
         let regular = sizeClass != .compact
         let resume = app.library.matching(tmdbID: model.item.tmdbID, season: season, episode: episode.number)
             .map { app.library.resumeSeconds(for: $0) }.max() ?? 0
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: regular ? 14 : 10) {
             RemoteImage(path: episode.stillPath, size: "w300", seed: "\(model.item.title) \(episode.number)")
-                .frame(width: regular ? 220 : 128, height: regular ? 124 : 72)
+                .frame(width: regular ? 220 : 104, height: regular ? 124 : 58)
                 .overlay(alignment: .bottomLeading) {
                     if resume >= 30 {
                         Label(Format.clock(resume), systemImage: "play.fill").font(.caption2.weight(.bold))
@@ -99,14 +99,16 @@ private struct EpisodeRow: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(alignment: .topTrailing) { if !regular { downloadBadge } }
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(episode.number). \(episode.name)").font(.headline).lineLimit(1)
+                Text("\(episode.number). \(episode.name)").font(regular ? .headline : .subheadline.weight(.semibold))
+                    .lineLimit(regular ? 1 : 2)
                 HStack(spacing: 10) {
                     if let score = model.episodeRatings[episode.number] {
-                        IMDbScore(rating: score.rating).font(.caption.weight(.semibold))
+                        IMDbScore(rating: score.rating).font(.caption.weight(.semibold)).fixedSize()
                     }
                     if let runtime = Format.runtime(episode.runtimeMinutes) {
-                        Text(runtime).font(.caption).foregroundStyle(.white.opacity(0.55))
+                        Text(runtime).font(.caption).foregroundStyle(.white.opacity(0.55)).fixedSize()
                     }
                     if isBestOfSeason {
                         Group {
@@ -125,11 +127,24 @@ private struct EpisodeRow: View {
                     Text(episode.overview).font(.footnote).foregroundStyle(.white.opacity(0.7)).lineLimit(2)
                 }
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: regular ? 8 : 4)
             EpisodeActionButton(model: model, season: season, episode: episode.number, next: next)
         }
         .padding(10)
         .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    /// On iPhone the Download button lives in the ⋯ menu; its state shows here.
+    @ViewBuilder private var downloadBadge: some View {
+        let entries = app.library.matching(tmdbID: model.item.tmdbID, season: season, episode: episode.number)
+        let states = entries.compactMap { app.downloads.record(fileID: $0.id)?.state }
+        if states.contains(where: { if case .done = $0 { true } else { false } }) {
+            Image(systemName: "checkmark.circle.fill").font(.system(size: 16)).foregroundStyle(.white, Theme.good)
+                .padding(5).accessibilityLabel("Downloaded")
+        } else if let progress = states.compactMap({ if case let .downloading(value) = $0 { value } else { nil } }).first {
+            ProgressRing(progress: progress, lineWidth: 2.5).frame(width: 16, height: 16).padding(6)
+                .background(.black.opacity(0.5), in: Circle()).padding(3).accessibilityLabel("Downloading")
+        }
     }
 
     /// Highest IMDb score in a season with at least three rated episodes.

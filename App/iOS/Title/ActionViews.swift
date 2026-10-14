@@ -150,35 +150,118 @@ struct EpisodeActionButton: View {
     let next: NextEpisode?
     @Environment(AppModel.self) private var app
     @Environment(Router.self) private var router
+    @Environment(OfflineDownloader.self) private var downloader
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var finding = false
 
+    /// iPhone rows are narrow: Download moves into the ⋯ menu (its state shows on the episode image instead).
+    private var compact: Bool { sizeClass == .compact }
+
     var body: some View {
-        switch model.action(season: season, episode: episode) {
-        case .get:
-            if finding {
-                ProgressView().frame(width: 34, height: 34)
-            } else {
-                iconButton("icloud.and.arrow.down", label: "Get episode") { Task { await get() } }
-                    .contextMenu { Button("Choose a version…") { openVersions() } }
-            }
-        case let .play(entry):
-            HStack(spacing: 10) {
-                DownloadButton(entry: entry, plain: true)
+        let action = model.action(season: season, episode: episode)
+        HStack(spacing: compact ? 4 : 10) {
+            switch action {
+            case .get:
+                if finding {
+                    ProgressView().frame(width: 34, height: 34)
+                } else {
+                    iconButton("icloud.and.arrow.down", label: "Get episode") { Task { await get() } }
+                }
+            case let .play(entry):
+                if !compact { DownloadButton(entry: entry, plain: true) }
                 iconButton("play.circle.fill", label: "Play episode") { router.play(entry, resumeFrom: 0, next: next) }
                     .playSourceMenu(entry: entry, resumeFrom: 0, next: next)
-            }
-        case let .resume(entry, seconds):
-            HStack(spacing: 10) {
-                DownloadButton(entry: entry, plain: true)
+            case let .resume(entry, seconds):
+                if !compact { DownloadButton(entry: entry, plain: true) }
                 iconButton("play.circle.fill", label: "Resume episode") { router.play(entry, resumeFrom: seconds, next: next) }
                     .playSourceMenu(entry: entry, resumeFrom: seconds, next: next)
+            case let .downloading(transfer):
+                DownloadStatus(transfer: transfer, ringOnly: true)
+            case .failed:
+                iconButton("exclamationmark.arrow.circlepath", label: "Retry episode") { openVersions() }
             }
-        case let .downloading(transfer):
-            DownloadStatus(transfer: transfer, ringOnly: true)
-        case .failed:
-            iconButton("exclamationmark.arrow.circlepath", label: "Retry episode") { openVersions() }
+            moreMenu(action)
         }
+    }
+
+    /// Everything for one episode, including picking a different release (another quality, size or source).
+    private func moreMenu(_ action: TitleAction) -> some View {
+        Menu {
+            switch action {
+            case let .play(entry):
+                playItems(entry, resumeFrom: 0)
+            case let .resume(entry, seconds):
+                playItems(entry, resumeFrom: seconds)
+                Button { router.play(entry, resumeFrom: 0, next: next) } label: { Label("Start Over", systemImage: "backward.end") }
+            case .get:
+                Button { Task { await get() } } label: { Label("Get Episode", systemImage: "icloud.and.arrow.down") }
+            case let .downloading(transfer):
+                Button(role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } } label: {
+                    Label("Cancel Download", systemImage: "xmark")
+                }
+            case .failed:
+                EmptyView()
+            }
+            Divider()
+            Button { openVersions() } label: {
+                Label(owned.isEmpty ? "Choose a Version…" : "Choose Another Version…", systemImage: "square.stack.3d.up")
+            }
+            if owned.count > 1 {
+                Section("In put.io") {
+                    ForEach(owned) { entry in
+                        Button { router.play(entry, resumeFrom: app.library.resumeSeconds(for: entry), next: next) } label: {
+                            Label(Self.versionLabel(entry), systemImage: "play")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle").font(.system(size: compact ? 22 : 26, weight: .light))
+                .frame(width: compact ? 30 : 34, height: 34)
+        }
+        .accessibilityLabel("More for episode \(episode)")
+    }
+
+    @ViewBuilder private func playItems(_ entry: LibraryEntry, resumeFrom: Int) -> some View {
+        if app.downloads.finished.contains(where: { $0.fileID == entry.id }) {
+            Button { router.play(entry, resumeFrom: resumeFrom, next: next, source: .device) } label: {
+                Label("Play from This Device", systemImage: "arrow.down.circle")
+            }
+        }
+        Button { router.play(entry, resumeFrom: resumeFrom, next: next, source: .stream) } label: {
+            Label("Stream from put.io", systemImage: "icloud")
+        }
+        if compact { downloadItem(entry) }
+    }
+
+    @ViewBuilder private func downloadItem(_ entry: LibraryEntry) -> some View {
+        switch app.downloads.record(fileID: entry.id)?.state {
+        case .done?:
+            Button(role: .destructive) { Task { await downloader.remove(fileID: entry.id) } } label: {
+                Label("Remove Download", systemImage: "trash")
+            }
+        case .downloading?, .queued?:
+            Button(role: .destructive) { Task { await downloader.cancel(fileID: entry.id) } } label: {
+                Label("Cancel Download", systemImage: "xmark.circle")
+            }
+        default:
+            Button { Task { await downloader.start(entry) } } label: {
+                Label("Download to This Device", systemImage: "arrow.down.to.line")
+            }
+            .disabled(!OfflineDownloader.isSupported)
+        }
+    }
+
+    private var owned: [LibraryEntry] {
+        app.library.matching(tmdbID: model.item.tmdbID, season: season, episode: episode)
+    }
+
+    /// "1080p · 2.1 GB" from the file name and size, else the file name.
+    static func versionLabel(_ entry: LibraryEntry) -> String {
+        let resolution = ReleaseNameParser.parse(entry.file.name).resolution
+        let parts = [resolution == .unknown ? nil : resolution.label, entry.file.size.map { Format.bytes($0) }].compactMap { $0 }
+        return parts.isEmpty ? entry.file.name : parts.joined(separator: " · ")
     }
 
     private func get() async {
@@ -195,7 +278,7 @@ struct EpisodeActionButton: View {
     }
 
     private func iconButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: symbol).font(.system(size: 30, weight: .light)) }
+        Button(action: action) { Image(systemName: symbol).font(.system(size: compact ? 26 : 30, weight: .light)) }
             .buttonStyle(.lift)
             .accessibilityLabel(label)
     }
