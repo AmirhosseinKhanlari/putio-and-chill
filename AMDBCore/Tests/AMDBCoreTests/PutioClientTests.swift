@@ -137,4 +137,14 @@ import Testing
         #expect(stub.requests[2].httpMethod == "POST")
         #expect(stub.requests[2].url?.path == "/v2/files/5/mp4")
     }
+
+    @Test func mp4StatusIsReadLeniently() throws {
+        let decoder = JSONDecoder.snakeCase
+        let fractional = try decoder.decode(PutioMp4Status.self, from: Data(#"{"status":"CONVERTING","percent_done":42.6}"#.utf8))
+        #expect(fractional == PutioMp4Status(status: .converting, percentDone: 43))
+        let unknown = try decoder.decode(PutioMp4Status.self, from: Data(#"{"status":"SOMETHING_NEW"}"#.utf8))
+        #expect(unknown.status == .other("SOMETHING_NEW"))
+        let queued = try decoder.decode(PutioMp4Status.self, from: Data(#"{"id":1,"status":"IN_QUEUE"}"#.utf8))
+        #expect(queued == PutioMp4Status(status: .inQueue))
+    }
 }

@@ -9,13 +9,21 @@ final class WatchingUITests: XCTestCase {
         app.launchArguments = ["-demo", "-demoScreen", "settings"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Settings"].waitForExistence(timeout: 20))
-        for label in ["Auto-play next episode", "Audio language", "Subtitles", "One-tap Get", "Max size"] {
-            var tries = 0
-            while !app.staticTexts[label].exists && !app.switches[label].exists && tries < 8 {
-                app.swipeUp()
-                tries += 1
+        // Settings is a list of pages: each holds its options.
+        let pages: [(page: String, options: [String])] = [
+            ("Playback", ["Auto-play next episode", "Audio language"]),
+            ("Subtitles", ["Language"]),
+            ("Smart Get", ["One-tap Get", "Max size"]),
+        ]
+        for (page, options) in pages {
+            let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", page + ",")).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 5), "\(page) row")
+            row.tap()
+            for label in options {
+                XCTAssertTrue(app.staticTexts[label].waitForExistence(timeout: 5) || app.switches[label].exists,
+                              "\(label) should be in \(page)")
             }
-            XCTAssertTrue(app.staticTexts[label].exists || app.switches[label].exists, "\(label) should be in Settings")
+            app.navigationBars.buttons.element(boundBy: 0).tap()
         }
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "settings-playback"

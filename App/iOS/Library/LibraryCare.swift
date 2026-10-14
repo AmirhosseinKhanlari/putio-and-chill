@@ -58,8 +58,9 @@ struct DownloadButton: View {
                 }
             }
         } label: {
-            if case let .converting(percent)? = app.conversions.states[entry.id], state != nil {
+            if let conversion = app.conversions.states[entry.id], conversion != .failed, state != nil {
                 // put.io is converting it for Apple devices; the download starts when that's done.
+                let percent = if case let .converting(value) = conversion { value } else { 0 }
                 ProgressRing(progress: Double(percent) / 100, lineWidth: 3)
                     .overlay { Image(systemName: "gearshape.fill").font(.system(size: plain ? 9 : 7)) }
                     .frame(width: plain ? 26 : 20, height: plain ? 26 : 20)
@@ -108,8 +109,11 @@ struct DownloadButton: View {
     }
 
     private func label(_ state: DownloadState?) -> String {
-        if case let .converting(percent)? = app.conversions.states[entry.id], state != nil {
-            return "put.io is converting this video for Apple devices, \(percent)%. Tap to cancel"
+        if let conversion = app.conversions.states[entry.id], conversion != .failed, state != nil {
+            if case let .converting(percent) = conversion {
+                return "put.io is converting this video for Apple devices, \(percent)%. Tap to cancel"
+            }
+            return "Waiting for put.io to convert this video for Apple devices. Tap to cancel"
         }
         return switch state {
         case .done?: "Downloaded. Tap to remove"

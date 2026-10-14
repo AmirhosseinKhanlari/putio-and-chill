@@ -83,8 +83,8 @@ struct PlayerControlsView: View {
                     ProgressView().controlSize(.large).tint(.white)
                 }
                 skipIndicator(width: proxy.size.width)
-                if case let .converting(percent)? = chrome.conversion, chrome.failure == nil {
-                    ConversionCard(percent: percent)
+                if let conversion = chrome.conversion, conversion != .failed, chrome.failure == nil {
+                    ConversionCard(state: conversion)
                 } else if chrome.preparing, chrome.failure == nil {
                     Text("Preparing…").font(.callout.weight(.medium)).foregroundStyle(.white.opacity(0.85))
                         .padding(.horizontal, 14).padding(.vertical, 7).glassCapsule()
@@ -635,21 +635,33 @@ struct NextUpCard: View {
 
 /// "Converting for Apple devices": put.io turns a video Apple devices can't play into an MP4 first.
 private struct ConversionCard: View {
-    let percent: Int
+    let state: VideoConversions.State
 
     var body: some View {
         VStack(spacing: 12) {
-            ProgressRing(progress: Double(percent) / 100, lineWidth: 5)
-                .frame(width: 54, height: 54)
-                .overlay { Text("\(percent)%").font(.caption.monospacedDigit().weight(.semibold)) }
-            Text("Converting for Apple devices").font(.headline)
-            Text("This video's format doesn't play on iPhone and iPad as it is, so put.io is converting it. It starts by itself when it's ready; you can close the player and come back.")
+            switch state {
+            case let .converting(percent):
+                ProgressRing(progress: Double(percent) / 100, lineWidth: 5)
+                    .frame(width: 54, height: 54)
+                    .overlay { Text("\(percent)%").font(.caption.monospacedDigit().weight(.semibold)) }
+                    .animation(.easeInOut, value: percent)
+                Text("Converting for Apple devices").font(.headline)
+            default:
+                ProgressView().controlSize(.large).tint(.white).frame(width: 54, height: 54)
+                Text("Waiting for put.io to convert it").font(.headline)
+            }
+            Text("This video's format doesn't play on iPhone and iPad as it is, so put.io is converting it. It plays by itself when it's ready. You can close the player: it keeps converting, and shows how far when you come back.")
                 .font(.footnote).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
         }
         .padding(22)
-        .frame(maxWidth: 360)
+        .frame(maxWidth: 380)
         .glassRounded(22)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Converting for Apple devices, \(percent) percent")
+        .accessibilityLabel(label)
+    }
+
+    private var label: String {
+        if case let .converting(percent) = state { return "Converting for Apple devices, \(percent) percent" }
+        return "Waiting for put.io to convert it"
     }
 }

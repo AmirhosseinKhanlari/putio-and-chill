@@ -7,6 +7,8 @@ import Foundation
 @Observable @MainActor
 public final class VideoConversions {
     public enum State: Equatable, Sendable {
+        /// Waiting in put.io's conversion queue (it hasn't started on this one yet).
+        case queued
         case converting(percent: Int)
         case failed
     }
@@ -48,28 +50,45 @@ public final class VideoConversions {
 
     private func convert(fileID: Int64) async -> Bool {
         guard let putio else { return false }
-        states[fileID] = .converting(percent: 0)
+        if states[fileID] == nil || states[fileID] == .failed { states[fileID] = .queued }
         var status = try? await putio.mp4Status(fileID: fileID)
         if status == nil || status?.status == .notAvailable || status?.status == .error {
-            status = try? await putio.convertToMp4(fileID: fileID)
+            status = (try? await putio.convertToMp4(fileID: fileID)) ?? status
         }
         // Up to about six hours: put.io queues conversions when it's busy.
         for _ in 0..<4320 {
             guard !Task.isCancelled else { return false }
+            if let status { apply(status, fileID: fileID) }
             switch status?.status {
             case .completed?:
-                states[fileID] = nil
                 return true
             case .error?:
-                states[fileID] = .failed
                 return false
             default:
-                states[fileID] = .converting(percent: status?.percentDone ?? 0)
+                break
             }
             try? await Task.sleep(for: pollInterval)
+            // A failed or unreadable check keeps what's on screen (never a jump back to 0%).
             if let next = try? await putio.mp4Status(fileID: fileID) { status = next }
         }
         states[fileID] = .failed
         return false
+    }
+
+    /// What put.io says, shown so it only ever moves forward.
+    private func apply(_ status: PutioMp4Status, fileID: Int64) {
+        switch status.status {
+        case .completed:
+            states[fileID] = nil
+        case .error:
+            states[fileID] = .failed
+        case .converting, .other:
+            let previous: Int = if case let .converting(percent)? = states[fileID] { percent } else { 0 }
+            states[fileID] = .converting(percent: min(99, max(previous, status.percentDone ?? 0)))
+        case .inQueue, .notAvailable:
+            // Already converting: stay there.
+            if case .converting? = states[fileID] { return }
+            states[fileID] = .queued
+        }
     }
 }

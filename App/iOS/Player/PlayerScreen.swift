@@ -75,6 +75,7 @@ final class PlayerCoordinator {
     private var triedFallback = false
     /// Waiting for put.io to convert the video (no "can't play" errors meanwhile).
     private var converting = false
+    private var conversionTask: Task<Void, Never>?
     private var startSeconds = 0
     private var finished = false
 
@@ -144,8 +145,10 @@ final class PlayerCoordinator {
                 finish()
                 return
             }
-            chrome.conversion = app.conversions.states[request.file.id]
-            if converting { continue }
+            if converting {
+                chrome.conversion = app.conversions.states[request.file.id] ?? chrome.conversion
+                continue
+            }
             let status = engine.status
             chrome.preparing = status != .readyToPlay && !triedFallback
             if status == .readyToPlay, !appliedLanguages, let item = engine.player.currentItem {
@@ -208,20 +211,32 @@ final class PlayerCoordinator {
         }
     }
 
-    /// Called when the video doesn't play: if put.io says its format needs converting for Apple devices, converts it
-    /// (the player shows how far), then plays from where it was meant to start. Returns whether that was the case.
-    /// Not done up front: put.io also flags videos only web browsers can't play, and those stream fine here.
+    /// Called when the video doesn't play: if put.io says its format needs converting for Apple devices, has put.io
+    /// convert it (the player shows how far) and then plays from where it was meant to start. Returns whether that's
+    /// the case. Not done up front: put.io also flags videos only web browsers can't play, and those stream fine.
+    /// The wait runs on its own, so closing the player is never held up by it (the conversion carries on at put.io
+    /// and shows again when the video is reopened).
     private func convertIfNeeded() async -> Bool {
-        guard !converting, await app.conversions.needsConversion(fileID: request.file.id) else { return false }
+        if converting { return true }
+        guard await app.conversions.needsConversion(fileID: request.file.id), !finished else { return false }
         converting = true
         engine.pause()
         chrome.preparing = false
         chrome.failure = nil
-        chrome.conversion = .converting(percent: 0)
-        let ok = await app.conversions.makePlayable(fileID: request.file.id)
+        chrome.conversion = app.conversions.states[request.file.id] ?? .queued
+        let app = app, fileID = request.file.id
+        conversionTask = Task { [weak self] in
+            let ok = await app.conversions.makePlayable(fileID: fileID)
+            guard let self, !self.finished, !Task.isCancelled else { return }
+            self.conversionDone(ok)
+        }
+        return true
+    }
+
+    private func conversionDone(_ ok: Bool) {
         converting = false
+        conversionTask = nil
         chrome.conversion = nil
-        guard !finished else { return true }
         if ok {
             triedFallback = false
             let resumeAt = max(engine.position, Double(startSeconds))
@@ -230,7 +245,6 @@ final class PlayerCoordinator {
         } else {
             chrome.failure = "put.io couldn't convert this video for Apple devices. Try another version of it."
         }
-        return true
     }
 
     private func finish() {
@@ -238,6 +252,7 @@ final class PlayerCoordinator {
         finished = true
         progressTask?.cancel()
         gettingNext?.cancel()
+        conversionTask?.cancel()
         let position = engine.position
         let duration = engine.duration
         engine.tearDown()

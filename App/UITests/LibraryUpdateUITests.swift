@@ -14,8 +14,12 @@ final class LibraryUpdateUITests: XCTestCase {
         attach("library")
 
         app.buttons["Settings"].tap()
+        // The Library page of Settings ("Library, Updates automatically"), not the Library tab.
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Library,'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
         let auto = app.switches["Update automatically"]
-        for _ in 0..<8 where !(auto.exists && auto.isHittable) { app.swipeUp() }
+        XCTAssertTrue(auto.waitForExistence(timeout: 5))
         XCTAssertTrue(auto.exists)
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Check put.io every'")).firstMatch.exists)
         app.buttons["Update now"].tap()

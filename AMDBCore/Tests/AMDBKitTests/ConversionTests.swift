@@ -93,4 +93,30 @@ import Testing
         #expect(!PutioFile(id: 2, name: "notes.txt", fileType: "TEXT").isVideo)
         #expect(!PutioFile(id: 3, name: "Season.mkv", fileType: "FOLDER").isVideo)
     }
+
+    /// put.io's queue, then its progress: never shown going back to 0% (an unreadable or lower answer is ignored).
+    @Test func progressOnlyMovesForward() async throws {
+        let putio = putio()
+        putio.needsMp4 = [5]
+        putio.mp4Progress[5] = [PutioMp4Status(status: .inQueue), PutioMp4Status(status: .converting, percentDone: 42),
+                                PutioMp4Status(status: .converting, percentDone: 0), PutioMp4Status(status: .inQueue),
+                                PutioMp4Status(status: .converting, percentDone: 60)]
+        let conversions = VideoConversions(pollInterval: .milliseconds(30))
+        conversions.configure(putio: putio)
+        var seen: [VideoConversions.State] = []
+        let watch = Task { @MainActor in
+            while !Task.isCancelled {
+                if let state = conversions.states[5], seen.last != state { seen.append(state) }
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+        }
+        let run = Task { await conversions.makePlayable(fileID: 5) }
+        try await waitUntil(timeout: .seconds(3)) { seen.contains(.converting(percent: 60)) }
+        run.cancel()
+        watch.cancel()
+        #expect(seen.first == .queued)
+        let percents = seen.compactMap { if case let .converting(value) = $0 { value } else { nil } }
+        #expect(percents == percents.sorted(), "never backwards: \(seen)")
+        #expect(!seen.dropFirst().contains(.queued), "once converting, never back to waiting")
+    }
 }

@@ -533,6 +533,11 @@ private struct TVConversionOverlay: View {
         if let state = conversions.states[fileID] {
             VStack(spacing: 18) {
                 switch state {
+                case .queued:
+                    ProgressView()
+                    Text("Waiting for put.io to convert it").font(.system(size: 34, weight: .semibold))
+                    Text("This video's format doesn't play on Apple TV as it is. It plays by itself once put.io has converted it.")
+                        .font(.system(size: 24)).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
                 case let .converting(percent):
                     ProgressView(value: Double(percent), total: 100).frame(width: 420)
                     Text("Converting for Apple TV · \(percent)%").font(.system(size: 34, weight: .semibold))

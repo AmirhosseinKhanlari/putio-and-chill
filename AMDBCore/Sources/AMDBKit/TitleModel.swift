@@ -87,6 +87,16 @@ public final class TitleModel {
         return seconds >= 30 ? .resume(best, seconds: seconds) : .play(best)
     }
 
+    /// Whether every aired episode of the selected season is in put.io (Get season is pointless then). Any one
+    /// missing, or deleted later, makes it false again.
+    public func isSeasonInPutio(_ season: Int, today: Date = Date()) -> Bool {
+        guard selectedSeason == season, !episodes.isEmpty else { return false }
+        let day = CuratedList.day(today, plus: 0)
+        let aired = episodes.filter { episode in episode.airDate.map { $0.isEmpty || $0 <= day } ?? true }
+        guard !aired.isEmpty else { return false }
+        return aired.allSatisfy { !library.matching(tmdbID: item.tmdbID, season: season, episode: $0.number).isEmpty }
+    }
+
     public func query(season: Int? = nil, episode: Int? = nil) -> MediaQuery? {
         guard let detail, let imdbID = detail.imdbID else { return nil }
         let title = detail.item.title

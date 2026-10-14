@@ -8,6 +8,7 @@ struct EpisodeList: View {
     @Environment(OfflineDownloader.self) private var downloader
     @Environment(Router.self) private var router
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var confirmRemove = false
 
     var body: some View {
         let seasons = model.detail?.seasons ?? []
@@ -30,6 +31,7 @@ struct EpisodeList: View {
                     seasonButton(season)
                 }
             }
+            onDeviceRow
             ForEach(model.episodes) { episode in
                 if let season = model.selectedSeason {
                     EpisodeRow(model: model, season: season, episode: episode, next: nextEpisode(after: episode.number, in: season))
@@ -37,6 +39,55 @@ struct EpisodeList: View {
             }
         }
         .padding(.horizontal, Metrics.gutter(sizeClass))
+    }
+
+    /// Every episode of this show saved on this device (any season), finished or still downloading.
+    private var showDownloads: [DownloadRecord] {
+        let tmdbID = model.item.tmdbID
+        let libraryIDs = Set(app.library.matching(tmdbID: tmdbID).map(\.id))
+        return app.downloads.records.filter { record in
+            (record.tmdbID == tmdbID && record.kind == .tv) || libraryIDs.contains(record.fileID)
+        }
+    }
+
+    /// "8 episodes on this device · 12.4 GB" with Remove Downloads, for the whole show.
+    @ViewBuilder private var onDeviceRow: some View {
+        let records = showDownloads
+        let finished = records.filter { if case .done = $0.state { true } else { false } }
+        if !records.isEmpty {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.down.circle.fill").foregroundStyle(.white.opacity(0.6))
+                Text(onDeviceSummary(finished: finished.count, total: records.count))
+                    .font(.footnote).foregroundStyle(.white.opacity(0.7))
+                Spacer(minLength: 8)
+                Button(role: .destructive) { confirmRemove = true } label: {
+                    Label("Remove Downloads", systemImage: "trash")
+                }
+                .buttonStyle(.glassPill)
+                .accessibilityLabel("Remove all downloads of \(model.item.title) from this device")
+            }
+            .alert("Remove \(records.count) downloaded episode\(records.count == 1 ? "" : "s") of \(model.item.title)?",
+                   isPresented: $confirmRemove) {
+                Button("Cancel", role: .cancel) {}
+                Button("Remove from This Device", role: .destructive) {
+                    let ids = records.map(\.fileID)
+                    Task {
+                        for id in ids { await downloader.cancel(fileID: id) }
+                        router.toast = "Removed \(ids.count) download\(ids.count == 1 ? "" : "s")"
+                    }
+                }
+            } message: {
+                Text("Frees \(Format.bytes(finished.compactMap { downloader.size(fileID: $0.fileID) }.reduce(0, +))) on this device. The episodes stay in your put.io.")
+            }
+        }
+    }
+
+    private func onDeviceSummary(finished: Int, total: Int) -> String {
+        let bytes = showDownloads.compactMap { downloader.size(fileID: $0.fileID) }.reduce(Int64(0), +)
+        var text = "\(finished) episode\(finished == 1 ? "" : "s") on this device"
+        if total > finished { text += " · \(total - finished) downloading" }
+        if bytes > 0 { text += " · \(Format.bytes(bytes))" }
+        return text
     }
 
     /// Saves every episode of the season that's already in put.io to this device. Says "Season downloaded" only when
@@ -79,12 +130,19 @@ struct EpisodeList: View {
         case let .downloading(transfer):
             DownloadStatus(transfer: transfer)
         default:
+            // Every episode is already in put.io: nothing to get (it comes back if one goes missing).
+            if !model.isSeasonInPutio(season) {
+                getSeasonButton(season)
+            }
+        }
+    }
+
+    private func getSeasonButton(_ season: Int) -> some View {
             Button {
                 guard let query = model.query(season: season) else { return }
                 router.versions = VersionsRequest(query: query, target: model.target(season: season), playNow: [])
             } label: { Label("Get season", systemImage: "square.stack.3d.down.right") }
             .buttonStyle(.glassPill)
-        }
     }
 
     private func nextEpisode(after number: Int, in season: Int) -> NextEpisode? {

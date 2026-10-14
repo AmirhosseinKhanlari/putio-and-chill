@@ -92,8 +92,8 @@ struct FilesPage: View {
         } message: {
             Text("In \(folder.id == 0 ? "your put.io" : folder.name).")
         }
-        .confirmationDialog(deleteTitle, isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                            titleVisibility: .visible) {
+        .alert(deleteTitle, isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Cancel", role: .cancel) {}
             Button("Move to Trash", role: .destructive) {
                 guard let ids = deleting else { return }
                 run {
@@ -650,7 +650,8 @@ struct TrashPage: View {
             model = trash
             await trash.load()
         }
-        .confirmationDialog("Empty the trash?", isPresented: $confirmEmpty, titleVisibility: .visible) {
+        .alert("Empty the trash?", isPresented: $confirmEmpty) {
+            Button("Cancel", role: .cancel) {}
             Button("Empty Trash", role: .destructive) {
                 run {
                     try await model?.empty()
@@ -660,8 +661,8 @@ struct TrashPage: View {
         } message: {
             Text("Everything in it is deleted for good (\(Format.bytes(model?.size ?? 0))). This can't be undone.")
         }
-        .confirmationDialog("Delete forever?", isPresented: Binding(get: { forever != nil }, set: { if !$0 { forever = nil } }),
-                            titleVisibility: .visible) {
+        .alert("Delete forever?", isPresented: Binding(get: { forever != nil }, set: { if !$0 { forever = nil } })) {
+            Button("Cancel", role: .cancel) {}
             Button("Delete Forever", role: .destructive) {
                 guard let ids = forever else { return }
                 run { try await model?.deleteForever(ids) }

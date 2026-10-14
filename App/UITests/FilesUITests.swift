@@ -66,7 +66,7 @@ final class FilesUITests: XCTestCase {
         let poster = app.buttons["Severance.Poster.jpg"]
         poster.press(forDuration: 1.2)
         app.buttons["Delete"].tap()
-        app.buttons["Move to Trash"].tap()
+        app.alerts.buttons["Move to Trash"].tap()
         XCTAssertTrue(poster.waitForNonExistence(timeout: 5))
 
         // Back to the top, into the Trash.
@@ -78,10 +78,9 @@ final class FilesUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Old.Movie.2001.720p.mkv"].exists)
         shot("files-trash")
         app.buttons["Empty Trash"].firstMatch.tap()
-        // The confirmation's button is the newest one called Empty Trash.
-        let confirm = app.buttons.matching(identifier: "Empty Trash")
-        XCTAssertTrue(confirm.element(boundBy: 1).waitForExistence(timeout: 5))
-        confirm.element(boundBy: confirm.count - 1).tap()
+        let confirm = app.alerts.buttons["Empty Trash"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
         XCTAssertTrue(app.staticTexts["Empty"].waitForExistence(timeout: 5))
     }
 

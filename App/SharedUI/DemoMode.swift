@@ -52,6 +52,9 @@ enum DemoMode {
         case "files":
             router.tab = .library
             router.libraryPath = [.files(.root)]
+        case "downloads":
+            router.tab = .library
+            router.libraryPath = [.downloads]
         case "movies": router.tab = .movies
         case "upcoming": router.tab = .upcoming
         case "person": router.homePath = [.person(900)]

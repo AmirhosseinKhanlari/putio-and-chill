@@ -112,17 +112,43 @@ public struct PutioFile: Codable, Sendable, Hashable, Identifiable {
     public var isStreamable: Bool { needConvert != true || isMp4Available == true }
 }
 
-/// put.io's MP4 conversion of a video Apple devices can't play as it is.
+/// put.io's MP4 conversion of a video Apple devices can't play as it is. Read leniently: an unexpected status or a
+/// fractional percentage must not make the whole answer unreadable.
 public struct PutioMp4Status: Decodable, Sendable, Equatable {
-    public enum State: String, Decodable, Sendable {
-        case notAvailable = "NOT_AVAILABLE", inQueue = "IN_QUEUE", converting = "CONVERTING", completed = "COMPLETED"
-        case error = "ERROR"
+    public enum State: Sendable, Equatable {
+        case notAvailable, inQueue, converting, completed, error
+        case other(String)
+
+        init(_ raw: String) {
+            switch raw.uppercased() {
+            case "NOT_AVAILABLE": self = .notAvailable
+            case "IN_QUEUE", "QUEUED", "PREPARING": self = .inQueue
+            case "CONVERTING": self = .converting
+            case "COMPLETED", "DONE": self = .completed
+            case "ERROR", "FAILED": self = .error
+            default: self = .other(raw)
+            }
+        }
     }
 
     public let status: State
     public let percentDone: Int?
 
     public init(status: State, percentDone: Int? = nil) { self.status = status; self.percentDone = percentDone }
+
+    enum CodingKeys: String, CodingKey { case status, percentDone }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = State((try? container.decode(String.self, forKey: .status)) ?? "")
+        if let number = try? container.decode(Double.self, forKey: .percentDone) {
+            percentDone = Int(number.rounded())
+        } else if let text = try? container.decode(String.self, forKey: .percentDone), let number = Double(text) {
+            percentDone = Int(number.rounded())
+        } else {
+            percentDone = nil
+        }
+    }
 }
 
 public struct PutioFileList: Decodable, Sendable, Equatable {
