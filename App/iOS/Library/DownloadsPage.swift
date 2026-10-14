@@ -25,6 +25,7 @@ struct DownloadsPage: View {
                     settings.preferDownloads = value
                     app.updateSettings(settings)
                 }))
+                .tint(Theme.good)
             } footer: {
                 Text("When off, everything streams from put.io. Long-press Play on any title to choose each time.")
             }
