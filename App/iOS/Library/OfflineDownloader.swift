@@ -20,6 +20,9 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
     @ObservationIgnored private var tasks: [Int64: AVAssetDownloadTask] = [:]
     /// Where each running download is being written, from willDownloadTo (newer iOS reports it there).
     @ObservationIgnored private var locations: [Int64: String] = [:]
+    /// Highest progress reported per download, so the app's own bar never moves backwards.
+    @ObservationIgnored private var reported: [Int64: Double] = [:]
+    @ObservationIgnored private var progressObservers: [Int64: NSKeyValueObservation] = [:]
 
     init(app: AppModel) {
         self.app = app
@@ -40,7 +43,10 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         ensureSession().getAllTasks { tasks in
             MainActor.assumeIsolated {
                 for case let task as AVAssetDownloadTask in tasks {
-                    if let id = task.taskDescription.flatMap(Int64.init) { self.tasks[id] = task }
+                    if let id = task.taskDescription.flatMap(Int64.init) {
+                        self.tasks[id] = task
+                        self.observeProgress(task, fileID: id)
+                    }
                 }
             }
         }
@@ -68,8 +74,38 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         }
         let task = ensureSession().makeAssetDownloadTask(downloadConfiguration: configuration)
         task.taskDescription = String(entry.id)
+        // A streamed (HLS) download has no fixed size, so iOS's own download Live Activity estimates the total from
+        // what it has fetched so far and the number keeps changing. Tell it up front: bitrate × length.
+        if let expected = await Self.expectedBytes(asset, dataSaver: app.settings.downloadDataSaver) {
+            task.countOfBytesClientExpectsToReceive = expected
+        }
         tasks[entry.id] = task
+        observeProgress(task, fileID: entry.id)
         task.resume()
+    }
+
+    /// Size of the variant the download will pick (highest quality, or ≤ 3 Mbps with Data saver) for the whole video.
+    static func expectedBytes(_ asset: AVURLAsset, dataSaver: Bool) async -> Int64? {
+        guard let duration = try? await asset.load(.duration).seconds, duration.isFinite, duration > 0,
+              let variants = try? await asset.load(.variants) else { return nil }
+        let rates = variants.compactMap { $0.averageBitRate ?? $0.peakBitRate }
+        let allowed = dataSaver ? rates.filter { $0 <= 3_000_000 } : rates
+        guard let bitRate = (allowed.isEmpty ? rates : allowed).max(), bitRate > 0 else { return nil }
+        return Int64(bitRate * duration / 8)
+    }
+
+    /// iOS 27 reports download progress on the task's Progress (the time-range callback is deprecated).
+    private func observeProgress(_ task: AVAssetDownloadTask, fileID: Int64) {
+        progressObservers[fileID] = task.progress.observe(\.fractionCompleted) { [weak self] progress, _ in
+            let value = progress.fractionCompleted
+            Task { @MainActor in self?.report(fileID: fileID, value) }
+        }
+    }
+
+    private func report(fileID: Int64, _ value: Double) {
+        guard value.isFinite, value > (reported[fileID] ?? 0) + 0.002 || value >= 1 else { return }
+        reported[fileID] = min(value, 1)
+        Task { await app.downloads.progress(fileID: fileID, min(value, 1)) }
     }
 
     func cancel(fileID: Int64) async {
@@ -122,9 +158,7 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         let expected = timeRangeExpectedToLoad.duration.seconds
         let loaded = loadedTimeRanges.map { $0.timeRangeValue.duration.seconds }.reduce(0, +)
         let progress = expected > 0 ? min(1, loaded / expected) : 0
-        MainActor.assumeIsolated {
-            _ = Task { await self.app.downloads.progress(fileID: id, progress) }
-        }
+        MainActor.assumeIsolated { self.report(fileID: id, progress) }
     }
 
     nonisolated func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask, willDownloadTo location: URL) {
@@ -148,6 +182,8 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         let failure = error.flatMap { ($0 as NSError).code == NSURLErrorCancelled ? nil : $0.localizedDescription }
         MainActor.assumeIsolated {
             self.tasks[id] = nil
+            self.progressObservers[id] = nil
+            self.reported[id] = nil
             let location = self.locations.removeValue(forKey: id)
             if succeeded, let location {
                 // Make sure it's marked done even if didFinishDownloadingTo never came.
