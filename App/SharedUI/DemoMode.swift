@@ -359,7 +359,7 @@ struct DemoCharts: ChartsService {
 
 /// chill's combined lists in demo mode: a few of the demo titles, newest first.
 struct DemoChill: ChillCatalogService {
-    func combinedMovies() async throws -> [ChillTitle] {
+    func combinedMovies(allowSettingsSwitch: Bool) async throws -> [ChillTitle] {
         DemoCatalog.movies.reversed().map { ChillTitle(imdbID: nil, title: $0.title, year: $0.year, kind: .movie, source: "DEMO") }
     }
     func combinedShows() async throws -> [ChillTitle] {

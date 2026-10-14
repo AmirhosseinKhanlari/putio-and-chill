@@ -42,6 +42,13 @@ struct TVRootView: View {
         // Leaving the app: make sure the Top Shelf shows what you were just watching.
         .onChange(of: scenePhase) { _, phase in
             if phase != .active, app.putio != nil { TVTopShelfPublisher.publish(app.library, force: true) }
+            // Back in the app: Latest Movies / Shows are fetched every time it opens, and the library is checked.
+            if phase == .active, app.putio != nil {
+                Task {
+                    await app.refreshChillFeed(force: true)
+                    await app.refreshLibraryIfDue()
+                }
+            }
         }
         // Top Shelf items: play resumes, select opens the title.
         .onOpenURL { url in Task { await open(DeepLink(url: url)) } }
@@ -139,6 +146,7 @@ struct TVRootView: View {
         TVTopShelfPublisher.publish(app.library)
         await app.myList.load()
         await app.transfers.restore()
+        Task { await app.refreshChillFeed(force: true) }
         await app.refreshLibraryIfDue()
     }
 }

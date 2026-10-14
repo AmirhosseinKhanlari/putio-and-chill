@@ -76,7 +76,11 @@ struct MainView: View {
         .onOpenURL { url in open(DeepLink(url: url)) }
         // Controls (Control Center, Action button) leave the screen to open in the App Group.
         .onReceive(NotificationCenter.default.publisher(for: PendingLink.notification)) { _ in openPendingLink() }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in openPendingLink() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            openPendingLink()
+            // Latest Movies / Shows (chill, MyMoviz) are fetched every time the app opens.
+            Task { await app.refreshChillFeed(force: true) }
+        }
         .sheet(item: Binding(get: { cleanupReview.map(CleanupList.init) }, set: { if $0 == nil { cleanupReview = nil } })) { list in
             AutoCleanReview(entries: list.entries) {
                 cleanupReview = nil

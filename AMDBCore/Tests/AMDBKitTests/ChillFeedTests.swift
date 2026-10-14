@@ -5,8 +5,12 @@ import Testing
 
 private final class FakeChill: ChillCatalogService, @unchecked Sendable {
     var calls = 0
-    func combinedMovies() async throws -> [ChillTitle] {
+    var allowed: [Bool] = []
+    var failing = false
+    func combinedMovies(allowSettingsSwitch: Bool) async throws -> [ChillTitle] {
         calls += 1
+        allowed.append(allowSettingsSwitch)
+        if failing { throw AppError.transport("rss down") }
         return [ChillTitle(imdbID: nil, title: "Anora", year: 2024, kind: .movie, releaseDate: "2024-10-18", source: "RT"),
                 ChillTitle(imdbID: nil, title: "Nobody Knows This", year: 2024, kind: .movie, source: "RT")]
     }
@@ -22,6 +26,14 @@ private struct FakeLatest: LatestTitlesSource {
             ? [ChillTitle(imdbID: nil, title: "Seinfeld", year: 1989, kind: .tv, source: "MYMOVIZ")]
             : [ChillTitle(imdbID: nil, title: "Animals", year: 2026, kind: .movie, source: "MYMOVIZ"),
                ChillTitle(imdbID: nil, title: "Anora", year: 2024, kind: .movie, source: "MYMOVIZ")]
+    }
+}
+
+/// MyMoviz with a movie chill doesn't have.
+private struct OnlyAnimals: LatestTitlesSource {
+    let kind = MediaKind.movie
+    func latestTitles() async throws -> [ChillTitle] {
+        [ChillTitle(imdbID: nil, title: "Animals", year: 2026, kind: .movie, source: "MYMOVIZ")]
     }
 }
 
@@ -59,5 +71,33 @@ private struct FakeLatest: LatestTitlesSource {
         await reopened.load(service: nil, catalog: nil, now: start.addingTimeInterval(7 * 3600 + 60))
         #expect(reopened.movies.map(\.title) == ["Anora"])
         #expect(reopened.shows.map(\.title) == ["Severance"])
+    }
+
+    @Test func openingTheAppAlwaysFetchesAgain() async {
+        let chill = FakeChill()
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let feed = ChillFeed(fileURL: nil)
+        await feed.load(service: chill, catalog: catalog, force: true, now: start)
+        await feed.load(service: chill, catalog: catalog, force: true, now: start.addingTimeInterval(60))
+        #expect(chill.calls == 2)
+    }
+
+    @Test func settingsSwitchFallbackAtMostEverySixHours() async {
+        let chill = FakeChill()
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let feed = ChillFeed(fileURL: nil)
+        await feed.load(service: chill, catalog: catalog, force: true, now: start)
+        await feed.load(service: chill, catalog: catalog, force: true, now: start.addingTimeInterval(3600))
+        await feed.load(service: chill, catalog: catalog, force: true, now: start.addingTimeInterval(7 * 3600))
+        #expect(chill.allowed == [true, false, true])
+    }
+
+    @Test func keepsChillsLastListsWhenItCantBeRead() async {
+        let chill = FakeChill()
+        let feed = ChillFeed(fileURL: nil)
+        await feed.load(service: chill, extra: [OnlyAnimals()], catalog: catalog, force: true)
+        chill.failing = true
+        await feed.load(service: chill, extra: [OnlyAnimals()], catalog: catalog, force: true)
+        #expect(feed.movies.map(\.title) == ["Animals", "Anora"], "Anora (only on chill) is kept from chill's last list")
     }
 }

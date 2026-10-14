@@ -20,14 +20,19 @@ public struct ChillTitle: Sendable, Hashable, Codable {
     }
 
     /// Same title across lists: IMDb id when there is one, else title and year.
-    var mergeKey: String { imdbID ?? "\(title.lowercased())|\(year ?? 0)" }
+    public var mergeKey: String { imdbID ?? "\(title.lowercased())|\(year ?? 0)" }
 }
 
 public protocol ChillCatalogService: Sendable {
-    /// Every movie list chill offers, merged into one, newest first.
-    func combinedMovies() async throws -> [ChillTitle]
+    /// Every movie list chill offers, merged into one, newest first. `allowSettingsSwitch: false` never touches the
+    /// account's saved movie source (the fallback when the RSS feeds can't be read); it throws instead.
+    func combinedMovies(allowSettingsSwitch: Bool) async throws -> [ChillTitle]
     /// chill's "All providers" TV list (already combined across streaming services), newest first.
     func combinedShows() async throws -> [ChillTitle]
+}
+
+extension ChillCatalogService {
+    public func combinedMovies() async throws -> [ChillTitle] { try await combinedMovies(allowSettingsSwitch: true) }
 }
 
 public enum ChillMerge {
@@ -87,9 +92,13 @@ public actor ChillCatalogClient: ChillCatalogService {
         self.http = HTTPRequester(service: "chill", transport: transport)
     }
 
-    public func combinedMovies() async throws -> [ChillTitle] {
-        if let lists = try? await rssLists() { return ChillMerge.combine(lists) }
-        return try await switchingSettings()
+    public func combinedMovies(allowSettingsSwitch: Bool) async throws -> [ChillTitle] {
+        do {
+            return ChillMerge.combine(try await rssLists())
+        } catch {
+            guard allowSettingsSwitch else { throw error }
+            return try await switchingSettings()
+        }
     }
 
     static let rssPaths: [String: String] = [
