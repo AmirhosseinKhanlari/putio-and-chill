@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/hero.jpg" alt="AMDB on Apple TV, iPad and iPhone" width="100%">
+<img src="docs/images/hero.jpg" alt="Putio & Chill on Apple TV, iPad and iPhone" width="100%">
 
 <br>
 
@@ -20,11 +20,11 @@ and watch with your progress, subtitles and downloads everywhere.
 
 <br>
 
-<img src="docs/images/iphone-gallery.jpg" alt="AMDB on iPhone: Home, title page, Browse, Coming Up and Surprise Me" width="100%">
+<img src="docs/images/iphone-gallery.jpg" alt="Putio & Chill on iPhone: Home, title page, Browse, Coming Up and Surprise Me" width="100%">
 
-## Why AMDB
+## Why Putio & Chill
 
-put.io is a great place to keep movies and shows. AMDB makes it feel like a streaming service: your library matched
+put.io is a great place to keep movies and shows. Putio & Chill makes it feel like a streaming service: your library matched
 to rich artwork and ratings, smart discovery, one-tap "Get & Watch", a real player, and every Apple-platform nicety,
 on the phone in your pocket and the TV in your living room.
 
@@ -86,7 +86,7 @@ on the phone in your pocket and the TV in your living room.
 
 ## Built for Apple TV
 
-<img src="docs/images/tv-gallery.jpg" alt="AMDB on Apple TV: Home, title page, Coming Up and Surprise Me" width="100%">
+<img src="docs/images/tv-gallery.jpg" alt="Putio & Chill on Apple TV: Home, title page, Coming Up and Surprise Me" width="100%">
 
 A full-screen, focus-driven design: black canvas, full-bleed art, glass buttons that turn white when selected.
 Every feature that makes sense on a TV is there, plus **Top Shelf**, **sign-in with a code**, a Netflix-style
@@ -94,14 +94,14 @@ Every feature that makes sense on a TV is there, plus **Top Shelf**, **sign-in w
 
 ## And on iPad
 
-<img src="docs/images/ipad-pair.jpg" alt="AMDB on iPad: Home and Coming Up" width="100%">
+<img src="docs/images/ipad-pair.jpg" alt="Putio & Chill on iPad: Home and Coming Up" width="100%">
 
 ## Deeply integrated
 
 | | |
 |---|---|
-| **Ask AMDB** | "a twisty 90s thriller under 2 hours": Apple Intelligence turns a sentence into a search (iOS 26) |
-| **Siri** | "Play *Severance* in AMDB", "What's coming up in AMDB", "Get a movie with AMDB" |
+| **Ask Chill** | "a twisty 90s thriller under 2 hours": Apple Intelligence turns a sentence into a search (iOS 26) |
+| **Siri** | "Play *Severance* in Putio & Chill", "What's coming up in Putio & Chill", "Get a movie with Putio & Chill" |
 | **Spotlight** | Your put.io and My List titles in system search |
 | **Control Center** | A Surprise Me button for Control Center, the Lock Screen and the Action button |
 | **Widgets & Live Activities** | Continue Watching on the Home Screen; transfer progress in the Dynamic Island |
@@ -111,8 +111,8 @@ Every feature that makes sense on a TV is there, plus **Top Shelf**, **sign-in w
 ## Get started
 
 ```bash
-git clone https://github.com/AmirhosseinKhanlari/AMDB--Amir-Movie-Database.git
-cd AMDB--Amir-Movie-Database
+git clone https://github.com/AmirhosseinKhanlari/putio-and-chill.git
+cd putio-and-chill
 brew install xcodegen
 cp Config/Secrets.example.xcconfig Config/Secrets.xcconfig   # add your TMDB token (and optional keys)
 xcodegen generate && open AMDB.xcodeproj
@@ -171,7 +171,7 @@ project.yml          XcodeGen spec
 
 ## Disclaimer
 
-AMDB is a personal project, not affiliated with put.io, chill.institute, TMDB, IMDb, Trakt, OpenSubtitles or any release
+Putio & Chill is a personal project, not affiliated with put.io, chill.institute, TMDB, IMDb, Trakt, OpenSubtitles or any release
 source. You are responsible for what you download; follow the laws where you live and the terms of the services you
 connect.
 

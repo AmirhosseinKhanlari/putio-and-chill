@@ -1,12 +1,12 @@
 # Features
 
-Everything AMDB does, by area. Unless noted, a feature works on iPhone, iPad and Apple TV.
+Everything Putio & Chill does, by area. Unless noted, a feature works on iPhone, iPad and Apple TV.
 
 - [Getting started](#getting-started)
 - [Home and browsing](#home-and-browsing)
 - [Titles, people and collections](#titles-people-and-collections)
 - [Coming Up](#coming-up)
-- [Search and Ask AMDB](#search-and-ask-amdb)
+- [Search and Ask Chill](#search-and-ask-chill)
 - [Getting releases](#getting-releases)
 - [Library](#library)
 - [Playback](#playback)
@@ -68,13 +68,13 @@ Everything AMDB does, by area. Unless noted, a feature works on iPhone, iPad and
 - **TV**: next episodes of the shows in your put.io and My List, grouped Today, Tomorrow, weekday, then by date; plus
   Premiering Soon and Returning This Week.
 
-## Search and Ask AMDB
+## Search and Ask Chill
 
 - **Search** movies, shows and people with top suggestions and endless results; recent searches are remembered.
 - **Search releases** for anything TMDB doesn't know.
 - **Apple TV**: Netflix-style search with an on-screen keyboard, suggestions under it, Popular Searches before you type,
   and dictation through the search field.
-- **Ask AMDB** (iPhone/iPad, iOS 26+ with Apple Intelligence on): type a sentence like *"a twisty 90s thriller under 2
+- **Ask Chill** (iPhone/iPad, iOS 26+ with Apple Intelligence on): type a sentence like *"a twisty 90s thriller under 2
   hours"* or *"something like Severance"*. Apple Intelligence turns it into filters (kind, genres, years, length,
   rating, language, topics, "like X"); TMDB finds the titles; the understood filters are shown above the results.
 
@@ -100,9 +100,9 @@ Everything AMDB does, by area. Unless noted, a feature works on iPhone, iPad and
 
 ## Playback
 
-- **iPhone / iPad**: AMDB's own controls: scrubber, ±10 s skip (double-tap), speed, fill/fit (pinch), AirPlay,
+- **iPhone / iPad**: Putio & Chill's own controls: scrubber, ±10 s skip (double-tap), speed, fill/fit (pinch), AirPlay,
   Picture in Picture, Now Playing on the Lock Screen.
-- **Apple TV**: Apple's player with AMDB's Subtitles and Sleep Timer menus in the swipe-down bar.
+- **Apple TV**: Apple's player with Putio & Chill's Subtitles and Sleep Timer menus in the swipe-down bar.
 - **Gestures (iPhone/iPad)**: swipe down on the video to close the player; swipe right to go back on any page.
 - **Resume** where you left off, synced with put.io so it continues on any device.
 - **Next episode**: a Next button near the end and optional auto-play when the next episode is in put.io.
@@ -134,7 +134,7 @@ Everything AMDB does, by area. Unless noted, a feature works on iPhone, iPad and
 
 | Feature | Platform |
 |---|---|
-| **Siri**: "Play *Severance* in AMDB", "Open *Dune* in AMDB", "Get a movie with AMDB", "Continue watching in AMDB", "Surprise me in AMDB", "What's coming up in AMDB" | iPhone, iPad |
+| **Siri**: "Play *Severance* in Putio & Chill", "Open *Dune* in Putio & Chill", "Get a movie with Putio & Chill", "Continue watching in Putio & Chill", "Surprise me in Putio & Chill", "What's coming up in Putio & Chill" | iPhone, iPad |
 | **Spotlight**: your put.io and My List titles appear in search | iOS 18+ |
 | **Control Center / Lock Screen / Action button**: Surprise Me control | iOS 18+ |
 | **Widgets**: Continue Watching | iPhone, iPad |
@@ -151,7 +151,7 @@ Everything AMDB does, by area. Unless noted, a feature works on iPhone, iPad and
 - Tabs: Home, Movies, TV Shows, Coming Up, Top 250, Library, Search, Settings.
 - Every iPhone feature that makes sense on a TV, including Surprise Me, people and collections, Organize and Clean Up.
 - Top Shelf, sign-in by code, and settings shared through iCloud Keychain.
-- Not on Apple TV: offline downloads, Ask AMDB (Apple Intelligence isn't available on tvOS), widgets, Siri phrases.
+- Not on Apple TV: offline downloads, Ask Chill (Apple Intelligence isn't available on tvOS), widgets, Siri phrases.
 
 ## Settings
 

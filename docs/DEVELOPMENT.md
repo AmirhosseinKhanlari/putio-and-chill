@@ -35,6 +35,9 @@
 
 All four app/extension targets use the App Group `group.app.amdb`.
 
+The app is called **Putio & Chill**; schemes, targets, the bundle IDs and the put.io folders (`AMDB/Movies`, `AMDB/TV`)
+keep the original AMDB name so TestFlight builds and existing libraries carry on unchanged.
+
 ## Demo mode
 
 Launch with **`-demo`** to run on built-in sample data (no accounts, no network for put.io/TMDB). Add
@@ -63,7 +66,7 @@ Clients are tested against canned HTTP responses (`StubTransport`); models again
 
 **UI tests** (XCUITest, demo mode):
 ```bash
-xcodebuild -project AMDB.xcodeproj -scheme AMDB \
+xcodebuild -project AMDB.xcodeproj -scheme Putio & Chill \
   -destination 'platform=iOS Simulator,name=iPhone 18 Pro' test -only-testing:AMDBUITests/ComingUpUITests
 
 xcodebuild -project AMDB.xcodeproj -scheme AMDBTV \
@@ -71,7 +74,7 @@ xcodebuild -project AMDB.xcodeproj -scheme AMDBTV \
 ```
 Notes:
 - Run one simulator at a time; parallel runs on the same build folder can hang.
-- Some tests need a signed-in put.io account (they skip themselves otherwise) or Apple Intelligence (Ask AMDB).
+- Some tests need a signed-in put.io account (they skip themselves otherwise) or Apple Intelligence (Ask Chill).
 - Set `TEST_RUNNER_SHOTS_DIR=/some/folder` to save the screenshots tests take.
 - Offline downloads don't work in the Simulator; test them on a device.
 

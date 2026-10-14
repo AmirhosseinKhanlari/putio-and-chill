@@ -1,10 +1,10 @@
 # Architecture
 
-AMDB is one Swift package holding all the logic, and thin, platform-native SwiftUI apps on top of it.
+Putio & Chill is one Swift package holding all the logic, and thin, platform-native SwiftUI apps on top of it.
 
 ```
 ┌──────────────── App targets ────────────────┐
-│ AMDB (iOS/iPadOS)   AMDBTV (tvOS)            │  SwiftUI views, navigation, players,
+│ Putio & Chill (iOS/iPadOS)   AMDBTV (tvOS)            │  SwiftUI views, navigation, players,
 │ AMDBWidgets         AMDBTopShelf             │  system integrations
 │ App/SharedUI (used by both apps)             │
 └──────────────────────┬──────────────────────┘
@@ -56,7 +56,7 @@ AMDB is one Swift package holding all the logic, and thin, platform-native Swift
 | `HomeModel`, `BrowseModel`, `SearchModel`, `ChartModel`, `ComingUpModel` | Screen models |
 | `CuratedLists` | TMDB discover filters for New on Netflix, Returning This Week, … |
 | `ChillFeed` | Latest Movies / Shows: chill + MyMoviz, merged, matched, cached |
-| `SurpriseModel`, `AskSearch` | Surprise Me and Ask AMDB |
+| `SurpriseModel`, `AskSearch` | Surprise Me and Ask Chill |
 | `SubtitleFinder` | put.io tracks + OpenSubtitles, timing, per-file choice |
 | `PlaybackSession` | Progress sync to put.io while playing |
 | `LibraryOrganizer`, `PutioPaths` | Folder layout and Organize library |
@@ -127,7 +127,7 @@ The iOS app, widgets and the Apple TV app/Top Shelf share the App Group **`group
 ## Platform notes
 
 - iOS deployment target 17; newer features are availability-gated: Control Center control and Spotlight indexing
-  (iOS 18), Liquid Glass and Ask AMDB (iOS 26).
+  (iOS 18), Liquid Glass and Ask Chill (iOS 26).
 - Offline downloads use `AVAssetDownloadURLSession` (HLS). Paths are stored relative to the app container and
   resolved at use, because the container moves between app updates.
 - On Apple TV the stream has no embedded subtitles; the app draws put.io and OpenSubtitles text itself so style and
