@@ -61,4 +61,26 @@ final class TapReliabilityUITests: XCTestCase {
             XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5), "Settings opens (touch \(index))")
         }
     }
+
+    /// Player buttons respond anywhere on their glass circle, not only on the icon (iOS 26 counted only the glyph).
+    func testPlayerButtonsAcceptTapsNearTheirEdge() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-demoScreen", "player"]
+        app.launch()
+        let startOver = app.buttons["Start over"]
+        if startOver.waitForExistence(timeout: 20) { startOver.tap() }
+        XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: 15))
+        sleep(3)
+        showControls(app)
+        let pause = app.buttons["Pause"]
+        XCTAssertTrue(pause.waitForExistence(timeout: 5))
+        pause.coordinate(withNormalizedOffset: CGVector(dx: 0.18, dy: 0.25)).tap()
+        XCTAssertTrue(app.buttons["Play"].waitForExistence(timeout: 3), "edge tap on Pause")
+        showControls(app)
+        app.buttons["Play"].coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.8)).tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 3), "edge tap on Play")
+        showControls(app)
+        app.buttons["Close"].coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.8)).tap()
+        XCTAssertTrue(app.buttons["Close"].waitForNonExistence(timeout: 5), "edge tap on Close")
+    }
 }

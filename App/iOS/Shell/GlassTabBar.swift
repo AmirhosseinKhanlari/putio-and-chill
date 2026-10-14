@@ -217,6 +217,7 @@ struct PhoneStatusButtons: View {
                     .frame(width: 44, height: 44)
                     .foregroundStyle(.white.opacity(0.9))
                     .glassCapsule()
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Settings")

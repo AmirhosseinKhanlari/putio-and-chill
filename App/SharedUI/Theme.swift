@@ -41,6 +41,7 @@ struct GlassPillStyle: ButtonStyle {
             .padding(.horizontal, 18).padding(.vertical, 11)
             .foregroundStyle(.white)
             .glassCapsule()
+            .contentShape(Capsule())
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.snappy(duration: 0.15), value: configuration.isPressed)
     }

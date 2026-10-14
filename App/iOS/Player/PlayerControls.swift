@@ -171,6 +171,7 @@ struct PlayerControlsView: View {
                 }
                 .frame(width: regular ? 92 : 76, height: regular ? 92 : 76)
                 .glassCapsule()
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(engine.isPlaying ? "Pause" : "Play")
@@ -226,8 +227,9 @@ struct PlayerControlsView: View {
                 }
             }
             .font(.subheadline.weight(.semibold))
-            .padding(.horizontal, 12).frame(height: 36)
+            .padding(.horizontal, 12).frame(height: 44)
             .background(.white.opacity(chrome.sleepTimer == nil ? 0.12 : 0.25), in: Capsule())
+            .contentShape(Capsule())
         }
         .foregroundStyle(.white)
         .accessibilityLabel(chrome.sleepLabel.map { "Sleep timer, \($0)" } ?? "Sleep timer")
@@ -247,8 +249,9 @@ struct PlayerControlsView: View {
             }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.white)
-            .padding(.horizontal, 12).frame(minWidth: 40, minHeight: 40)
+            .padding(.horizontal, 12).frame(minWidth: 44, minHeight: 44)
             .glassCapsule()
+            .contentShape(Capsule())
         }
         .tint(.white)
         .accessibilityLabel("Playback speed")
@@ -363,6 +366,7 @@ struct PlayerControlsView: View {
                 .foregroundStyle(.white)
                 .frame(width: size, height: size)
                 .glassCapsule()
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -376,8 +380,9 @@ struct PlayerControlsView: View {
             }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.white)
-            .padding(.horizontal, 12).frame(minWidth: 40, minHeight: 40)
+            .padding(.horizontal, 12).frame(minWidth: 44, minHeight: 44)
             .glassCapsule()
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

@@ -89,6 +89,7 @@ struct SurprisePage: View {
             Button { dismiss() } label: {
                 Image(systemName: "xmark").font(.system(size: 16, weight: .semibold))
                     .frame(width: 44, height: 44).glassCapsule()
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close")
@@ -135,6 +136,7 @@ struct SurprisePage: View {
                         .foregroundStyle(mood == option ? .black : .white)
                         .background { if mood == option { Capsule().fill(.white) } }
                         .glassCapsule()
+                        .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(option.title)

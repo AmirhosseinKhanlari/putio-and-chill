@@ -41,8 +41,9 @@ struct MyListPage: View {
                         } label: {
                             Label(regular ? sort.rawValue : "Sort", systemImage: "arrow.up.arrow.down")
                                 .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 12).frame(height: 34)
+                                .padding(.horizontal, 12).frame(height: 44)
                                 .glassCapsule()
+                                .contentShape(Capsule())
                         }
                         .tint(.white)
                         .accessibilityLabel("Sort by \(sort.rawValue)")

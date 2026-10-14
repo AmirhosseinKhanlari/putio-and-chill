@@ -19,10 +19,15 @@ final class SurpriseUITests: XCTestCase {
         XCTAssertTrue(alternative.waitForExistence(timeout: 5))
         let name = alternative.label
         alternative.tap()
-        XCTAssertTrue(app.staticTexts[name.uppercased()].waitForExistence(timeout: 5), "picked alternative becomes tonight's pick")
+        // Tonight's pick shows its title as text, or as its logo image when TMDB has one.
+        let pick = app.descendants(matching: .any).matching(NSPredicate(
+            format: "(label ==[c] %@ OR label ==[c] %@) AND elementType != %d", name, name.uppercased(), XCUIElement.ElementType.button.rawValue)).firstMatch
+        XCTAssertTrue(pick.waitForExistence(timeout: 5), "picked alternative becomes tonight's pick")
 
         app.buttons["Watch This"].tap()
-        XCTAssertTrue(app.staticTexts[name.uppercased()].waitForExistence(timeout: 10))
+        // The title page: its logo (or title) and its own Back button.
+        XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 10))
+        XCTAssertTrue(pick.waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Shuffle"].exists, "surprise page closes and the title page opens")
     }
 }
