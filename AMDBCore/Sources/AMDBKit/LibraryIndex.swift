@@ -184,6 +184,15 @@ public final class LibraryIndex {
 
     public var recentlyAdded: [LibraryEntry] { Array(entries.prefix(20)) }
 
+    /// Newest movies, or newest shows (each show once, at its newest episode), for the Movies / TV Shows tabs.
+    public func recentlyAdded(_ kind: MediaKind, limit: Int = 20) -> [LibraryEntry] {
+        var seen: Set<Int> = []
+        return Array(entries.filter { entry in
+            guard let match = entry.match, match.mediaType == kind else { return false }
+            return seen.insert(match.tmdbID).inserted
+        }.prefix(limit))
+    }
+
     public func matching(tmdbID: Int, season: Int? = nil, episode: Int? = nil) -> [LibraryEntry] {
         entries.filter {
             $0.match?.tmdbID == tmdbID

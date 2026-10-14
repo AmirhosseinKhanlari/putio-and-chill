@@ -12,8 +12,8 @@ struct TVHomeView: View {
     var body: some View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 36) {
-                if let featured = model?.hero.first {
-                    TVFeatured(item: featured)
+                if let hero = model?.hero, !hero.isEmpty {
+                    TVHeroCarousel(items: hero)
                 }
                 if !app.library.continueWatching.isEmpty {
                     TVEntryShelf(title: "Continue Watching", entries: app.library.continueWatching)
@@ -79,6 +79,8 @@ struct TVHomeView: View {
 /// Full-screen art with logo, details, scores and the title's actions.
 struct TVFeatured: View {
     let item: CatalogItem
+    /// Shown under the buttons (the slider's dots).
+    var footer: AnyView?
     @Environment(AppModel.self) private var app
     @State private var model: TitleModel?
 
@@ -92,6 +94,7 @@ struct TVFeatured: View {
                     .frame(maxWidth: 900, alignment: .leading)
             }
             if let model { TVTitleActions(model: model, item: item, showsDetails: true).padding(.top, 14) }
+            if let footer { footer.padding(.top, 6) }
         }
         .padding(.horizontal, TVMetrics.edge)
         .padding(.bottom, 30)
@@ -111,6 +114,7 @@ struct TVFeatured: View {
         .focusSection()
         .task(id: item.id) {
             guard let catalog = app.catalog else { return }
+            if model?.item.id != item.id { model = nil }
             let title = TitleModel(item: item, catalog: catalog, library: app.library, transfers: app.transfers,
                                    ratings: { [app] imdbID, kind in await app.ratings(imdbID: imdbID, kind: kind) })
             model = title
@@ -126,11 +130,20 @@ struct TVBrowseView: View {
     @State private var model: BrowseModel?
 
     var body: some View {
+        let featured = Array((model?.rows.first?.items ?? []).filter { $0.backdropPath != nil }.prefix(6))
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 30) {
-                Text(kind == .tv ? "TV Shows" : "Movies")
-                    .font(.system(size: 64, weight: .bold))
-                    .padding(.horizontal, TVMetrics.edge).padding(.top, 20)
+                if featured.isEmpty {
+                    Text(kind == .tv ? "TV Shows" : "Movies")
+                        .font(.system(size: 64, weight: .bold))
+                        .padding(.horizontal, TVMetrics.edge).padding(.top, 20)
+                } else {
+                    TVHeroCarousel(items: featured)
+                }
+                let recent = app.library.recentlyAdded(kind)
+                if !recent.isEmpty {
+                    TVEntryShelf(title: "Recently Added to put.io", entries: recent)
+                }
                 if model?.isLoading == true, model?.rows.isEmpty == true {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 }
@@ -138,6 +151,7 @@ struct TVBrowseView: View {
             }
             .padding(.bottom, 90)
         }
+        .ignoresSafeArea(edges: featured.isEmpty ? [] : .top)
         .tvPageBackground()
         .task {
             guard model == nil, let catalog = app.catalog else { return }
@@ -202,5 +216,73 @@ struct TVMyListView: View {
             .padding(TVMetrics.edge)
         }
         .tvPageBackground()
+    }
+}
+
+/// Featured titles that slide by themselves (like the iPhone app). Pauses while you're on it; on the dots,
+/// left and right flip through the slides.
+struct TVHeroCarousel: View {
+    let items: [CatalogItem]
+    @State private var index = 0
+    @State private var focusInside = false
+    @FocusState private var pagerFocused: Bool
+
+    var body: some View {
+        if items.indices.contains(index) {
+            // Same view for every slide (no .id), so focus stays on the pager while you swipe.
+            TVFeatured(item: items[index], footer: AnyView(pager))
+                .onPreferenceChange(TVFocusInsideKey.self) { focusInside = $0 }
+                .task(id: items.map(\.id)) {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(9))
+                        guard !Task.isCancelled, items.count > 1, !focusInside, !pagerFocused else { continue }
+                        withAnimation(.easeInOut(duration: 0.7)) { index = (index + 1) % items.count }
+                    }
+                }
+        }
+    }
+
+    /// One focusable page control: land on it, then swipe left / right.
+    @ViewBuilder private var pager: some View {
+        if items.count > 1 {
+            HStack(spacing: 18) {
+                HStack(spacing: 8) {
+                    ForEach(items.indices, id: \.self) { dot in
+                        Capsule().fill(.white.opacity(dot == index ? 1 : 0.35))
+                            .frame(width: dot == index ? 34 : 12, height: 12)
+                    }
+                }
+                if pagerFocused {
+                    Text("Swipe left or right").font(.system(size: 20, weight: .medium)).foregroundStyle(TVMetrics.secondaryText)
+                        .transition(.opacity)
+                }
+            }
+            .padding(.horizontal, 18).padding(.vertical, 12)
+            .background(Capsule().fill(.white.opacity(pagerFocused ? 0.18 : 0)))
+            .scaleEffect(pagerFocused ? 1.08 : 1, anchor: .leading)
+            .animation(.snappy, value: index)
+            .animation(.easeOut(duration: 0.18), value: pagerFocused)
+            .focusable()
+            .focused($pagerFocused)
+            .onMoveCommand { direction in
+                switch direction {
+                case .left: withAnimation(.easeInOut(duration: 0.45)) { index = (index - 1 + items.count) % items.count }
+                case .right: withAnimation(.easeInOut(duration: 0.45)) { index = (index + 1) % items.count }
+                default: break
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Featured \(index + 1) of \(items.count)")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: index = (index + 1) % items.count
+                case .decrement: index = (index - 1 + items.count) % items.count
+                @unknown default: break
+                }
+            }
+            // The whole width catches focus moving down from any button.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .focusSection()
+        }
     }
 }

@@ -63,8 +63,10 @@ struct TVRootView: View {
                     Text("Ready to watch").font(.system(size: 19, weight: .semibold)).foregroundStyle(TVMetrics.secondaryText)
                     Text(transfer.pending.title).font(.system(size: 26, weight: .semibold)).lineLimit(1)
                 }
+                .frame(maxWidth: 520, alignment: .leading)
                 Button { router.ready = nil; router.playTransfer(transfer) } label: { Label("Play", systemImage: "play.fill") }
                     .tvPill()
+                    .layoutPriority(1)
             }
             .padding(.leading, 30).padding(.trailing, 14).padding(.vertical, 14)
             .background(.ultraThinMaterial, in: Capsule())

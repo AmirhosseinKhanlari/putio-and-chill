@@ -53,6 +53,13 @@ import Testing
         #expect(!index.continueWatching.contains { $0.id == 12 })
     }
 
+    @Test func recentlyAddedByKindShowsEachShowOnce() async {
+        let index = makeIndex()
+        await index.refresh()
+        #expect(index.recentlyAdded(.movie).map(\.id) == [10, 11])
+        #expect(index.recentlyAdded(.tv).map(\.id) == [12])
+    }
+
     @Test func continueWatchingShowsEachTitleOnce() async {
         let putio = Self.tree()
         // A second, older-watched version of Dune and a started episode next to S02E04.

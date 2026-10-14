@@ -18,6 +18,10 @@ struct BrowseView: View {
                     .font(.system(size: sizeClass == .compact ? 34 : 48, weight: .ultraLight)).tracking(3)
                     .padding(.horizontal, Metrics.gutter(sizeClass))
                     .padding(.top, 12)
+                let recent = app.library.recentlyAdded(kind)
+                if !recent.isEmpty {
+                    EntryRowView(title: "Recently Added to put.io", entries: recent)
+                }
                 if let chart { ChartRowView(model: chart) }
                 if model?.isLoading == true && model?.rows.isEmpty == true {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 60)

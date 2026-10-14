@@ -37,6 +37,9 @@ private struct TVPillBody: View {
         configuration.label
             .font(.system(size: 27, weight: .semibold))
             .labelStyle(TVActionLabelStyle())
+            // Never wrap ("Pla / y"): the button grows to fit its label.
+            .lineLimit(1)
+            .fixedSize()
             .foregroundStyle(focused ? Color.black : .white)
             .padding(.horizontal, circle ? 0 : 38)
             .frame(width: circle ? 76 : nil, height: 76)
@@ -51,7 +54,14 @@ private struct TVPillBody: View {
             .scaleEffect(configuration.isPressed ? 0.97 : (focused ? 1.08 : 1))
             .shadow(color: .black.opacity(focused ? 0.45 : 0), radius: 24, y: 14)
             .animation(.easeOut(duration: 0.18), value: focused)
+            .preference(key: TVFocusInsideKey.self, value: focused)
     }
+}
+
+/// True when any pill, circle or chip inside a view is focused (the hero slider pauses then).
+struct TVFocusInsideKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 
 extension View {
@@ -88,6 +98,7 @@ struct TVChipStyle: ButtonStyle {
                 }
                 .scaleEffect(focused ? 1.06 : 1)
                 .animation(.easeOut(duration: 0.18), value: focused)
+                .preference(key: TVFocusInsideKey.self, value: focused)
         }
     }
 }
@@ -132,7 +143,7 @@ struct TVActionLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 12) {
             configuration.icon.frame(width: 28, height: 28)
-            configuration.title
+            configuration.title.lineLimit(1)
         }
     }
 }
