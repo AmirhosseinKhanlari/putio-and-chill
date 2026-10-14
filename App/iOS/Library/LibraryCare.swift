@@ -2,15 +2,15 @@ import AMDBCore
 import AMDBKit
 import SwiftUI
 
-/// "360 GB of 1 TB used" bar for put.io.
+/// "360 GB of 1 TB used" bar for put.io. Asks put.io again whenever it appears, after every library update
+/// (pull to refresh, Update Now, automatic) and after file changes, so it never shows an old number.
 struct StorageMeter: View {
     @Environment(AppModel.self) private var app
-    @State private var disk: PutioAccount.Disk?
 
     var body: some View {
         // A frame that always exists, so .task runs even before there's anything to show.
         VStack(alignment: .leading) {
-            if let disk {
+            if let disk = app.storage.disk {
                 VStack(alignment: .leading, spacing: 6) {
                     GeometryReader { proxy in
                         ZStack(alignment: .leading) {
@@ -20,14 +20,20 @@ struct StorageMeter: View {
                         }
                     }
                     .frame(height: 6)
-                    Text("put.io: \(Format.bytes(disk.used)) of \(Format.bytes(disk.size)) used · \(Format.bytes(disk.avail)) free")
-                        .font(.caption).foregroundStyle(.white.opacity(0.6))
+                    Text(line(disk)).font(.caption).foregroundStyle(.white.opacity(0.6))
                 }
                 .accessibilityElement(children: .combine)
             }
         }
         .frame(maxWidth: 420, minHeight: 4, alignment: .leading)
-        .task { disk = try? await app.putio?.accountInfo().disk }
+        .task { await app.storage.refresh() }
+        .onChange(of: app.library.lastUpdated) { _, _ in Task { await app.storage.refresh() } }
+    }
+
+    private func line(_ disk: PutioAccount.Disk) -> String {
+        var text = "put.io: \(Format.bytes(disk.used)) of \(Format.bytes(disk.size)) used · \(Format.bytes(disk.avail)) free"
+        if app.storage.trashSize > 0 { text += " · \(Format.bytes(app.storage.trashSize)) in Trash" }
+        return text
     }
 }
 

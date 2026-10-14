@@ -1,0 +1,32 @@
+import XCTest
+
+@MainActor
+final class TVFilesUITests: XCTestCase {
+    private func shot(_ name: String) {
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        if let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
+            try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))
+        }
+    }
+
+    /// Library → Files lists the put.io root; selecting a folder opens it.
+    func testBrowseFolders() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-demoScreen", "files"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Trash · 4.2 GB"].waitForExistence(timeout: 20))
+        let remote = XCUIRemote.shared
+        // Down from the sort chips to the first folder (Archive), then to Downloads, and open it.
+        remote.press(.down)
+        remote.press(.down)
+        sleep(1)
+        shot("tv-files-root")
+        remote.press(.select)
+        XCTAssertTrue(app.staticTexts["Severance.Poster.jpg"].waitForExistence(timeout: 10))
+        shot("tv-files-folder")
+    }
+}

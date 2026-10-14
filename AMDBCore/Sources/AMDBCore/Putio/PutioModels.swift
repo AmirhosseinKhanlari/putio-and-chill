@@ -14,10 +14,37 @@ public struct PutioAccount: Decodable, Sendable, Equatable {
     public let mail: String?
     public let userId: Int64?
     public let disk: Disk?
+    /// Bytes in put.io's trash (deleted files waiting to expire).
+    public let trashSize: Int64?
 
-    public init(username: String, mail: String? = nil, userId: Int64? = nil, disk: Disk? = nil) {
-        self.username = username; self.mail = mail; self.userId = userId; self.disk = disk
+    public init(username: String, mail: String? = nil, userId: Int64? = nil, disk: Disk? = nil, trashSize: Int64? = nil) {
+        self.username = username; self.mail = mail; self.userId = userId; self.disk = disk; self.trashSize = trashSize
     }
+}
+
+/// A deleted file in put.io's trash.
+public struct PutioTrashFile: Decodable, Sendable, Hashable, Identifiable {
+    public let id: Int64
+    public let name: String
+    public let fileType: String?
+    public let size: Int64?
+    public let deletedAt: String?
+    public let expirationDate: String?
+
+    public init(id: Int64, name: String, fileType: String? = nil, size: Int64? = nil, deletedAt: String? = nil,
+                expirationDate: String? = nil) {
+        self.id = id; self.name = name; self.fileType = fileType; self.size = size; self.deletedAt = deletedAt
+        self.expirationDate = expirationDate
+    }
+
+    public var isFolder: Bool { fileType == "FOLDER" }
+}
+
+public struct PutioTrash: Decodable, Sendable, Equatable {
+    public let files: [PutioTrashFile]
+    public let trashSize: Int64?
+
+    public init(files: [PutioTrashFile], trashSize: Int64?) { self.files = files; self.trashSize = trashSize }
 }
 
 public struct PutioTransfer: Decodable, Sendable, Equatable, Identifiable {

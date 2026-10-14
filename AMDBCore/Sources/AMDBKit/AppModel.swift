@@ -97,6 +97,9 @@ public final class AppModel {
     public let downloads: DownloadsIndex
     /// "Latest on chill" rows (needs a connected chill account).
     public let chillFeed: ChillFeed
+    /// put.io's used / free space and trash size.
+    public let storage = PutioStorage()
+    @ObservationIgnored private var filesChangedRefresh: Task<Void, Never>?
 
     @ObservationIgnored private let tokens: any TokenStore
     @ObservationIgnored private let userDefaults: UserDefaults
@@ -156,6 +159,19 @@ public final class AppModel {
         settings = newSettings
         newSettings.save(to: userDefaults)
         rebuild()
+    }
+
+    /// Files changed in put.io (file manager, trash, deletes): free space now, the library once the changes settle
+    /// (a burst of moves refreshes it once).
+    public func putioFilesChanged(settle: Duration = .seconds(2)) {
+        Task { await storage.refresh() }
+        filesChangedRefresh?.cancel()
+        filesChangedRefresh = Task { [weak self] in
+            try? await Task.sleep(for: settle)
+            guard let self, !Task.isCancelled else { return }
+            await library.refresh()
+            await storage.refresh()
+        }
     }
 
     /// Updates the library from put.io when automatic updates are on and it's older than the chosen interval
@@ -361,6 +377,7 @@ public final class AppModel {
         let providers = settings.sources.filter(\.enabled).compactMap { factory.makeProvider($0, chillToken) }
         searcher = ReleaseAggregator(providers: providers)
         library.configure(putio: putio, catalog: catalog)
+        storage.configure(putio: putio)
         transfers.configure(putio: putio, library: library)
         transfers.layout = FolderLayout(settings: settings)
     }

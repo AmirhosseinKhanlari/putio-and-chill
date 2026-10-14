@@ -280,6 +280,12 @@ public final class LibraryIndex {
         guard let putio, !doomed.isEmpty else { return }
         let ids = doomed.map(\.id)
         try await putio.deleteFiles(ids: ids)
+        await forget(Set(ids))
+    }
+
+    /// Drops files deleted elsewhere (the file manager) right away, with what was saved about them.
+    public func forget(_ ids: Set<Int64>) async {
+        guard entries.contains(where: { ids.contains($0.id) }) else { return }
         entries.removeAll { ids.contains($0.id) }
         await store.update { state in
             state.finished.removeAll { ids.contains($0.fileID) }

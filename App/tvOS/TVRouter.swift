@@ -21,6 +21,8 @@ enum TVRoute: Hashable {
     case collection(Int)
     case surprise
     case organize
+    case files(FilesFolder)
+    case trash
 }
 
 /// A video to play: the put.io file plus what it is (for progress, subtitles and the next episode).

@@ -7,7 +7,6 @@ struct TVLibraryView: View {
     @Environment(AppModel.self) private var app
     @Environment(TVRouter.self) private var router
     @State private var filter: LibraryFilter = .all
-    @State private var disk: PutioAccount.Disk?
     @State private var cleanable: [LibraryEntry] = []
     @State private var confirmClean = false
     @State private var doomed: [LibraryEntry] = []
@@ -50,6 +49,8 @@ struct TVLibraryView: View {
         .tvPageBackground()
         .task { await loadCare() }
         .onChange(of: app.library.entries) { _, _ in Task { await loadCare() } }
+        // Free space is asked for again after every update, so it never shows an old number.
+        .onChange(of: app.library.lastUpdated) { _, _ in Task { await app.storage.refresh() } }
         .confirmationDialog(cleanTitle, isPresented: $confirmClean, titleVisibility: .visible) {
             Button("Delete \(cleanable.count) from put.io", role: .destructive) { Task { await delete(cleanable) } }
             Button("Cancel", role: .cancel) {}
@@ -75,7 +76,8 @@ struct TVLibraryView: View {
         } else if let updated = app.library.lastUpdated {
             parts.append("Updated \(RelativeDateTimeFormatter().localizedString(for: updated, relativeTo: .now))")
         }
-        if let disk { parts.append("\(Format.bytes(disk.used)) of \(Format.bytes(disk.size)) used · \(Format.bytes(disk.avail)) free") }
+        if let disk = app.storage.disk { parts.append("\(Format.bytes(disk.used)) of \(Format.bytes(disk.size)) used · \(Format.bytes(disk.avail)) free") }
+        if app.storage.trashSize > 0 { parts.append("\(Format.bytes(app.storage.trashSize)) in Trash") }
         return parts.joined(separator: " · ")
     }
 
@@ -92,7 +94,9 @@ struct TVLibraryView: View {
             }
             .tvPill()
             .disabled(app.library.isRefreshing)
-            Button { router.open(.organize) } label: { Label("Organize", systemImage: "folder") }
+            Button { router.open(.files(.root)) } label: { Label("Files", systemImage: "folder") }
+                .tvPill()
+            Button { router.open(.organize) } label: { Label("Organize", systemImage: "folder.badge.gearshape") }
                 .tvPill()
                 .disabled(app.library.entries.isEmpty)
             if !cleanable.isEmpty {
@@ -197,7 +201,7 @@ struct TVLibraryView: View {
     // MARK: Work
 
     private func loadCare() async {
-        if disk == nil { disk = try? await app.putio?.accountInfo().disk }
+        await app.storage.refresh()
         // Clean Up offers every movie finished in Putio & Chill, or only older ones when auto-clean has a window set.
         cleanable = AutoCleaner.candidates(entries: app.library.entries, finished: await app.store.snapshot.finished,
                                            olderThanDays: app.settings.autoCleanDays ?? 0, now: Date())
@@ -208,7 +212,6 @@ struct TVLibraryView: View {
         do {
             try await app.library.delete(entries)
             notice = "Deleted \(entries.count) item\(entries.count == 1 ? "" : "s") from put.io."
-            disk = try? await app.putio?.accountInfo().disk
         } catch {
             notice = "Couldn't delete from put.io. Nothing was removed."
         }

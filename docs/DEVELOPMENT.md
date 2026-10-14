@@ -45,8 +45,8 @@ Launch with **`-demo`** to run on built-in sample data (no accounts, no network 
 
 | App | Screens |
 |---|---|
-| iOS | `title`, `show`, `versions`, `search`, `library`, `movies`, `upcoming`, `person`, `collection`, `surprise`, `settings`, `chart`, `player` |
-| tvOS | `title`, `show`, `person`, `collection`, `surprise`, `chart`, `upcoming`, `library`, `search`, `settings`, `movies`, `tvshows`, `player` |
+| iOS | `title`, `show`, `versions`, `search`, `library`, `files`, `movies`, `upcoming`, `person`, `collection`, `surprise`, `settings`, `chart`, `player`, `player-episode` |
+| tvOS | `title`, `show`, `person`, `collection`, `surprise`, `chart`, `upcoming`, `library`, `files`, `search`, `settings`, `movies`, `tvshows`, `player`, `player-episode` |
 
 `-demoSlowLibrary` slows TMDB matching so you can see the first-launch loading row.
 
@@ -57,7 +57,7 @@ xcrun simctl launch booted app.amdb.ios -demo -demoScreen title
 
 ## Testing
 
-**Unit tests** (Swift Testing, about 260 tests across `AMDBCore` and `AMDBKit`):
+**Unit tests** (Swift Testing, about 280 tests across `AMDBCore` and `AMDBKit`):
 ```bash
 cd AMDBCore && swift test
 ```
@@ -66,7 +66,7 @@ Clients are tested against canned HTTP responses (`StubTransport`); models again
 
 **UI tests** (XCUITest, demo mode):
 ```bash
-xcodebuild -project AMDB.xcodeproj -scheme Putio & Chill \
+xcodebuild -project AMDB.xcodeproj -scheme AMDB \
   -destination 'platform=iOS Simulator,name=iPhone 18 Pro' test -only-testing:AMDBUITests/ComingUpUITests
 
 xcodebuild -project AMDB.xcodeproj -scheme AMDBTV \

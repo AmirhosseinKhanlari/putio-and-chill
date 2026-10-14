@@ -49,6 +49,9 @@ enum DemoMode {
                                               target: nil, playNow: [])
         case "search": router.tab = .search
         case "library": router.tab = .library
+        case "files":
+            router.tab = .library
+            router.libraryPath = [.files(.root)]
         case "movies": router.tab = .movies
         case "upcoming": router.tab = .upcoming
         case "person": router.homePath = [.person(900)]
@@ -224,11 +227,94 @@ final class DemoPutio: PutioService, @unchecked Sendable {
                   createdAt: "2026-08-20T10:00:00"),
     ]
 
+    /// The rest of the demo put.io: a couple of folders with non-video files, for the file manager.
+    private lazy var tree: [Int64: [PutioFile]] = [
+        0: rootFiles + [PutioFile(id: 50, name: "Downloads", fileType: "FOLDER", size: 52_000_000, parentId: 0,
+                                  createdAt: "2026-09-12T10:00:00"),
+                        PutioFile(id: 51, name: "Archive", fileType: "FOLDER", size: 0, parentId: 0, createdAt: "2026-06-02T10:00:00")],
+        50: [PutioFile(id: 52, name: "Severance.Poster.jpg", fileType: "IMAGE", size: 2_400_000, parentId: 50,
+                       createdAt: "2026-09-12T10:00:00"),
+             PutioFile(id: 53, name: "Release.Notes.txt", fileType: "TEXT", size: 4_000, parentId: 50, createdAt: "2026-09-13T10:00:00"),
+             PutioFile(id: 54, name: "Soundtrack.zip", fileType: "ARCHIVE", size: 49_600_000, parentId: 50,
+                       createdAt: "2026-09-14T10:00:00")],
+        51: [],
+    ]
+    private var trashed: [PutioTrashFile] = [
+        PutioTrashFile(id: 60, name: "Old.Movie.2001.720p.mkv", fileType: "VIDEO", size: 4_200_000_000,
+                       deletedAt: "2026-10-12T10:00:00", expirationDate: "2026-11-11T10:00:00"),
+    ]
+
     func accountInfo() async throws -> PutioAccount {
-        PutioAccount(username: "demo", disk: .init(avail: 640_000_000_000, size: 1_000_000_000_000, used: 360_000_000_000))
+        let trash = lock.withLock { trashed.reduce(0) { $0 + ($1.size ?? 0) } }
+        return PutioAccount(username: "demo", disk: .init(avail: 640_000_000_000, size: 1_000_000_000_000, used: 360_000_000_000),
+                            trashSize: trash)
     }
-    func deleteFiles(ids: [Int64]) async throws {}
-    func moveFiles(ids: [Int64], to parentID: Int64) async throws {}
+
+    func deleteFiles(ids: [Int64]) async throws {
+        lock.withLock {
+            for (parent, files) in tree {
+                for file in files where ids.contains(file.id) {
+                    trashed.insert(PutioTrashFile(id: file.id, name: file.name, fileType: file.fileType, size: file.size,
+                                                  deletedAt: "2026-10-14T10:00:00", expirationDate: "2026-11-13T10:00:00"), at: 0)
+                }
+                tree[parent] = files.filter { !ids.contains($0.id) }
+            }
+        }
+    }
+
+    func moveFiles(ids: [Int64], to parentID: Int64) async throws {
+        lock.withLock {
+            var moving: [PutioFile] = []
+            for (parent, files) in tree {
+                moving += files.filter { ids.contains($0.id) }
+                tree[parent] = files.filter { !ids.contains($0.id) }
+            }
+            tree[parentID, default: []] += moving
+        }
+    }
+
+    func renameFile(id: Int64, name: String) async throws {
+        lock.withLock {
+            for (parent, files) in tree {
+                tree[parent] = files.map { file in
+                    file.id == id ? PutioFile(id: id, name: name, fileType: file.fileType, size: file.size, parentId: file.parentId,
+                                              createdAt: file.createdAt, startFrom: file.startFrom) : file
+                }
+            }
+        }
+    }
+
+    func copyFile(id: Int64, to parentID: Int64) async throws -> PutioFile {
+        try lock.withLock {
+            guard let file = tree.values.joined().first(where: { $0.id == id }) else { throw AppError.http(service: "putio", status: 404) }
+            nextID += 1
+            let copy = PutioFile(id: nextID, name: file.name, fileType: file.fileType, size: file.size, parentId: parentID,
+                                 createdAt: "2026-10-14T10:00:00")
+            tree[parentID, default: []].append(copy)
+            return copy
+        }
+    }
+
+    func searchFiles(_ query: String) async throws -> [PutioFile] {
+        lock.withLock { tree.values.joined().filter { $0.name.localizedCaseInsensitiveContains(query) } }
+    }
+
+    func trash() async throws -> PutioTrash {
+        lock.withLock { PutioTrash(files: trashed, trashSize: trashed.reduce(0) { $0 + ($1.size ?? 0) }) }
+    }
+
+    func restoreFromTrash(ids: [Int64]) async throws {
+        lock.withLock {
+            for file in trashed where ids.contains(file.id) {
+                tree[0, default: []].append(PutioFile(id: file.id, name: file.name, fileType: file.fileType, size: file.size,
+                                                      parentId: 0, createdAt: file.deletedAt))
+            }
+            trashed.removeAll { ids.contains($0.id) }
+        }
+    }
+
+    func deleteFromTrash(ids: [Int64]) async throws { lock.withLock { trashed.removeAll { ids.contains($0.id) } } }
+    func emptyTrash() async throws { lock.withLock { trashed = [] } }
 
     func addTransfer(url: String, saveParentID: Int64?) async throws -> PutioTransfer {
         let id = lock.withLock { () -> Int64 in
@@ -261,18 +347,24 @@ final class DemoPutio: PutioService, @unchecked Sendable {
     func retryTransfer(id: Int64) async throws -> PutioTransfer { try await transfer(id: id) }
 
     func listFiles(parentID: Int64) async throws -> PutioFileList {
-        PutioFileList(parent: nil, files: parentID == 0 ? rootFiles : [])
+        lock.withLock {
+            let parent = parentID == 0 ? PutioFile(id: 0, name: "Your Files", fileType: "FOLDER")
+                : tree.values.joined().first { $0.id == parentID }
+            return PutioFileList(parent: parent, files: tree[parentID] ?? [])
+        }
     }
 
     func file(id: Int64) async throws -> PutioFile {
-        if let file = rootFiles.first(where: { $0.id == id }) ?? lock.withLock({ extraFiles[id] }) { return file }
+        if let file = lock.withLock({ tree.values.joined().first { $0.id == id } ?? extraFiles[id] }) { return file }
         return PutioFile(id: id, name: "Folder", fileType: "FOLDER")
     }
 
     func createFolder(name: String, parentID: Int64) async throws -> PutioFile {
         lock.withLock {
             nextID += 1
-            return PutioFile(id: nextID, name: name, fileType: "FOLDER", parentId: parentID)
+            let folder = PutioFile(id: nextID, name: name, fileType: "FOLDER", size: 0, parentId: parentID, createdAt: "2026-10-14T10:00:00")
+            tree[parentID, default: []].append(folder)
+            return folder
         }
     }
 

@@ -87,4 +87,39 @@ import Testing
         #expect(request.url?.path == "/v2/files/delete")
         #expect(request.bodyString == "file_ids=5%2C9")
     }
+
+    @Test func accountInfoIsNeverServedFromCacheAndIncludesTrash() async throws {
+        let stub = StubTransport(json: #"{"status":"OK","info":{"username":"a","disk":{"avail":1,"size":2,"used":1},"trash_size":5000}}"#)
+        let info = try await PutioClient(token: "T", transport: stub).accountInfo()
+        #expect(info.trashSize == 5000)
+        #expect(stub.requests.first?.cachePolicy == .reloadIgnoringLocalCacheData)
+    }
+
+    @Test func renameCopyAndSearch() async throws {
+        let stub = StubTransport(json: #"{"status":"OK","file":{"id":44,"name":"Heat.mkv","file_type":"VIDEO","parent_id":9},"files":[{"id":3,"name":"Heat.mkv","file_type":"VIDEO"}]}"#)
+        let client = PutioClient(token: "T", transport: stub)
+        try await client.renameFile(id: 3, name: "Heat (1995).mkv")
+        let copy = try await client.copyFile(id: 3, to: 9)
+        let found = try await client.searchFiles("heat")
+        #expect(copy.id == 44)
+        #expect(found.map(\.id) == [3])
+        #expect(stub.requests[0].url?.path == "/v2/files/rename")
+        #expect(stub.requests[0].bodyString == "file_id=3&name=Heat%20%281995%29.mkv")
+        #expect(stub.requests[1].url?.path == "/v2/files/copy")
+        #expect(stub.requests[1].bodyString == "file_id=3&parent_id=9")
+        #expect(stub.requests[2].queryItems["query"] == "heat")
+    }
+
+    @Test func trashListRestoreAndEmpty() async throws {
+        let stub = StubTransport(json: #"{"status":"OK","total":1,"cursor":null,"trash_size":2000,"files":[{"id":8,"name":"Old.mkv","file_type":"VIDEO","size":2000,"deleted_at":"2026-10-01T10:00:00","expiration_date":"2026-10-31T10:00:00","parent_id":0,"content_type":null,"created_at":"2026-09-01T10:00:00","extension":"mkv","first_accessed_at":null,"folder_type":"REGULAR","icon":null,"screenshot":null}]}"#)
+        let client = PutioClient(token: "T", transport: stub)
+        let trash = try await client.trash()
+        try await client.restoreFromTrash(ids: [8])
+        try await client.deleteFromTrash(ids: [8, 9])
+        try await client.emptyTrash()
+        #expect(trash.trashSize == 2000)
+        #expect(trash.files.first?.expirationDate == "2026-10-31T10:00:00")
+        #expect(stub.requests.map { $0.url?.path ?? "" } == ["/v2/trash/list", "/v2/trash/restore", "/v2/trash/delete", "/v2/trash/empty"])
+        #expect(stub.requests[2].bodyString == "file_ids=8%2C9")
+    }
 }

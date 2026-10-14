@@ -96,6 +96,12 @@ Everything Putio & Chill does, by area. Unless noted, a feature works on iPhone,
 - **Cached** on the device: opens instantly, then updates from put.io at your chosen interval (Settings) and on demand.
 - Storage used / free, Update Now, Organize, **Clean Up** (delete movies you finished, with confirmation), transfers in
   progress, delete any file.
+- **Files**: the whole put.io, folder by folder, like the Files app. Play videos, open other files, rename, move, copy,
+  create folders, delete, and search every folder at once. **Select** moves, copies or deletes several at a time.
+  Sort by name, newest or largest.
+- **Trash**: deleted files wait in put.io's trash (shown next to the free space). Restore them, delete them for good,
+  or Empty Trash to free the space.
+- On Apple TV, Library → Files opens the same file manager; hold Select on a file to rename, move, copy or delete it.
 - **Auto-clean** (optional): delete finished movies after 7, 30 or 90 days; you see the list before the first cleanup.
 
 ## Playback

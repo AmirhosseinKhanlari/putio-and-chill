@@ -13,6 +13,13 @@ public protocol PutioService: Sendable {
     func createFolder(name: String, parentID: Int64) async throws -> PutioFile
     func deleteFiles(ids: [Int64]) async throws
     func moveFiles(ids: [Int64], to parentID: Int64) async throws
+    func renameFile(id: Int64, name: String) async throws
+    func copyFile(id: Int64, to parentID: Int64) async throws -> PutioFile
+    func searchFiles(_ query: String) async throws -> [PutioFile]
+    func trash() async throws -> PutioTrash
+    func restoreFromTrash(ids: [Int64]) async throws
+    func deleteFromTrash(ids: [Int64]) async throws
+    func emptyTrash() async throws
     func startFrom(fileID: Int64) async throws -> Int
     func setStartFrom(fileID: Int64, seconds: Int) async throws
     func hlsURL(fileID: Int64, subtitles: Bool) -> URL

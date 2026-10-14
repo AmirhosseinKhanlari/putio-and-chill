@@ -37,6 +37,8 @@ enum Route: Hashable {
     case collection(Int)
     case myList
     case downloads
+    case files(FilesFolder)
+    case trash
 }
 
 struct NextEpisode: Hashable {
@@ -116,6 +118,9 @@ final class Router {
     func openCollection(_ id: Int) { push(.collection(id)) }
     func openMyList() { push(.myList) }
     func openDownloads() { push(.downloads) }
+    func openFiles() { push(.files(.root)) }
+    func openFolder(_ folder: FilesFolder) { push(.files(folder)) }
+    func openTrash() { push(.trash) }
 
     private func push(_ route: Route) {
         switch tab {

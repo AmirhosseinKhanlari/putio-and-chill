@@ -233,6 +233,8 @@ private struct TabStack: View {
                     case let .collection(id): CollectionPage(collectionID: id)
                     case .myList: MyListPage()
                     case .downloads: DownloadsPage()
+                    case let .files(folder): FilesPage(folder: folder)
+                    case .trash: TrashPage()
                     }
                 }
         }

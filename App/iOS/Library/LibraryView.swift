@@ -28,7 +28,13 @@ struct LibraryView: View {
                     Text("Library").font(.system(size: sizeClass == .compact ? 34 : 48, weight: .ultraLight)).tracking(3)
                     LibraryFreshness()
                 }
-                StorageMeter()
+                HStack(alignment: .center, spacing: 16) {
+                    StorageMeter()
+                    Spacer(minLength: 0)
+                    Button { router.openFiles() } label: { Label("Files", systemImage: "folder") }
+                        .buttonStyle(.glassPill)
+                        .accessibilityLabel("Files: browse and manage all of put.io")
+                }
                 if !app.downloads.records.isEmpty {
                     HStack {
                         Text("On this device").font(.title3.weight(.semibold))
@@ -88,7 +94,11 @@ struct LibraryView: View {
             .padding(.top, 12)
             .padding(.bottom, 120)
         }
-        .refreshable { await app.library.refresh(retryUnmatched: true) }
+        .refreshable {
+            async let library: Void = app.library.refresh(retryUnmatched: true)
+            async let storage: Void = app.storage.refresh()
+            _ = await (library, storage)
+        }
         .ambientBackground()
         .toolbar(.hidden, for: .navigationBar)
     }
@@ -124,7 +134,12 @@ private struct LibraryCardView: View {
                 }
             }
             .confirmationDialog("Delete from put.io?", isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button("Delete", role: .destructive) { Task { try? await app.library.delete(entries) } }
+                Button("Delete", role: .destructive) {
+                    Task {
+                        try? await app.library.delete(entries)
+                        await app.storage.refresh()
+                    }
+                }
             } message: {
                 Text("This removes \(entries.count == 1 ? "the file" : "\(entries.count) files") from your put.io account. It can't be undone in Putio & Chill.")
             }

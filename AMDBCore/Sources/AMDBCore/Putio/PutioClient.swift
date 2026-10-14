@@ -99,6 +99,38 @@ public struct PutioClient: Sendable {
         _ = try await http.data(form("files/delete", [("file_ids", ids.map(String.init).joined(separator: ","))]))
     }
 
+    public func renameFile(id: Int64, name: String) async throws {
+        _ = try await http.data(form("files/rename", [("file_id", String(id)), ("name", name)]))
+    }
+
+    /// Copies one file or folder into `parentID`; returns the copy.
+    public func copyFile(id: Int64, to parentID: Int64) async throws -> PutioFile {
+        try await post("files/copy", [("file_id", String(id)), ("parent_id", String(parentID))], as: FileEnvelope.self).file
+    }
+
+    /// Files and folders anywhere in the account whose name matches.
+    public func searchFiles(_ query: String) async throws -> [PutioFile] {
+        try await get("files/search", query: [("query", query), ("per_page", "200")], as: SearchEnvelope.self).files
+    }
+
+    // MARK: Trash (deleted files stay here until emptied or they expire)
+
+    public func trash() async throws -> PutioTrash {
+        try await get("trash/list", query: [("per_page", "1000")], as: PutioTrash.self)
+    }
+
+    public func restoreFromTrash(ids: [Int64]) async throws {
+        _ = try await http.data(form("trash/restore", [("file_ids", ids.map(String.init).joined(separator: ","))]))
+    }
+
+    public func deleteFromTrash(ids: [Int64]) async throws {
+        _ = try await http.data(form("trash/delete", [("file_ids", ids.map(String.init).joined(separator: ","))]))
+    }
+
+    public func emptyTrash() async throws {
+        _ = try await http.data(form("trash/empty", []))
+    }
+
     public func createFolder(name: String, parentID: Int64) async throws -> PutioFile {
         try await post("files/create-folder", [("name", name), ("parent_id", String(parentID))], as: FileEnvelope.self).file
     }
@@ -145,7 +177,10 @@ public struct PutioClient: Sendable {
     private func get<T: Decodable>(_ path: String, query: [(String, String)] = [], as: T.Type) async throws -> T {
         var components = URLComponents(url: baseURL.appending(path: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query.map { URLQueryItem(name: $0.0, value: $0.1) } }
-        return try await http.decode(T.self, .get(components.url!, headers: authHeaders), decoder: .snakeCase)
+        // Always fresh: free space, folders and trash change between calls.
+        var request = URLRequest.get(components.url!, headers: authHeaders)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        return try await http.decode(T.self, request, decoder: .snakeCase)
     }
 
     private func form(_ path: String, _ fields: [(String, String)]) -> URLRequest {
@@ -163,4 +198,5 @@ public struct PutioClient: Sendable {
     struct StartFromEnvelope: Decodable { let startFrom: Int? }
     struct URLEnvelope: Decodable { let url: String }
     struct SubtitlesEnvelope: Decodable { let subtitles: [PutioSubtitle] }
+    struct SearchEnvelope: Decodable { let files: [PutioFile] }
 }

@@ -23,7 +23,18 @@ final class FakePutio: PutioService, @unchecked Sendable {
 
     func setTransfer(_ transfer: PutioTransfer) { lock.withLock { transfersByID[transfer.id] = transfer } }
 
-    func accountInfo() async throws -> PutioAccount { PutioAccount(username: "me") }
+    private(set) var accountCalls = 0
+    /// Answers account info slowly (to race two refreshes).
+    var accountDelays: [Duration] = []
+    func accountInfo() async throws -> PutioAccount {
+        let (delay, disk, trash) = lock.withLock { () -> (Duration, PutioAccount.Disk, Int64) in
+            accountCalls += 1
+            let delay = accountDelays.isEmpty ? .zero : accountDelays.removeFirst()
+            return (delay, disk, trashed.reduce(0) { $0 + ($1.size ?? 0) })
+        }
+        if delay > .zero { try await Task.sleep(for: delay) }
+        return PutioAccount(username: "me", disk: disk, trashSize: trash)
+    }
 
     func addTransfer(url: String, saveParentID: Int64?) async throws -> PutioTransfer {
         lock.withLock {
@@ -83,15 +94,68 @@ final class FakePutio: PutioService, @unchecked Sendable {
     }
 
     private(set) var deleted: [Int64] = []
+    private(set) var trashed: [PutioTrashFile] = []
+    var disk = PutioAccount.Disk(avail: 600, size: 1000, used: 400)
+    /// Makes copy fail after this many copies.
+    var copyLimit = Int.max
     func deleteFiles(ids: [Int64]) async throws {
         lock.withLock {
             deleted += ids
             for id in ids {
+                if let file = filesByID[id] {
+                    trashed.append(PutioTrashFile(id: id, name: file.name, fileType: file.fileType, size: file.size,
+                                                  deletedAt: "2026-10-14T10:00:0\(trashed.count % 10)"))
+                }
                 filesByID[id] = nil
                 for key in children.keys { children[key]?.removeAll { $0.id == id } }
             }
         }
     }
+
+    private(set) var renamed: [(id: Int64, name: String)] = []
+    func renameFile(id: Int64, name: String) async throws {
+        lock.withLock {
+            renamed.append((id, name))
+            guard let file = filesByID[id] else { return }
+            let renamedFile = PutioFile(id: id, name: name, fileType: file.fileType, size: file.size, parentId: file.parentId,
+                                        createdAt: file.createdAt)
+            filesByID[id] = renamedFile
+            for key in children.keys { children[key] = children[key]?.map { $0.id == id ? renamedFile : $0 } }
+        }
+    }
+
+    private(set) var copied: [(id: Int64, parent: Int64)] = []
+    func copyFile(id: Int64, to parentID: Int64) async throws -> PutioFile {
+        let copy = try lock.withLock { () -> PutioFile in
+            guard copied.count < copyLimit, let file = filesByID[id] else { throw AppError.http(service: "putio", status: 400) }
+            copied.append((id, parentID))
+            nextID += 1
+            return PutioFile(id: nextID, name: file.name, fileType: file.fileType, size: file.size, parentId: parentID,
+                             createdAt: file.createdAt)
+        }
+        add(copy, to: parentID)
+        return copy
+    }
+
+    func searchFiles(_ query: String) async throws -> [PutioFile] {
+        lock.withLock { filesByID.values.filter { $0.name.localizedCaseInsensitiveContains(query) } }
+    }
+
+    func trash() async throws -> PutioTrash {
+        lock.withLock { PutioTrash(files: trashed, trashSize: trashed.reduce(0) { $0 + ($1.size ?? 0) }) }
+    }
+    func restoreFromTrash(ids: [Int64]) async throws {
+        lock.withLock {
+            for file in trashed where ids.contains(file.id) {
+                let restored = PutioFile(id: file.id, name: file.name, fileType: file.fileType, size: file.size, parentId: 0)
+                children[0, default: []].append(restored)
+                filesByID[file.id] = restored
+            }
+            trashed.removeAll { ids.contains($0.id) }
+        }
+    }
+    func deleteFromTrash(ids: [Int64]) async throws { lock.withLock { trashed.removeAll { ids.contains($0.id) } } }
+    func emptyTrash() async throws { lock.withLock { trashed = [] } }
 
     func startFrom(fileID: Int64) async throws -> Int { lock.withLock { filesByID[fileID]?.startFrom ?? 0 } }
     func setStartFrom(fileID: Int64, seconds: Int) async throws { lock.withLock { startFromSets.append((fileID, seconds)) } }

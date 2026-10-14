@@ -71,6 +71,8 @@ struct TVRootView: View {
                 case let .collection(id): TVCollectionView(collectionID: id)
                 case .surprise: TVSurpriseView()
                 case .organize: TVOrganizeView()
+                case let .files(folder): TVFilesView(folder: folder)
+                case .trash: TVTrashView()
                 }
             }
         }
@@ -134,6 +136,9 @@ struct TVRootView: View {
         case "chart": router.tab = .top250
         case "upcoming": router.tab = .upcoming
         case "library": router.tab = .library
+        case "files":
+            router.tab = .library
+            router.open(.files(.root))
         case "search": router.tab = .search
         case "settings": router.tab = .settings
         case "movies": router.tab = .movies
