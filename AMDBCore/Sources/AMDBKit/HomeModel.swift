@@ -64,10 +64,12 @@ public final class BrowseModel {
     public private(set) var rows: [CatalogRow] = []
     public private(set) var isLoading = false
     private let catalog: any CatalogService
+    private let now: @Sendable () -> Date
 
-    public init(kind: MediaKind, catalog: any CatalogService) {
+    public init(kind: MediaKind, catalog: any CatalogService, now: @escaping @Sendable () -> Date = { Date() }) {
         self.kind = kind
         self.catalog = catalog
+        self.now = now
     }
 
     public static func genres(for kind: MediaKind) -> [Genre] {
@@ -89,12 +91,23 @@ public final class BrowseModel {
         let catalog = catalog
         let kind = kind
         let genres = Self.genres(for: kind)
+        let today = now()
+        // Popular, the themed lists (New on Netflix, New Series, …), Top Rated, then genres.
+        let curated = CuratedList.allCases.filter { $0.applies(to: kind) }
         let loaded = await withTaskGroup(of: (Int, CatalogRow?).self) { group in
             group.addTask { (0, (try? await catalog.popular(kind)).map { CatalogRow(id: "popular", title: "Popular", items: $0) }) }
-            group.addTask { (1, (try? await catalog.topRated(kind)).map { CatalogRow(id: "top", title: "Top Rated", items: $0) }) }
+            for (offset, list) in curated.enumerated() {
+                let query = list.query(for: kind, today: today)
+                group.addTask {
+                    (offset + 1, (try? await catalog.discover(kind, query: query))
+                        .map { CatalogRow(id: "c-\(list.rawValue)", title: list.title, items: $0) })
+                }
+            }
+            let afterCurated = curated.count + 1
+            group.addTask { (afterCurated, (try? await catalog.topRated(kind)).map { CatalogRow(id: "top", title: "Top Rated", items: $0) }) }
             for (offset, genre) in genres.enumerated() {
                 group.addTask {
-                    (offset + 2, (try? await catalog.discover(kind, genreID: genre.id))
+                    (afterCurated + offset + 1, (try? await catalog.discover(kind, genreID: genre.id))
                         .map { CatalogRow(id: "g\(genre.id)", title: genre.name, items: $0) })
                 }
             }

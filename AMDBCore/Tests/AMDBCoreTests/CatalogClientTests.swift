@@ -156,4 +156,17 @@ import Testing
         #expect(q["vote_count.gte"] == "500")
         #expect(q["page"] == "3")
     }
+
+    @Test func discoverWithAnyFilters() async throws {
+        let stub = StubTransport(json: #"{"results":[{"id":7,"name":"Below"}]}"#)
+        let items = try await CatalogClient(accessToken: "K", transport: stub)
+            .discover(.tv, query: DiscoverQuery(["with_networks": "213", "air_date.gte": "2026-09-13"]))
+        #expect(items.map(\.tmdbID) == [7])
+        #expect(items.first?.mediaType == .tv)
+        let request = try #require(stub.requests.first)
+        #expect(request.url?.path.hasSuffix("/discover/tv") == true)
+        #expect(request.queryItems["with_networks"] == "213")
+        #expect(request.queryItems["air_date.gte"] == "2026-09-13")
+        #expect(request.queryItems["include_adult"] == "false")
+    }
 }

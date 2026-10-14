@@ -41,7 +41,12 @@ import Testing
     @Test func browseRowsKeepOrder() async {
         let browse = BrowseModel(kind: .movie, catalog: Self.catalog)
         await browse.load()
-        #expect(browse.rows.map(\.title) == ["Popular", "Top Rated"] + BrowseModel.genres(for: .movie).map(\.name))
+        #expect(browse.rows.map(\.title) == ["Popular", "New on Netflix", "New on Disney+", "Critically Acclaimed", "Top Rated"]
+            + BrowseModel.genres(for: .movie).map(\.name))
+        let shows = BrowseModel(kind: .tv, catalog: FakeCatalog(popularShows: [show(1, "Severance")]))
+        await shows.load()
+        #expect(shows.rows.prefix(6).map(\.title) == ["Popular", "New on Netflix", "New on Disney+", "New Series",
+                                                        "Returning This Week", "Critically Acclaimed"])
         #expect(BrowseModel.genres(for: .tv).contains(Genre(id: 10765, name: "Sci-Fi & Fantasy")))
     }
 }

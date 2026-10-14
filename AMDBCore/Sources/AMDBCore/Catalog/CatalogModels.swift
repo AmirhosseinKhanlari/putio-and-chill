@@ -279,3 +279,9 @@ extension CatalogItem {
                     genreIDs: genreIDs, knownFor: knownFor)
     }
 }
+
+/// TMDB /discover query parameters.
+public struct DiscoverQuery: Sendable, Hashable {
+    public let parameters: [String: String]
+    public init(_ parameters: [String: String]) { self.parameters = parameters }
+}

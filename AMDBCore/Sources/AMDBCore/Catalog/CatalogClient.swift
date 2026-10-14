@@ -138,6 +138,12 @@ public struct CatalogClient: Sendable {
         return CatalogPage(items: paged.results.map { $0.with(kind) }, page: paged.page ?? page, totalPages: paged.totalPages ?? page)
     }
 
+    /// Any /discover filters (used by the themed lists: New on Netflix, Returning This Week, …).
+    public func discover(_ kind: MediaKind, query: DiscoverQuery) async throws -> [CatalogItem] {
+        let parameters = [("include_adult", "false")] + query.parameters.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }
+        return try await page("discover/\(kind.rawValue)", parameters).map { $0.with(kind) }
+    }
+
     public func season(tvID: Int, number: Int) async throws -> [Episode] {
         let raw = try await http.decode(SeasonRaw.self, request("tv/\(tvID)/season/\(number)"), decoder: .snakeCase)
         return (raw.episodes ?? []).map {

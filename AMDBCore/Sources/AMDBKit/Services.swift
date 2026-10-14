@@ -42,6 +42,7 @@ public protocol CatalogService: CatalogSearching {
     func collection(id: Int) async throws -> CollectionDetail
     func discover(_ kind: MediaKind, genreIDs: [Int], minRating: Double, minVotes: Int, page: Int) async throws -> CatalogPage
     func findByIMDb(_ imdbID: String) async throws -> CatalogItem?
+    func discover(_ kind: MediaKind, query: DiscoverQuery) async throws -> [CatalogItem]
 }
 
 extension CatalogClient: CatalogService {}
@@ -49,6 +50,8 @@ extension CatalogClient: CatalogService {}
 extension CatalogService {
     /// TMDB title for an IMDb id; services that can't look one up return nil (callers fall back to search).
     public func findByIMDb(_ imdbID: String) async throws -> CatalogItem? { nil }
+    /// Services without filtered discovery (fakes, demo) fall back to popular titles.
+    public func discover(_ kind: MediaKind, query: DiscoverQuery) async throws -> [CatalogItem] { try await popular(kind) }
 }
 
 public protocol ReleaseSearching: Sendable {
