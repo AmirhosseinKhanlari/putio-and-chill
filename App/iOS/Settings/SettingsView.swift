@@ -449,7 +449,7 @@ struct SettingsView: View {
         } header: {
             Text("IMDb")
         } footer: {
-            Text("Your IMDb watchlist shows on Home (here and on Apple TV). Paste the link to your IMDb profile or watchlist (IMDb app: You → Watchlist → Share). It must be public: on imdb.com open your Watchlist → Edit → Privacy → Public. The app only reads it.")
+            Text("Your IMDb watchlist shows on Home (here and on Apple TV). Paste the link to your IMDb watchlist or profile (IMDb app: Watchlist → Share → Copy link). It must be public: on imdb.com open your Watchlist → Edit → Privacy → Public. The app only reads it.")
         }
     }
 

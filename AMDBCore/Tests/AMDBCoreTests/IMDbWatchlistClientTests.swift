@@ -10,6 +10,10 @@ import Testing
         #expect(IMDbListRef.parse("https://www.imdb.com/list/ls591814193/") == .list(id: "ls591814193"))
         #expect(IMDbListRef.parse("https://www.imdb.com/title/tt2692904/") == nil)
         #expect(IMDbListRef.parse("hello") == nil)
+        // IMDb's newer share links name the profile, not the user id.
+        #expect(IMDbListRef.parse("https://www.imdb.com/user/p.e4i6drw4u7r3p4ihorf644fcaa/watchlist/?ref_=ext_shr_lnk")
+            == .profileWatchlist(profileID: "p.e4i6drw4u7r3p4ihorf644fcaa"))
+        #expect(IMDbListRef.parse("imdb.com/title/tt123/?ref_=sp.abc") == nil)
     }
 
     @Test func readsEveryPageInOrder() async throws {
@@ -26,6 +30,17 @@ import Testing
         #expect(titles[1].isShow)
         #expect(!titles[0].isShow)
         #expect(calls.value == 2)
+    }
+
+    @Test func profileLinksAreLookedUpToTheirUser() async throws {
+        let stub = StubTransport { request in
+            let body = String(data: request.httpBody ?? Data(), encoding: .utf8) ?? ""
+            if body.contains("userProfile") { return (200, Data(#"{"data":{"userProfile":{"userId":"ur235322355"}}}"#.utf8)) }
+            #expect(body.contains("ur235322355"))
+            return (200, Data(#"{"data":{"list":{"titleListItemSearch":{"total":1,"pageInfo":{"hasNextPage":false},"edges":[{"listItem":{"id":"tt33539520","titleText":{"text":"Neagley"},"titleType":{"id":"tvSeries"},"releaseYear":{"year":2026}}}]}}}}"#.utf8))
+        }
+        let titles = try await IMDbWatchlistClient(transport: stub).titles(.profileWatchlist(profileID: "p.e4i6drw4u7r3p4ihorf644fcaa"))
+        #expect(titles.map(\.title) == ["Neagley"])
     }
 
     @Test func aPrivateWatchlistSaysSo() async {
