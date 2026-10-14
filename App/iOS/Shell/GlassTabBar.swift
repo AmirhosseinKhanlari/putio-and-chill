@@ -131,35 +131,64 @@ struct PhoneTabBar: View {
     @Environment(Router.self) private var router
     /// Browse reopens Movies or TV, whichever was used last.
     @State private var lastBrowse: AppTab = .movies
+    @Namespace private var selection
 
     var body: some View {
+        bar
+            .padding(.horizontal, 16)
+            .onChange(of: router.tab, initial: true) { _, tab in if tab == .movies || tab == .tv { lastBrowse = tab } }
+    }
+
+    /// A floating Liquid Glass capsule (like Apple's TV app); the chosen tab sits on a lighter glass pill that slides.
+    @ViewBuilder private var bar: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: 0) {
+                items.padding(5).glassEffect(.regular, in: .capsule)
+            }
+            .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
+        } else {
+            items.padding(5)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.14)))
+                .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
+        }
+    }
+
+    private var items: some View {
         HStack(spacing: 0) {
             ForEach(Item.allCases, id: \.self) { item in
                 let selected = item.contains(router.tab)
                 Button { select(item, selected: selected) } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: item.symbol).font(.system(size: 21, weight: selected ? .semibold : .regular))
-                            .frame(height: 26)
-                        Text(item.title).font(.system(size: 11, weight: selected ? .semibold : .medium)).lineLimit(1)
+                    VStack(spacing: 3) {
+                        Image(systemName: item.symbol).font(.system(size: 22, weight: .semibold)).frame(height: 27)
+                        Text(item.title).font(.system(size: 11.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
                     }
-                    .foregroundStyle(selected ? .white : .white.opacity(0.55))
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .contentShape(Rectangle())
+                    .foregroundStyle(selected ? Self.tint : .white)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .background { if selected { highlight } }
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.title)
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
-        .padding(.horizontal, 6)
-        .padding(.top, 6)
-        .background {
-            Rectangle().fill(.ultraThinMaterial)
-                .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.1)).frame(height: 0.5) }
-                .ignoresSafeArea(edges: .bottom)
-        }
-        .onChange(of: router.tab, initial: true) { _, tab in if tab == .movies || tab == .tv { lastBrowse = tab } }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: router.tab)
     }
+
+    @ViewBuilder private var highlight: some View {
+        if #available(iOS 26.0, *) {
+            Capsule().fill(.black.opacity(0.18))
+                .glassEffect(.regular.tint(.black.opacity(0.35)).interactive(), in: .capsule)
+                .matchedGeometryEffect(id: "selection", in: selection)
+        } else {
+            Capsule().fill(.white.opacity(0.14))
+                .matchedGeometryEffect(id: "selection", in: selection)
+        }
+    }
+
+    /// Apple's TV-app blue for the chosen tab.
+    static let tint = Color(red: 0.30, green: 0.62, blue: 1.0)
 
     private func select(_ item: Item, selected: Bool) {
         if selected { router.popToRoot(router.tab); return }
