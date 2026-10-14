@@ -28,7 +28,13 @@ private struct SearchContent: View {
     let trending: [CatalogItem]
     @Environment(Router.self) private var router
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(AppModel.self) private var app
     @FocusState private var focused: Bool
+    /// Ask AMDB: results for the sentence in the field, and how it was understood.
+    @State private var askResults: [CatalogItem]?
+    @State private var askSummary = ""
+    @State private var asking = false
+    @State private var askFailed = false
 
     var body: some View {
         let compact = sizeClass == .compact
@@ -51,7 +57,28 @@ private struct SearchContent: View {
                 .padding(.horizontal, 18).padding(.vertical, 14)
                 .glassRounded(22)
 
-                if let releaseQuery = model.releaseQuery {
+                if AskAMDB.isAvailable, !model.query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button { Task { await ask() } } label: {
+                        Label(asking ? "Thinking…" : "Ask AMDB", systemImage: "sparkles").font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.glassPill)
+                    .disabled(asking)
+                }
+
+                if let askResults {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Ask AMDB", systemImage: "sparkles").font(.headline)
+                        if !askSummary.isEmpty { Text(askSummary).font(.footnote).foregroundStyle(.secondary) }
+                    }
+                    if askResults.isEmpty {
+                        Text("Nothing matched all of that. Try saying it a little differently.").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    grid(askResults)
+                } else if askFailed {
+                    Text("Apple Intelligence couldn't answer that right now.").font(.footnote).foregroundStyle(.secondary)
+                }
+
+                if askResults == nil, let releaseQuery = model.releaseQuery {
                     Button {
                         Task { await model.commit() }
                         router.versions = VersionsRequest(query: releaseQuery, target: nil, playNow: [])
@@ -104,6 +131,7 @@ private struct SearchContent: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .onAppear { focused = true }
+        .onChange(of: model.query) { _, _ in askResults = nil; askFailed = false }
     }
 
     private var suggestions: some View {
@@ -144,6 +172,23 @@ private struct SearchContent: View {
             }
         }
         .animation(.snappy(duration: 0.25), value: items.map(\.id))
+    }
+
+    /// Apple Intelligence reads the sentence; TMDB finds the titles.
+    private func ask() async {
+        guard let catalog = app.catalog else { return }
+        asking = true
+        askFailed = false
+        defer { asking = false }
+        focused = false
+        do {
+            let request = try await AskAMDB.request(for: model.query)
+            askSummary = request.summary
+            askResults = await AskSearch.run(request, catalog: catalog)
+            await model.commit()
+        } catch {
+            askFailed = true
+        }
     }
 
     private func open(_ item: CatalogItem) {

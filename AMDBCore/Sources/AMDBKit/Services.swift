@@ -47,6 +47,7 @@ public protocol CatalogService: CatalogSearching {
     func upcomingMovies(region: String) async throws -> [DatedItem]
     func discoverDated(_ kind: MediaKind, query: DiscoverQuery) async throws -> [DatedItem]
     func nextEpisode(tvID: Int) async throws -> UpcomingEpisode?
+    func keywordIDs(_ query: String) async throws -> [Int]
 }
 
 extension CatalogClient: CatalogService {}
@@ -64,6 +65,7 @@ extension CatalogService {
         try await discover(kind, query: query).map { DatedItem(item: $0, date: nil) }
     }
     public func nextEpisode(tvID: Int) async throws -> UpcomingEpisode? { nil }
+    public func keywordIDs(_ query: String) async throws -> [Int] { [] }
 }
 
 public protocol ReleaseSearching: Sendable {

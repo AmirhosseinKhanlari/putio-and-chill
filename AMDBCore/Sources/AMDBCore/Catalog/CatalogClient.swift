@@ -138,6 +138,14 @@ public struct CatalogClient: Sendable {
         return CatalogPage(items: paged.results.map { $0.with(kind) }, page: paged.page ?? page, totalPages: paged.totalPages ?? page)
     }
 
+    /// TMDB keyword ids for a word ("heist" → 10051), best match first.
+    public func keywordIDs(_ query: String) async throws -> [Int] {
+        struct Page: Decodable { struct Keyword: Decodable { let id: Int; let name: String }; let results: [Keyword] }
+        let page = try await http.decode(Page.self, request("search/keyword", [("query", query)]), decoder: .snakeCase)
+        let wanted = query.lowercased()
+        return page.results.sorted { ($0.name.lowercased() == wanted ? 0 : 1) < ($1.name.lowercased() == wanted ? 0 : 1) }.map(\.id)
+    }
+
     /// Movies in cinemas now.
     public func nowPlaying(region: String) async throws -> [CatalogItem] {
         try await page("movie/now_playing", [("region", region)]).map { $0.with(.movie) }
