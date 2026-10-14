@@ -285,3 +285,41 @@ public struct DiscoverQuery: Sendable, Hashable {
     public let parameters: [String: String]
     public init(_ parameters: [String: String]) { self.parameters = parameters }
 }
+
+/// A title with its release (movies) or premiere (shows) date, "YYYY-MM-DD" when TMDB has one.
+public struct DatedItem: Sendable, Hashable, Identifiable {
+    public let item: CatalogItem
+    public let date: String?
+    public var id: String { item.id }
+    public init(item: CatalogItem, date: String?) { self.item = item; self.date = date }
+}
+
+/// The next episode of a show that hasn't aired yet.
+public struct UpcomingEpisode: Sendable, Hashable, Identifiable {
+    public let show: CatalogItem
+    public let season: Int
+    public let episode: Int
+    public let name: String
+    /// "YYYY-MM-DD"
+    public let airDate: String
+    public let stillPath: String?
+    public var id: String { "\(show.tmdbID)-\(season)-\(episode)" }
+
+    public init(show: CatalogItem, season: Int, episode: Int, name: String, airDate: String, stillPath: String?) {
+        self.show = show; self.season = season; self.episode = episode; self.name = name; self.airDate = airDate
+        self.stillPath = stillPath
+    }
+}
+
+/// Decodes a TMDB result plus its release_date / first_air_date (snake-case decoder).
+struct DatedRaw: Decodable {
+    let item: CatalogItem
+    let date: String?
+    enum CodingKeys: String, CodingKey { case releaseDate, firstAirDate }
+    init(from decoder: any Decoder) throws {
+        item = try CatalogItem(from: decoder)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try c.decodeIfPresent(String.self, forKey: .releaseDate) ?? c.decodeIfPresent(String.self, forKey: .firstAirDate)
+        date = (raw?.isEmpty ?? true) ? nil : raw
+    }
+}

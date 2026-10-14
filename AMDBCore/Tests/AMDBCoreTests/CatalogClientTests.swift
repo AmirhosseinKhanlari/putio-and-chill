@@ -169,4 +169,23 @@ import Testing
         #expect(request.queryItems["air_date.gte"] == "2026-09-13")
         #expect(request.queryItems["include_adult"] == "false")
     }
+
+    @Test func nextEpisodeReadsWhatsScheduled() async throws {
+        let json = #"{"id":95396,"name":"Severance","poster_path":"/p.jpg","next_episode_to_air":{"air_date":"2026-10-17","season_number":3,"episode_number":2,"name":"Hello, Ms. Cobel","still_path":"/s.jpg"}}"#
+        let next = try #require(try await CatalogClient(accessToken: "K", transport: StubTransport(json: json)).nextEpisode(tvID: 95396))
+        #expect(next.show.title == "Severance")
+        #expect(next.show.mediaType == .tv)
+        #expect(next.season == 3 && next.episode == 2)
+        #expect(next.airDate == "2026-10-17")
+        let none = try await CatalogClient(accessToken: "K", transport: StubTransport(json: #"{"id":1,"name":"Done","next_episode_to_air":null}"#))
+            .nextEpisode(tvID: 1)
+        #expect(none == nil)
+    }
+
+    @Test func upcomingMoviesCarryReleaseDates() async throws {
+        let stub = StubTransport(json: #"{"results":[{"id":9,"title":"Toy Story 5","release_date":"2026-06-19"},{"id":10,"title":"TBA","release_date":""}]}"#)
+        let movies = try await CatalogClient(accessToken: "K", transport: stub).upcomingMovies(region: "US")
+        #expect(movies.map(\.date) == ["2026-06-19", nil])
+        #expect(try #require(stub.requests.first).queryItems["region"] == "US")
+    }
 }

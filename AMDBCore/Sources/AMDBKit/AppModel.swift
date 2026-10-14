@@ -238,6 +238,12 @@ public final class AppModel {
         return entries
     }
 
+    /// Last weekend's box office (Trakt); empty without a Trakt client ID.
+    public func boxOffice() async throws -> [BoxOfficeEntry] {
+        guard let chartsService else { return [] }
+        return try await chartsService.boxOffice()
+    }
+
     /// A natively playable trailer from IMDb, or nil (caller falls back to YouTube).
     public func trailer(imdbID: String) async -> TrailerVideo? {
         try? await factory.trailers.trailer(imdbID: imdbID)

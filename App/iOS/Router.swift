@@ -4,7 +4,7 @@ import Observation
 import SwiftUI
 
 enum AppTab: String, CaseIterable, Identifiable {
-    case home, movies, tv, search, library
+    case home, movies, tv, upcoming, search, library
 
     var id: String { rawValue }
     var title: String {
@@ -12,6 +12,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .home: "Home"
         case .movies: "Movies"
         case .tv: "TV"
+        case .upcoming: "Coming Up"
         case .search: "Search"
         case .library: "Library"
         }
@@ -21,6 +22,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .home: "house.fill"
         case .movies: "film"
         case .tv: "tv"
+        case .upcoming: "calendar"
         case .search: "magnifyingglass"
         case .library: "square.stack.fill"
         }
@@ -92,6 +94,7 @@ final class Router {
     var moviesPath: [Route] = []
     var tvPath: [Route] = []
     var searchPath: [Route] = []
+    var upcomingPath: [Route] = []
     var libraryPath: [Route] = []
     var versions: VersionsRequest?
     /// Set to start playback; cleared when the player closes.
@@ -120,6 +123,7 @@ final class Router {
         case .movies: moviesPath.append(route)
         case .tv: tvPath.append(route)
         case .search: searchPath.append(route)
+        case .upcoming: upcomingPath.append(route)
         case .library: libraryPath.append(route)
         }
     }
@@ -130,6 +134,7 @@ final class Router {
         case .movies: moviesPath = []
         case .tv: tvPath = []
         case .search: searchPath = []
+        case .upcoming: upcomingPath = []
         case .library: libraryPath = []
         }
     }

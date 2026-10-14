@@ -49,4 +49,15 @@ import Testing
         #expect(entries.last?.rank == 253)
         #expect(stub.requests.count == 2)
     }
+
+    @Test func boxOfficeIsRankedWithWeekendGross() async throws {
+        let json = #"[{"revenue":42100000,"movie":{"title":"Toy Story 5","year":2026,"ids":{"trakt":1,"imdb":"tt1","tmdb":9}}},{"revenue":950000,"movie":{"title":"Small","year":2026,"ids":{}}}]"#
+        let stub = StubTransport(json: json)
+        let chart = try await TraktClient(clientID: "c", transport: stub).boxOffice()
+        #expect(chart.map(\.rank) == [1, 2])
+        #expect(chart[0].tmdbID == 9)
+        #expect(chart[0].revenueText == "$42.1M")
+        #expect(chart[1].revenueText == "$950K")
+        #expect(stub.requests.first?.url?.path == "/movies/boxoffice")
+    }
 }

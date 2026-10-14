@@ -138,6 +138,44 @@ public struct CatalogClient: Sendable {
         return CatalogPage(items: paged.results.map { $0.with(kind) }, page: paged.page ?? page, totalPages: paged.totalPages ?? page)
     }
 
+    /// Movies in cinemas now.
+    public func nowPlaying(region: String) async throws -> [CatalogItem] {
+        try await page("movie/now_playing", [("region", region)]).map { $0.with(.movie) }
+    }
+
+    /// Movies coming to cinemas, with their release dates.
+    public func upcomingMovies(region: String) async throws -> [DatedItem] {
+        try await dated("movie/upcoming", [("region", region)], kind: .movie)
+    }
+
+    /// /discover with the release or premiere date of each result.
+    public func discoverDated(_ kind: MediaKind, query: DiscoverQuery) async throws -> [DatedItem] {
+        let parameters = [("include_adult", "false")] + query.parameters.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }
+        return try await dated("discover/\(kind.rawValue)", parameters, kind: kind)
+    }
+
+    /// The show's next episode when one is scheduled.
+    public func nextEpisode(tvID: Int) async throws -> UpcomingEpisode? {
+        struct Show: Decodable {
+            struct Next: Decodable { let airDate: String?; let seasonNumber: Int?; let episodeNumber: Int?; let name: String?; let stillPath: String? }
+            let nextEpisodeToAir: Next?
+        }
+        let req = request("tv/\(tvID)")
+        let data = try await http.data(req)
+        let decoder = JSONDecoder.snakeCase
+        let show = try decoder.decode(CatalogItem.self, from: data).with(.tv)
+        guard let next = try decoder.decode(Show.self, from: data).nextEpisodeToAir, let airDate = next.airDate, !airDate.isEmpty,
+              let season = next.seasonNumber, let episode = next.episodeNumber else { return nil }
+        return UpcomingEpisode(show: show, season: season, episode: episode, name: next.name ?? "Episode \(episode)",
+                               airDate: airDate, stillPath: next.stillPath)
+    }
+
+    private func dated(_ path: String, _ query: [(String, String)], kind: MediaKind) async throws -> [DatedItem] {
+        struct Page: Decodable { let results: [DatedRaw] }
+        return try await http.decode(Page.self, request(path, query), decoder: .snakeCase).results
+            .map { DatedItem(item: $0.item.with(kind), date: $0.date) }
+    }
+
     /// Any /discover filters (used by the themed lists: New on Netflix, Returning This Week, …).
     public func discover(_ kind: MediaKind, query: DiscoverQuery) async throws -> [CatalogItem] {
         let parameters = [("include_adult", "false")] + query.parameters.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }

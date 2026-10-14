@@ -101,6 +101,7 @@ struct MainView: View {
         case .movies: router.moviesPath
         case .tv: router.tvPath
         case .search: router.searchPath
+        case .upcoming: router.upcomingPath
         case .library: router.libraryPath
         }
     }
@@ -224,6 +225,7 @@ private struct TabStack: View {
         case .movies: BrowseView(kind: .movie)
         case .tv: BrowseView(kind: .tv)
         case .search: SearchView()
+        case .upcoming: ComingUpView()
         case .library: LibraryView()
         }
     }

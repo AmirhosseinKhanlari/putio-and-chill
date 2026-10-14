@@ -27,7 +27,7 @@ public enum CuratedList: String, CaseIterable, Sendable {
     static let netflix = "8", disneyPlus = "337"
     static let netflixNetwork = "213", disneyPlusNetwork = "2739"
     /// Talk, News, Reality and Soap: daily shows that would crowd out series in the TV lists.
-    static let notSeries = "10767|10763|10764|10766"
+    public static let notSeries = "10767|10763|10764|10766"
 
     /// TMDB /discover filters for this list. Streaming lists use the US catalog.
     public func query(for kind: MediaKind, today: Date, region: String = "US") -> DiscoverQuery {
@@ -73,7 +73,7 @@ public enum CuratedList: String, CaseIterable, Sendable {
         return DiscoverQuery(parameters)
     }
 
-    static func day(_ date: Date, plus days: Int) -> String {
+    public static func day(_ date: Date, plus days: Int) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let shifted = calendar.date(byAdding: .day, value: days, to: date) ?? date

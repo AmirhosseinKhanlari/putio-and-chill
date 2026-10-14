@@ -50,6 +50,7 @@ enum DemoMode {
         case "search": router.tab = .search
         case "library": router.tab = .library
         case "movies": router.tab = .movies
+        case "upcoming": router.tab = .upcoming
         case "person": router.homePath = [.person(900)]
         case "collection": router.homePath = [.collection(8945)]
         case "surprise": router.showSurprise = true
@@ -162,6 +163,18 @@ struct DemoCatalog: CatalogService {
     func collection(id: Int) async throws -> CollectionDetail {
         CollectionDetail(id: id, name: "Mad Max Collection", overview: "A post-apocalyptic saga of survival on the Fury Road.",
                          posterPath: "/tRxkZboyyXnFgCthoViWBwISZ0r.jpg", backdropPath: "/zI0q2ENcQOLECbe0gAEGlncVh2j.jpg", parts: Array(Self.movies.prefix(5)))
+    }
+    private static func day(_ offset: Int) -> String { CuratedList.day(Date(), plus: offset) }
+    func upcomingMovies(region: String) async throws -> [DatedItem] {
+        Self.movies.suffix(5).enumerated().map { DatedItem(item: $0.element, date: Self.day(4 + $0.offset * 9)) }
+    }
+    func discoverDated(_ kind: MediaKind, query: DiscoverQuery) async throws -> [DatedItem] {
+        (kind == .tv ? Self.shows : Self.movies).reversed().enumerated().map { DatedItem(item: $0.element, date: Self.day(2 + $0.offset * 5)) }
+    }
+    func nextEpisode(tvID: Int) async throws -> UpcomingEpisode? {
+        guard let index = Self.shows.firstIndex(where: { $0.tmdbID == tvID }) else { return nil }
+        return UpcomingEpisode(show: Self.shows[index], season: 2, episode: 5 + index, name: "The Next One",
+                               airDate: Self.day(index), stillPath: nil)
     }
     func discover(_ kind: MediaKind, genreIDs: [Int], minRating: Double, minVotes: Int, page: Int) async throws -> CatalogPage {
         CatalogPage(items: kind == .tv ? Self.shows : Self.movies, page: page, totalPages: 1)
@@ -329,6 +342,13 @@ struct DemoEpisodeRatings: EpisodeRatingsService {
 }
 
 struct DemoCharts: ChartsService {
+    func boxOffice() async throws -> [BoxOfficeEntry] {
+        DemoCatalog.movies.prefix(5).enumerated().map { index, item in
+            BoxOfficeEntry(rank: index + 1, title: item.title, year: item.year, tmdbID: item.tmdbID, imdbID: nil,
+                           revenue: [42_100_000, 18_600_000, 9_400_000, 6_200_000, 3_900_000][index])
+        }
+    }
+
     func chart(_ chart: IMDbChart) async throws -> [ChartEntry] {
         let pool = chart.kind == .tv ? DemoCatalog.shows : DemoCatalog.movies
         return pool.enumerated().map { index, item in

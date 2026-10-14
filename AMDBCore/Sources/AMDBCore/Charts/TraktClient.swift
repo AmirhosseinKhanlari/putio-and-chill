@@ -66,6 +66,18 @@ public struct TraktClient: Sendable {
         try await listItems(user: chart.user, list: chart.list)
     }
 
+    /// Last weekend's US box office top 10 (`GET /movies/boxoffice`).
+    public func boxOffice() async throws -> [BoxOfficeEntry] {
+        struct Row: Decodable { let revenue: Int?; let movie: Media }
+        let request = URLRequest.get(baseURL.appending(path: "movies/boxoffice"),
+                                     headers: ["trakt-api-key": clientID, "trakt-api-version": "2", "Content-Type": "application/json"])
+        let rows = try await http.decode([Row].self, request, decoder: .snakeCase)
+        return rows.enumerated().map { index, row in
+            BoxOfficeEntry(rank: index + 1, title: row.movie.title, year: row.movie.year, tmdbID: row.movie.ids.tmdb,
+                           imdbID: row.movie.ids.imdb, revenue: row.revenue)
+        }
+    }
+
     struct Item: Decodable {
         let rank: Int
         let type: String
@@ -82,5 +94,28 @@ public struct TraktClient: Sendable {
         func entry(rank: Int, kind: MediaKind) -> ChartEntry {
             ChartEntry(rank: rank, kind: kind, title: title, year: year, imdbID: ids.imdb, tmdbID: ids.tmdb)
         }
+    }
+}
+
+/// One movie in the weekend box office chart.
+public struct BoxOfficeEntry: Sendable, Hashable, Identifiable {
+    public let rank: Int
+    public let title: String
+    public let year: Int?
+    public let tmdbID: Int?
+    public let imdbID: String?
+    /// Weekend gross in US dollars.
+    public let revenue: Int?
+    public var id: Int { rank }
+
+    public init(rank: Int, title: String, year: Int?, tmdbID: Int?, imdbID: String?, revenue: Int?) {
+        self.rank = rank; self.title = title; self.year = year; self.tmdbID = tmdbID; self.imdbID = imdbID; self.revenue = revenue
+    }
+
+    /// "$42.1M"
+    public var revenueText: String? {
+        guard let revenue, revenue > 0 else { return nil }
+        if revenue >= 1_000_000 { return String(format: "$%.1fM", Double(revenue) / 1_000_000) }
+        return String(format: "$%.0fK", Double(revenue) / 1_000)
     }
 }

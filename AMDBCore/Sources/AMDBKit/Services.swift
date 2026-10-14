@@ -43,6 +43,10 @@ public protocol CatalogService: CatalogSearching {
     func discover(_ kind: MediaKind, genreIDs: [Int], minRating: Double, minVotes: Int, page: Int) async throws -> CatalogPage
     func findByIMDb(_ imdbID: String) async throws -> CatalogItem?
     func discover(_ kind: MediaKind, query: DiscoverQuery) async throws -> [CatalogItem]
+    func nowPlaying(region: String) async throws -> [CatalogItem]
+    func upcomingMovies(region: String) async throws -> [DatedItem]
+    func discoverDated(_ kind: MediaKind, query: DiscoverQuery) async throws -> [DatedItem]
+    func nextEpisode(tvID: Int) async throws -> UpcomingEpisode?
 }
 
 extension CatalogClient: CatalogService {}
@@ -52,6 +56,14 @@ extension CatalogService {
     public func findByIMDb(_ imdbID: String) async throws -> CatalogItem? { nil }
     /// Services without filtered discovery (fakes, demo) fall back to popular titles.
     public func discover(_ kind: MediaKind, query: DiscoverQuery) async throws -> [CatalogItem] { try await popular(kind) }
+    public func nowPlaying(region: String) async throws -> [CatalogItem] { try await popular(.movie) }
+    public func upcomingMovies(region: String) async throws -> [DatedItem] {
+        try await popular(.movie).map { DatedItem(item: $0, date: nil) }
+    }
+    public func discoverDated(_ kind: MediaKind, query: DiscoverQuery) async throws -> [DatedItem] {
+        try await discover(kind, query: query).map { DatedItem(item: $0, date: nil) }
+    }
+    public func nextEpisode(tvID: Int) async throws -> UpcomingEpisode? { nil }
 }
 
 public protocol ReleaseSearching: Sendable {
@@ -69,6 +81,11 @@ extension RatingsClient: RatingsService {}
 
 public protocol ChartsService: Sendable {
     func chart(_ chart: IMDbChart) async throws -> [ChartEntry]
+    func boxOffice() async throws -> [BoxOfficeEntry]
+}
+
+extension ChartsService {
+    public func boxOffice() async throws -> [BoxOfficeEntry] { [] }
 }
 
 extension TraktClient: ChartsService {}
