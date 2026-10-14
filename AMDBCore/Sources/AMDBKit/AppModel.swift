@@ -99,6 +99,8 @@ public final class AppModel {
     public let chillFeed: ChillFeed
     /// put.io's used / free space and trash size.
     public let storage = PutioStorage()
+    /// put.io MP4 conversions of videos Apple devices can't play as they are.
+    public let conversions = VideoConversions()
     @ObservationIgnored private var filesChangedRefresh: Task<Void, Never>?
 
     @ObservationIgnored private let tokens: any TokenStore
@@ -378,6 +380,7 @@ public final class AppModel {
         searcher = ReleaseAggregator(providers: providers)
         library.configure(putio: putio, catalog: catalog)
         storage.configure(putio: putio)
+        conversions.configure(putio: putio)
         transfers.configure(putio: putio, library: library)
         transfers.layout = FolderLayout(settings: settings)
     }

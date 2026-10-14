@@ -47,16 +47,45 @@ struct EntryRowView: View {
             Text(title).font(.title3.weight(.semibold)).padding(.horizontal, Metrics.gutter(sizeClass))
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 12) {
-                    ForEach(entries) { entry in
-                        let resume = app.library.resumeSeconds(for: entry)
-                        Button { router.play(entry, resumeFrom: resume) } label: {
-                            LibraryPoster(entry: entry, width: Metrics.poster(sizeClass), resumeSeconds: resume)
-                        }
-                        .buttonStyle(.lift)
-                    }
+                    ForEach(entries) { entry in EntryCard(entry: entry, width: Metrics.poster(sizeClass)) }
                 }
                 .padding(.horizontal, Metrics.gutter(sizeClass))
             }
         }
+    }
+}
+
+/// A file in put.io (Continue Watching, Recently Added): tap plays it, touch and hold opens its movie or show page.
+struct EntryCard: View {
+    let entry: LibraryEntry
+    let width: CGFloat
+    @Environment(AppModel.self) private var app
+    @Environment(Router.self) private var router
+    /// When the hold opened the title page: the button's own tap (on lifting the finger) is then ignored.
+    @State private var heldAt: Date?
+
+    var body: some View {
+        let resume = app.library.resumeSeconds(for: entry)
+        Button {
+            if let heldAt, Date().timeIntervalSince(heldAt) < 3 {
+                self.heldAt = nil
+                return
+            }
+            router.play(entry, resumeFrom: resume)
+        } label: {
+            LibraryPoster(entry: entry, width: width, resumeSeconds: resume)
+        }
+        .buttonStyle(.lift)
+        .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in openDetails() })
+        .accessibilityHint(entry.titleItem == nil ? "Plays it" : "Plays it. Touch and hold for details")
+        .accessibilityAction(named: entry.match?.mediaType == .tv ? "Show details" : "Movie details") { openDetails() }
+        .onDisappear { heldAt = nil }
+    }
+
+    private func openDetails() {
+        guard let item = entry.titleItem else { return }
+        heldAt = Date()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        router.showTitle(item)
     }
 }

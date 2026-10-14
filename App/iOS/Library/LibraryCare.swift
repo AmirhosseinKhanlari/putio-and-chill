@@ -58,22 +58,13 @@ struct DownloadButton: View {
                 }
             }
         } label: {
-            switch state {
-            case let .downloading(progress)?:
-                ProgressRing(progress: progress, lineWidth: 3).frame(width: plain ? 26 : 20, height: plain ? 26 : 20)
-            case .queued?:
-                ProgressView().controlSize(.small)
-            case .done?:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.good)
-                    .font(plain ? .system(size: 28) : .body)
-            default:
-                if plain {
-                    Image(systemName: "arrow.down.to.line.circle").font(.system(size: 28, weight: .light))
-                } else if iconOnly {
-                    Image(systemName: "arrow.down.to.line")
-                } else {
-                    Label("Download", systemImage: "arrow.down.to.line")
-                }
+            if case let .converting(percent)? = app.conversions.states[entry.id], state != nil {
+                // put.io is converting it for Apple devices; the download starts when that's done.
+                ProgressRing(progress: Double(percent) / 100, lineWidth: 3)
+                    .overlay { Image(systemName: "gearshape.fill").font(.system(size: plain ? 9 : 7)) }
+                    .frame(width: plain ? 26 : 20, height: plain ? 26 : 20)
+            } else {
+                stateIcon(state)
             }
         }
         .buttonStyle(DownloadButtonStyle(plain: plain))
@@ -82,6 +73,26 @@ struct DownloadButton: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Apple's offline video downloads don't run in the Simulator. On your iPad or iPhone this saves the video for offline viewing.")
+        }
+    }
+
+    @ViewBuilder private func stateIcon(_ state: DownloadState?) -> some View {
+        switch state {
+        case let .downloading(progress)?:
+            ProgressRing(progress: progress, lineWidth: 3).frame(width: plain ? 26 : 20, height: plain ? 26 : 20)
+        case .queued?:
+            ProgressView().controlSize(.small)
+        case .done?:
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.good)
+                .font(plain ? .system(size: 28) : .body)
+        default:
+            if plain {
+                Image(systemName: "arrow.down.to.line.circle").font(.system(size: 28, weight: .light))
+            } else if iconOnly {
+                Image(systemName: "arrow.down.to.line")
+            } else {
+                Label("Download", systemImage: "arrow.down.to.line")
+            }
         }
     }
 
@@ -97,7 +108,10 @@ struct DownloadButton: View {
     }
 
     private func label(_ state: DownloadState?) -> String {
-        switch state {
+        if case let .converting(percent)? = app.conversions.states[entry.id], state != nil {
+            return "put.io is converting this video for Apple devices, \(percent)%. Tap to cancel"
+        }
+        return switch state {
         case .done?: "Downloaded. Tap to remove"
         case .downloading?, .queued?: "Downloading. Tap to cancel"
         default: "Download to this device"

@@ -64,6 +64,10 @@ enum DemoMode {
         case "player":
             router.player = PlayerRequest(file: PutioFile(id: 1, name: "Interstellar.2014.1080p.BluRay.x264.mkv", fileType: "VIDEO"),
                                           title: "Interstellar", resumeFrom: 4360, played: nil, next: nil)
+        case "player-convert":
+            // A video put.io has to convert for Apple devices first.
+            router.player = PlayerRequest(file: PutioFile(id: 5, name: "Home.Video.2019.mov", fileType: "VIDEO"),
+                                          title: "Home Video", resumeFrom: 0, played: nil, next: nil)
         case "player-episode":
             // Severance S2 E4, a few seconds before the credits, to show the Next Episode card.
             router.player = PlayerRequest(file: PutioFile(id: 2, name: "Severance.S02E04.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO"),
@@ -273,6 +277,26 @@ final class DemoPutio: PutioService, @unchecked Sendable {
         }
     }
 
+    // Home.Video.2019.mov (id 5) needs converting for Apple devices: it takes ~8 seconds once started.
+    private var conversionStarted: Date?
+    private func mp4(_ fileID: Int64) -> PutioMp4Status {
+        guard fileID == 5 else { return PutioMp4Status(status: .completed, percentDone: 100) }
+        guard let started = lock.withLock({ conversionStarted }) else { return PutioMp4Status(status: .notAvailable) }
+        let elapsed = Date().timeIntervalSince(started)
+        return elapsed < 8 ? PutioMp4Status(status: .converting, percentDone: Int(elapsed / 8 * 100))
+            : PutioMp4Status(status: .completed, percentDone: 100)
+    }
+    func fileStatus(id: Int64) async throws -> PutioFile {
+        let file = try await file(id: id)
+        return PutioFile(id: file.id, name: file.name, fileType: file.fileType, size: file.size, createdAt: file.createdAt,
+                         needConvert: id == 5, isMp4Available: mp4(id).status == .completed)
+    }
+    func mp4Status(fileID: Int64) async throws -> PutioMp4Status { mp4(fileID) }
+    func convertToMp4(fileID: Int64) async throws -> PutioMp4Status {
+        lock.withLock { if conversionStarted == nil { conversionStarted = Date() } }
+        return mp4(fileID)
+    }
+
     func renameFile(id: Int64, name: String) async throws {
         lock.withLock {
             for (parent, files) in tree {
@@ -371,8 +395,10 @@ final class DemoPutio: PutioService, @unchecked Sendable {
     func startFrom(fileID: Int64) async throws -> Int { 0 }
     func setStartFrom(fileID: Int64, seconds: Int) async throws {}
     func hlsURL(fileID: Int64, subtitles: Bool) -> URL {
+        // The video that needs converting has no stream until put.io has converted it.
+        if fileID == 5, mp4(5).status != .completed { return URL(string: "https://devstreaming-cdn.apple.com/videos/missing/master.m3u8")! }
         // Like put.io: subtitle tracks only when asked for (the app streams without them and draws its own).
-        subtitles
+        return subtitles
             ? URL(string: "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8")!
             : URL(string: "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8")!
     }

@@ -141,12 +141,46 @@ public final class TransferMonitor {
         }
     }
 
+    /// When each finished transfer was first seen finished (to stop waiting for a file that never shows up).
+    private var completedSince: [Int64: Date] = [:]
+    /// How long a finished transfer may take to show its file before it's reported as a problem.
+    static let fileGrace: TimeInterval = 180
+
+    /// Waits a little (put.io can take a moment to list a finished transfer's files), then reports the transfer as
+    /// failed with `message` instead of showing it as downloading forever.
+    private func giveUpIfStuck(_ id: Int64, _ message: String) async {
+        let since = completedSince[id] ?? now()
+        completedSince[id] = since
+        guard now().timeIntervalSince(since) >= Self.fileGrace, let index = tracked.firstIndex(where: { $0.id == id }) else { return }
+        completedSince[id] = nil
+        tracked[index].phase = .failed(message: message)
+        tracked[index].notified = true
+        let failed = tracked[index]
+        await store.update { $0.pending.removeAll { $0.transferID == id } }
+        onEvent?(.failed(failed))
+    }
+
+    /// The saved file or folder of a finished transfer, by its name in the folder it was saved to.
+    static func findSaved(_ transfer: PutioTransfer, putio: any PutioService) async -> Int64? {
+        guard let name = transfer.name, !name.isEmpty,
+              let files = try? await putio.listFiles(parentID: transfer.saveParentId ?? 0).files else { return nil }
+        return files.first { $0.name == name }?.id
+            ?? files.first { ($0.name as NSString).deletingPathExtension == (name as NSString).deletingPathExtension }?.id
+    }
+
     /// Resolves a finished transfer to its playable file, records it in the library, and emits one event.
     private func settle(_ id: Int64) async {
         guard let putio, let item = tracked.first(where: { $0.id == id }), !item.notified else { return }
         switch item.phase {
-        case let .completed(fileID?):
+        case let .completed(reported):
             let pending = item.pending
+            // put.io sometimes reports a finished transfer without its file: look for it by name where it was saved.
+            var found = reported
+            if found == nil, let transfer = item.transfer { found = await Self.findSaved(transfer, putio: putio) }
+            guard let fileID = found else {
+                await giveUpIfStuck(id, "Finished on put.io, but its file wasn't found. Look for it in Library → Files.")
+                return
+            }
             // A whole season: every episode in it goes into the library, and Play starts at the first one.
             var episodes: [(file: PutioFile, match: LibraryMatch)] = []
             if pending.tmdbID > 0, pending.kind == .tv, pending.season != nil, pending.episode == nil,
@@ -154,9 +188,13 @@ public final class TransferMonitor {
                 episodes = EpisodeNumbering.packEpisodes(videos, target: pending)
             }
             let resolved = episodes.isEmpty ? try? await PlaybackResolver.playableFile(fileID, putio: putio) : episodes[0].file
-            guard let file = resolved, let index = tracked.firstIndex(where: { $0.id == id }) else { return }
+            guard let file = resolved, let index = tracked.firstIndex(where: { $0.id == id }) else {
+                await giveUpIfStuck(id, "Finished on put.io, but there's no video in it. Look for it in Library → Files.")
+                return
+            }
             tracked[index].playableFile = file
             tracked[index].notified = true
+            completedSince[id] = nil
             if !episodes.isEmpty {
                 await library?.record(episodes)
             } else if pending.tmdbID > 0 {

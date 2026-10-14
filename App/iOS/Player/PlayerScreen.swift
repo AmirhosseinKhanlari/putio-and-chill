@@ -73,6 +73,9 @@ final class PlayerCoordinator {
     private var appliedLanguages = false
     private var inPictureInPicture = false
     private var triedFallback = false
+    /// Waiting for put.io to convert the video (no "can't play" errors meanwhile).
+    private var converting = false
+    private var startSeconds = 0
     private var finished = false
 
     init(request: PlayerRequest, putio: any PutioService, app: AppModel, router: Router, localURL: URL? = nil) {
@@ -96,6 +99,14 @@ final class PlayerCoordinator {
 
     func start(from seconds: Int, on presenter: UIViewController) {
         chrome.onClose = { [weak self] in self?.controller.dismiss(animated: true) }
+        if let item = titleItem {
+            chrome.detailsLabel = item.mediaType == .tv ? "Show details" : "Movie details"
+            chrome.onDetails = { [weak self] in
+                guard let self else { return }
+                let router = router
+                controller.dismiss(animated: true) { router.showTitle(item) }
+            }
+        }
         chrome.onNext = { [weak self] in self?.playNext() }
         chrome.onWatchCredits = { [weak self] in
             self?.creditsDismissed = true
@@ -117,6 +128,7 @@ final class PlayerCoordinator {
             presenter.present(controller, animated: true) { completion(true) }
         }
         engine.enableNowPlaying(title: chrome.title)
+        startSeconds = seconds
         if seconds > 0 { engine.seek(to: Double(seconds)) }
         presenter.present(controller, animated: true) { [engine] in engine.play() }
         progressTask = Task { [weak self] in await self?.run() }
@@ -132,6 +144,8 @@ final class PlayerCoordinator {
                 finish()
                 return
             }
+            chrome.conversion = app.conversions.states[request.file.id]
+            if converting { continue }
             let status = engine.status
             chrome.preparing = status != .readyToPlay && !triedFallback
             if status == .readyToPlay, !appliedLanguages, let item = engine.player.currentItem {
@@ -139,6 +153,11 @@ final class PlayerCoordinator {
                 await applyLanguagePreferences(to: item)
             }
             if status != .readyToPlay { waitedForReady += 1 }
+            // Not playing after 20 s: if put.io says the format needs converting, that's why (it converts it then).
+            if status != .readyToPlay, waitedForReady == 20, !chrome.playingFromDevice, await convertIfNeeded() {
+                waitedForReady = 0
+                continue
+            }
             if status == .failed || (status != .readyToPlay && waitedForReady >= 60) {
                 await handleUnplayable()
                 waitedForReady = 0
@@ -179,12 +198,39 @@ final class PlayerCoordinator {
         if chrome.playingFromDevice {
             chrome.preparing = false
             chrome.failure = "This download couldn't be played. Remove it and download it again, or stream it from put.io."
+        } else if await convertIfNeeded() {
+            return
         } else if request.file.contentType == "video/mp4", let original = try? await putio.originalURL(fileID: request.file.id) {
             engine.replace(with: original)
         } else {
             chrome.preparing = false
             chrome.failure = "This video isn't ready to stream yet. Try again in a few minutes."
         }
+    }
+
+    /// Called when the video doesn't play: if put.io says its format needs converting for Apple devices, converts it
+    /// (the player shows how far), then plays from where it was meant to start. Returns whether that was the case.
+    /// Not done up front: put.io also flags videos only web browsers can't play, and those stream fine here.
+    private func convertIfNeeded() async -> Bool {
+        guard !converting, await app.conversions.needsConversion(fileID: request.file.id) else { return false }
+        converting = true
+        engine.pause()
+        chrome.preparing = false
+        chrome.failure = nil
+        chrome.conversion = .converting(percent: 0)
+        let ok = await app.conversions.makePlayable(fileID: request.file.id)
+        converting = false
+        chrome.conversion = nil
+        guard !finished else { return true }
+        if ok {
+            triedFallback = false
+            let resumeAt = max(engine.position, Double(startSeconds))
+            engine.replace(with: session.streamURL)
+            if resumeAt > 0 { engine.seek(to: resumeAt) }
+        } else {
+            chrome.failure = "put.io couldn't convert this video for Apple devices. Try another version of it."
+        }
+        return true
     }
 
     private func finish() {
@@ -252,6 +298,12 @@ final class PlayerCoordinator {
     }
 
     /// In put.io: play it. Not yet: send the best version to put.io and play it as soon as it's ready.
+    /// The movie or show being played (from the library when it knows the file, with its artwork).
+    private var titleItem: CatalogItem? {
+        if let item = app.library.entries.first(where: { $0.id == request.file.id })?.titleItem { return item }
+        return request.played.map { CatalogItem(tmdbID: $0.tmdbID, mediaType: $0.kind, title: $0.title) }
+    }
+
     private func playNext() {
         guard let next = chrome.nextUp else { return }
         if let entry = next.entry {

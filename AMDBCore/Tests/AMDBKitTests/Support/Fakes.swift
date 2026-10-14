@@ -112,6 +112,34 @@ final class FakePutio: PutioService, @unchecked Sendable {
         }
     }
 
+    /// Files Apple devices can't play until converted, and how far each conversion is (nil = not started).
+    var needsMp4: Set<Int64> = []
+    var mp4Progress: [Int64: [PutioMp4Status]] = [:]
+    private(set) var conversionsStarted: [Int64] = []
+    func fileStatus(id: Int64) async throws -> PutioFile {
+        let file = try await file(id: id)
+        let done = lock.withLock { mp4Progress[id]?.first?.status == .completed }
+        return PutioFile(id: file.id, name: file.name, fileType: file.fileType, size: file.size,
+                         needConvert: lock.withLock { needsMp4.contains(id) }, isMp4Available: done)
+    }
+    func mp4Status(fileID: Int64) async throws -> PutioMp4Status {
+        lock.withLock {
+            guard var steps = mp4Progress[fileID], !steps.isEmpty else { return PutioMp4Status(status: .notAvailable) }
+            let current = steps.removeFirst()
+            mp4Progress[fileID] = steps.isEmpty ? [current] : steps
+            return current
+        }
+    }
+    func convertToMp4(fileID: Int64) async throws -> PutioMp4Status {
+        lock.withLock {
+            conversionsStarted.append(fileID)
+            if mp4Progress[fileID] == nil {
+                mp4Progress[fileID] = [PutioMp4Status(status: .converting, percentDone: 40), PutioMp4Status(status: .completed, percentDone: 100)]
+            }
+            return PutioMp4Status(status: .inQueue)
+        }
+    }
+
     private(set) var renamed: [(id: Int64, name: String)] = []
     func renameFile(id: Int64, name: String) async throws {
         lock.withLock {

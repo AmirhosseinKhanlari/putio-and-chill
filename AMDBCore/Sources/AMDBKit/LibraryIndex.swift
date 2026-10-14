@@ -14,6 +14,12 @@ public struct LibraryEntry: Identifiable, Sendable, Hashable, Codable {
     public var id: Int64 { file.id }
     public var startFrom: Int { file.startFrom ?? 0 }
     public var displayTitle: String { match?.title ?? (file.name as NSString).deletingPathExtension }
+
+    /// The movie or show this file is (for its title page); nil when it isn't matched.
+    public var titleItem: CatalogItem? {
+        match.map { CatalogItem(tmdbID: $0.tmdbID, mediaType: $0.mediaType, title: $0.title, posterPath: $0.posterPath,
+                                backdropPath: $0.backdropPath, year: $0.year) }
+    }
 }
 
 /// The put.io library as last seen, kept on the device so launch shows it instantly.

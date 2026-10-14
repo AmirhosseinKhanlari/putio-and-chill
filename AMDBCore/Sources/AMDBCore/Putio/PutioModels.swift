@@ -83,17 +83,46 @@ public struct PutioFile: Codable, Sendable, Hashable, Identifiable {
     public let firstAccessedAt: String?
     public let startFrom: Int?
     public let screenshot: String?
+    /// put.io can't stream it to Apple devices as it is; an MP4 conversion is needed (only sent when asked for).
+    public let needConvert: Bool?
+    public let isMp4Available: Bool?
 
     public init(id: Int64, name: String, fileType: String? = nil, contentType: String? = nil, size: Int64? = nil,
                 parentId: Int64? = nil, createdAt: String? = nil, updatedAt: String? = nil,
-                firstAccessedAt: String? = nil, startFrom: Int? = nil, screenshot: String? = nil) {
+                firstAccessedAt: String? = nil, startFrom: Int? = nil, screenshot: String? = nil,
+                needConvert: Bool? = nil, isMp4Available: Bool? = nil) {
         self.id = id; self.name = name; self.fileType = fileType; self.contentType = contentType; self.size = size
         self.parentId = parentId; self.createdAt = createdAt; self.updatedAt = updatedAt
         self.firstAccessedAt = firstAccessedAt; self.startFrom = startFrom; self.screenshot = screenshot
+        self.needConvert = needConvert; self.isMp4Available = isMp4Available
     }
 
     public var isFolder: Bool { fileType == "FOLDER" }
-    public var isVideo: Bool { fileType == "VIDEO" }
+    /// put.io's type, or a video file extension (put.io can label a just-finished file before it has looked at it).
+    public var isVideo: Bool {
+        if fileType == "VIDEO" { return true }
+        guard !isFolder else { return false }
+        return Self.videoExtensions.contains((name as NSString).pathExtension.lowercased())
+    }
+
+    static let videoExtensions: Set<String> = ["mkv", "mp4", "m4v", "mov", "avi", "wmv", "ts", "m2ts", "mpg", "mpeg",
+                                               "webm", "flv", "divx", "xvid", "3gp", "ogv", "vob"]
+
+    /// Whether it plays on Apple devices now (no conversion needed, or the MP4 is ready).
+    public var isStreamable: Bool { needConvert != true || isMp4Available == true }
+}
+
+/// put.io's MP4 conversion of a video Apple devices can't play as it is.
+public struct PutioMp4Status: Decodable, Sendable, Equatable {
+    public enum State: String, Decodable, Sendable {
+        case notAvailable = "NOT_AVAILABLE", inQueue = "IN_QUEUE", converting = "CONVERTING", completed = "COMPLETED"
+        case error = "ERROR"
+    }
+
+    public let status: State
+    public let percentDone: Int?
+
+    public init(status: State, percentDone: Int? = nil) { self.status = status; self.percentDone = percentDone }
 }
 
 public struct PutioFileList: Decodable, Sendable, Equatable {

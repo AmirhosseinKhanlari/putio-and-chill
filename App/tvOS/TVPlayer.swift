@@ -14,6 +14,10 @@ struct TVPlayerView: UIViewControllerRepresentable {
         let coordinator = TVPlaybackCoordinator(request: request, app: app)
         coordinator.onNext = { [router] next in router.play(next, from: 0) }
         coordinator.onNextTransfer = { [router] transfer in router.playTransfer(transfer) }
+        coordinator.onDetails = { [router] item in
+            router.player = nil
+            router.showTitle(item)
+        }
         coordinator.onChooseVersion = { [router] request in
             router.player = nil
             router.open(.versions(request))
@@ -64,6 +68,7 @@ final class TVPlaybackCoordinator {
     var onNext: ((LibraryEntry) -> Void)?
     var onNextTransfer: ((TrackedTransfer) -> Void)?
     var onChooseVersion: ((TVVersionsRequest) -> Void)?
+    var onDetails: ((CatalogItem) -> Void)?
 
     init(request: TVPlayRequest, app: AppModel) {
         self.request = request
@@ -117,20 +122,61 @@ final class TVPlaybackCoordinator {
             await ourSubtitleChanged()
         }
         // Only one subtitle at a time: captions picked in Apple's own menu turn ours off.
+        // Any item (the stream is replaced once a conversion finishes), but only the one playing counts.
         selectionObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.mediaSelectionDidChangeNotification,
-                                                                   object: player.currentItem, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.systemSelectionChanged() }
+                                                                   object: nil, queue: .main) { [weak self] note in
+            let item = note.object as? AVPlayerItem
+            MainActor.assumeIsolated {
+                guard let self, item === self.player.currentItem else { return }
+                self.systemSelectionChanged()
+            }
         }
         endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification,
-                                                             object: player.currentItem, queue: .main) { [weak self] _ in
+                                                             object: nil, queue: .main) { [weak self] note in
+            let item = note.object as? AVPlayerItem
             MainActor.assumeIsolated {
-                guard let self, let next = self.nextUp else { return }
+                guard let self, item === self.player.currentItem, let next = self.nextUp else { return }
                 // The episode is over: play the next one now if it's in put.io (and auto-play is on), else offer it.
                 if self.autoplay, next.isInPutio { self.playNext() } else { self.creditsDismissed = false; self.refreshNextActions(atEnd: true) }
             }
         }
         rebuildMenus()
+        // A video Apple devices can't play as it is: put.io converts it (a card shows how far), then it plays.
+        if let content = controller.contentOverlayView, app.putio != nil {
+            let card = UIHostingController(rootView: TVConversionOverlay(conversions: app.conversions, fileID: request.entry.id))
+            card.view.backgroundColor = .clear
+            card.view.isUserInteractionEnabled = false
+            card.view.frame = content.bounds
+            card.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            content.addSubview(card.view)
+            controller.addChild(card)
+            Task { [weak self] in await self?.convertIfNeeded() }
+        }
         return controller
+    }
+
+    /// If the video doesn't start within 20 s (or fails) and put.io says its format needs converting, converts it
+    /// and then plays it. Not done up front: put.io also flags videos only web browsers can't play.
+    private func convertIfNeeded() async {
+        let fileID = request.entry.id
+        for _ in 0..<20 {
+            if player.currentItem?.status == .readyToPlay || finished { return }
+            if player.currentItem?.status == .failed { break }
+            try? await Task.sleep(for: .seconds(1))
+        }
+        guard let putio = app.putio, !finished, await app.conversions.needsConversion(fileID: fileID) else { return }
+        player.pause()
+        let ok = await app.conversions.makePlayable(fileID: fileID)
+        guard ok, !finished else { return }
+        let resumeAt = max(player.currentTime().seconds.isFinite ? player.currentTime().seconds : 0, Double(request.resumeFrom))
+        let item = AVPlayerItem(url: putio.hlsURL(fileID: fileID, subtitles: false))
+        let metadata = AVMutableMetadataItem()
+        metadata.identifier = .commonIdentifierTitle
+        metadata.value = request.title as NSString
+        item.externalMetadata = [metadata]
+        player.replaceCurrentItem(with: item)
+        if resumeAt > 0 { await player.seek(to: CMTime(seconds: resumeAt, preferredTimescale: 600)) }
+        player.play()
     }
 
     private var lastSync = 0.0
@@ -388,10 +434,20 @@ final class TVPlaybackCoordinator {
         if let message = finder.message {
             items.append(UIAction(title: message, attributes: .disabled) { _ in })
         }
-        controller?.transportBarCustomMenuItems = [
+        var bar: [UIMenuElement] = [
             UIMenu(title: "Subtitles", image: UIImage(systemName: "captions.bubble.fill"), children: items),
             sleepMenu(),
         ]
+        // The movie or show page (closes the player).
+        if let item = request.entry.titleItem {
+            bar.append(UIAction(title: item.mediaType == .tv ? "Show Details" : "Movie Details",
+                                image: UIImage(systemName: "info.circle")) { [weak self] _ in
+                guard let self else { return }
+                finish()
+                onDetails?(item)
+            })
+        }
+        controller?.transportBarCustomMenuItems = bar
     }
 
     private func header(_ title: String) -> UIAction {
@@ -465,5 +521,32 @@ struct TVTrailerPlayer: UIViewControllerRepresentable {
 
     static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: ()) {
         controller.player?.pause()
+    }
+}
+
+/// "Converting for Apple devices · 42%" over the video while put.io converts it.
+private struct TVConversionOverlay: View {
+    let conversions: VideoConversions
+    let fileID: Int64
+
+    var body: some View {
+        if let state = conversions.states[fileID] {
+            VStack(spacing: 18) {
+                switch state {
+                case let .converting(percent):
+                    ProgressView(value: Double(percent), total: 100).frame(width: 420)
+                    Text("Converting for Apple TV · \(percent)%").font(.system(size: 34, weight: .semibold))
+                    Text("This video's format doesn't play on Apple TV as it is, so put.io is converting it. It starts by itself when it's ready.")
+                        .font(.system(size: 24)).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
+                case .failed:
+                    Text("put.io couldn't convert this video").font(.system(size: 34, weight: .semibold))
+                    Text("Try another version of it.").font(.system(size: 24)).foregroundStyle(.white.opacity(0.75))
+                }
+            }
+            .padding(40)
+            .frame(maxWidth: 820)
+            .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 28))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }

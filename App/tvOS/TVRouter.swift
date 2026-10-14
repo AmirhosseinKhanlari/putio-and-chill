@@ -66,6 +66,24 @@ final class TVRouter {
 
     func open(_ item: CatalogItem) { open(.title(item)) }
 
+    private var currentPath: [TVRoute] {
+        switch tab {
+        case .home: homePath
+        case .movies: moviesPath
+        case .tv: tvPath
+        case .search: searchPath
+        case .top250: topPath
+        case .upcoming: upcomingPath
+        case .library, .settings: libraryPath
+        }
+    }
+
+    /// The title's page, unless it's already the page on screen (e.g. the player was started from it).
+    func showTitle(_ item: CatalogItem) {
+        if case let .title(current)? = currentPath.last, current.tmdbID == item.tmdbID, current.mediaType == item.mediaType { return }
+        open(.title(item))
+    }
+
     func play(_ entry: LibraryEntry, from seconds: Int) {
         player = TVPlayRequest(entry: entry, resumeFrom: seconds)
     }

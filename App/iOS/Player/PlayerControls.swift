@@ -10,6 +10,8 @@ final class PlayerChrome {
     let subtitles: SubtitleFinder?
     var controlsVisible = true
     var preparing = false
+    /// put.io is converting the video for Apple devices; playback starts when it's done.
+    var conversion: VideoConversions.State?
     var failure: String?
     var failureLink: URL?
     /// "S1 E2" for the bottom bar's Next button.
@@ -31,6 +33,9 @@ final class PlayerChrome {
     /// "29:41 left", refreshed by the coordinator every second.
     var sleepLabel: String?
 
+    /// "Movie details" / "Show details" in the top bar: closes the player and opens the title's page.
+    var detailsLabel: String?
+    @ObservationIgnored var onDetails: () -> Void = {}
     @ObservationIgnored var onClose: () -> Void = {}
     @ObservationIgnored var onNext: () -> Void = {}
     @ObservationIgnored var onWatchCredits: () -> Void = {}
@@ -78,7 +83,9 @@ struct PlayerControlsView: View {
                     ProgressView().controlSize(.large).tint(.white)
                 }
                 skipIndicator(width: proxy.size.width)
-                if chrome.preparing, chrome.failure == nil {
+                if case let .converting(percent)? = chrome.conversion, chrome.failure == nil {
+                    ConversionCard(percent: percent)
+                } else if chrome.preparing, chrome.failure == nil {
                     Text("Preparing…").font(.callout.weight(.medium)).foregroundStyle(.white.opacity(0.85))
                         .padding(.horizontal, 14).padding(.vertical, 7).glassCapsule()
                         .offset(y: 90)
@@ -142,6 +149,9 @@ struct PlayerControlsView: View {
                 }
             }
             Spacer(minLength: 12)
+            if let detailsLabel = chrome.detailsLabel {
+                circleButton("info", label: detailsLabel, size: 44) { chrome.onDetails() }
+            }
             if chrome.playingFromDevice {
                 Label("On this device", systemImage: "arrow.down.circle.fill")
                     .font(.caption.weight(.semibold))
@@ -620,5 +630,26 @@ struct NextUpCard: View {
         try? await Task.sleep(for: .seconds(NextUp.countdown))
         guard !Task.isCancelled, counting, chrome.nextUpCard != .hidden else { return }
         chrome.onNext()
+    }
+}
+
+/// "Converting for Apple devices": put.io turns a video Apple devices can't play into an MP4 first.
+private struct ConversionCard: View {
+    let percent: Int
+
+    var body: some View {
+        VStack(spacing: 12) {
+            ProgressRing(progress: Double(percent) / 100, lineWidth: 5)
+                .frame(width: 54, height: 54)
+                .overlay { Text("\(percent)%").font(.caption.monospacedDigit().weight(.semibold)) }
+            Text("Converting for Apple devices").font(.headline)
+            Text("This video's format doesn't play on iPhone and iPad as it is, so put.io is converting it. It starts by itself when it's ready; you can close the player and come back.")
+                .font(.footnote).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
+        }
+        .padding(22)
+        .frame(maxWidth: 360)
+        .glassRounded(22)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Converting for Apple devices, \(percent) percent")
     }
 }

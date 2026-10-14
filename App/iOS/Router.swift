@@ -113,6 +113,23 @@ final class Router {
     var activeTitle: Int?
 
     func open(_ item: CatalogItem) { push(.title(item)) }
+
+    /// The title's page, unless it's already the page on screen (e.g. the player was started from it).
+    func showTitle(_ item: CatalogItem) {
+        if case let .title(current)? = path(of: tab).last, current.tmdbID == item.tmdbID, current.mediaType == item.mediaType { return }
+        push(.title(item))
+    }
+
+    private func path(of tab: AppTab) -> [Route] {
+        switch tab {
+        case .home: homePath
+        case .movies: moviesPath
+        case .tv: tvPath
+        case .search: searchPath
+        case .upcoming: upcomingPath
+        case .library: libraryPath
+        }
+    }
     func open(_ chart: IMDbChart) { push(.chart(chart)) }
     func openPerson(_ id: Int) { push(.person(id)) }
     func openCollection(_ id: Int) { push(.collection(id)) }

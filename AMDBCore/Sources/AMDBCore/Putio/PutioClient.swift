@@ -99,6 +99,20 @@ public struct PutioClient: Sendable {
         _ = try await http.data(form("files/delete", [("file_ids", ids.map(String.init).joined(separator: ","))]))
     }
 
+    /// The file with its conversion status (whether Apple devices need an MP4 of it, and whether that's ready).
+    public func fileStatus(id: Int64) async throws -> PutioFile {
+        try await get("files/\(id)", query: [("mp4_status", "1")], as: FileEnvelope.self).file
+    }
+
+    public func mp4Status(fileID: Int64) async throws -> PutioMp4Status {
+        try await get("files/\(fileID)/mp4", as: Mp4Envelope.self).mp4
+    }
+
+    /// Asks put.io to convert the video to MP4 (it's then streamed and downloaded from the MP4).
+    public func convertToMp4(fileID: Int64) async throws -> PutioMp4Status {
+        try await post("files/\(fileID)/mp4", [], as: Mp4Envelope.self).mp4
+    }
+
     public func renameFile(id: Int64, name: String) async throws {
         _ = try await http.data(form("files/rename", [("file_id", String(id)), ("name", name)]))
     }
@@ -199,4 +213,5 @@ public struct PutioClient: Sendable {
     struct URLEnvelope: Decodable { let url: String }
     struct SubtitlesEnvelope: Decodable { let subtitles: [PutioSubtitle] }
     struct SearchEnvelope: Decodable { let files: [PutioFile] }
+    struct Mp4Envelope: Decodable { let mp4: PutioMp4Status }
 }

@@ -275,6 +275,8 @@ struct TVWideCard: View {
     let subtitle: String?
     let imagePath: String?
     var progress: Double?
+    /// Hold Select: "Play" and this (the movie or show page).
+    var details: (title: String, open: () -> Void)?
     let action: () -> Void
 
     var body: some View {
@@ -294,6 +296,12 @@ struct TVWideCard: View {
                     }
             }
             .buttonStyle(.card)
+            .contextMenu {
+                if let details {
+                    Button("Play", action: action)
+                    Button(details.title, action: details.open)
+                }
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.system(size: 23, weight: .semibold)).lineLimit(1)
                 if let subtitle { Text(subtitle).font(.system(size: 20)).foregroundStyle(TVMetrics.secondaryText).lineLimit(1) }
@@ -353,7 +361,10 @@ struct TVEntryShelf: View {
             ForEach(entries) { entry in
                 let resume = app.library.resumeSeconds(for: entry)
                 TVWideCard(title: entry.match?.title ?? entry.displayTitle, subtitle: Self.caption(entry, resume: resume),
-                           imagePath: entry.match?.backdropPath ?? entry.match?.posterPath) {
+                           imagePath: entry.match?.backdropPath ?? entry.match?.posterPath,
+                           details: entry.titleItem.map { item in
+                               (item.mediaType == .tv ? "Go to Show" : "Go to Movie", { router.showTitle(item) })
+                           }) {
                     router.play(entry, from: resume)
                 }
             }

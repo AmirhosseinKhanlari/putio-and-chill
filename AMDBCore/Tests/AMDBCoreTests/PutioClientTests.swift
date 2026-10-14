@@ -122,4 +122,19 @@ import Testing
         #expect(stub.requests.map { $0.url?.path ?? "" } == ["/v2/trash/list", "/v2/trash/restore", "/v2/trash/delete", "/v2/trash/empty"])
         #expect(stub.requests[2].bodyString == "file_ids=8%2C9")
     }
+
+    @Test func conversionStatusAndStart() async throws {
+        let stub = StubTransport(json: #"{"status":"OK","file":{"id":5,"name":"BB.avi","file_type":"VIDEO","need_convert":true,"is_mp4_available":false},"mp4":{"id":5,"status":"CONVERTING","percent_done":42}}"#)
+        let client = PutioClient(token: "T", transport: stub)
+        let file = try await client.fileStatus(id: 5)
+        let status = try await client.mp4Status(fileID: 5)
+        _ = try await client.convertToMp4(fileID: 5)
+        #expect(file.needConvert == true)
+        #expect(!file.isStreamable)
+        #expect(status == PutioMp4Status(status: .converting, percentDone: 42))
+        #expect(stub.requests[0].queryItems["mp4_status"] == "1")
+        #expect(stub.requests[1].url?.path == "/v2/files/5/mp4")
+        #expect(stub.requests[2].httpMethod == "POST")
+        #expect(stub.requests[2].url?.path == "/v2/files/5/mp4")
+    }
 }

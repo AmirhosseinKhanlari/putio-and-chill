@@ -23,6 +23,8 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
     /// Highest progress reported per download, so the app's own bar never moves backwards.
     @ObservationIgnored private var reported: [Int64: Double] = [:]
     @ObservationIgnored private var progressObservers: [Int64: NSKeyValueObservation] = [:]
+    /// Downloads being set up (waiting for put.io's conversion or the stream): not started twice.
+    @ObservationIgnored private var starting: Set<Int64> = []
 
     init(app: AppModel) {
         self.app = app
@@ -48,23 +50,58 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
                         self.observeProgress(task, fileID: id)
                     }
                 }
+                // Downloads that were waiting or running when the app was closed and didn't carry on: show them as
+                // stopped (tap to try again) instead of spinning forever.
+                Task { await self.markInterrupted() }
+            }
+        }
+    }
+
+    private func markInterrupted() async {
+        for record in app.downloads.records where tasks[record.fileID] == nil && !starting.contains(record.fileID) {
+            switch record.state {
+            case .queued, .downloading:
+                await app.downloads.update(fileID: record.fileID) { $0.state = .failed(message: "Stopped. Tap download to try again.") }
+            default:
+                break
             }
         }
     }
 
     func start(_ entry: LibraryEntry) async {
-        guard Self.isSupported, let putio = app.putio, tasks[entry.id] == nil else { return }
+        guard Self.isSupported, let putio = app.putio, tasks[entry.id] == nil, !starting.contains(entry.id) else { return }
+        starting.insert(entry.id)
+        defer { starting.remove(entry.id) }
         let match = entry.match
         await app.downloads.upsert(DownloadRecord(
             fileID: entry.id, title: entry.displayTitle, posterPath: match?.posterPath, tmdbID: match?.tmdbID,
             kind: match?.mediaType, season: match?.season, episode: match?.episode, state: .queued))
+
         // Subtitles aren't muxed into the copy; put.io's subtitle files are saved next to it so the app's own
         // subtitles menu works offline too.
         let fileID = entry.id
         Task { await app.cachePutioSubtitles(fileID: fileID) }
-        let asset = AVURLAsset(url: putio.hlsURL(fileID: entry.id, subtitles: false))
+        var asset = AVURLAsset(url: putio.hlsURL(fileID: entry.id, subtitles: false))
+        // A stream Apple devices can't play, in a format put.io says needs converting: put.io converts it to MP4 first
+        // (the button shows how far), then it downloads like any other.
+        let streamable = asset
+        let playable = await Self.within(seconds: 20, { try? await streamable.load(.isPlayable) }) ?? false
+        if !playable, await app.conversions.needsConversion(fileID: entry.id) {
+            guard await app.conversions.makePlayable(fileID: entry.id) else {
+                await app.downloads.update(fileID: entry.id) {
+                    $0.state = .failed(message: "put.io couldn't convert this video for Apple devices.")
+                }
+                return
+            }
+            // Cancelled while it converted.
+            guard app.downloads.record(fileID: entry.id) != nil else { return }
+            asset = AVURLAsset(url: putio.hlsURL(fileID: entry.id, subtitles: false))
+        }
+        let ready = asset
         let configuration = AVAssetDownloadConfiguration(asset: asset, title: entry.displayTitle)
-        if let selections = try? await asset.load(.allMediaSelections) {
+        // put.io can be slow to answer for a video it's still preparing: don't wait on it forever.
+        if let selections = await Self.within(seconds: 20, { UncheckedBox(try? await ready.load(.allMediaSelections)) })?.value
+            ?? nil {
             configuration.primaryContentConfiguration.mediaSelections = selections
         }
         if app.settings.downloadDataSaver {
@@ -76,12 +113,26 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         task.taskDescription = String(entry.id)
         // A streamed (HLS) download has no fixed size, so iOS's own download Live Activity estimates the total from
         // what it has fetched so far and the number keeps changing. Tell it up front: bitrate × length.
-        if let expected = await Self.expectedBytes(asset, dataSaver: app.settings.downloadDataSaver) {
+        let dataSaver = app.settings.downloadDataSaver
+        if let expected = await Self.within(seconds: 20, { await Self.expectedBytes(ready, dataSaver: dataSaver) }) {
             task.countOfBytesClientExpectsToReceive = expected
         }
         tasks[entry.id] = task
         observeProgress(task, fileID: entry.id)
         task.resume()
+    }
+
+    /// `work`'s answer, or nil if it takes longer than `seconds` (it's left to finish on its own).
+    static func within<T: Sendable>(seconds: Double, _ work: @escaping @Sendable () async -> T?) async -> T? {
+        let once = ResumeOnce<T?>()
+        return await withCheckedContinuation { continuation in
+            once.set(continuation)
+            Task { once.resume(await work()) }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                once.resume(nil)
+            }
+        }
     }
 
     /// Size of the variant the download will pick (highest quality, or ≤ 3 Mbps with Data saver) for the whole video.
@@ -194,6 +245,34 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
             }
             guard let failure else { return }
             _ = Task { await self.app.downloads.update(fileID: id) { $0.state = .failed(message: failure) } }
+        }
+    }
+}
+
+/// Carries a value that isn't Sendable (AVMediaSelection) out of the time-limited task that loaded it.
+private struct UncheckedBox<Value>: @unchecked Sendable {
+    let value: Value
+    init(_ value: Value) { self.value = value }
+}
+
+/// Resumes a continuation once, whichever answer comes first.
+private final class ResumeOnce<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Never>?
+    private var pending: T?
+    private var done = false
+
+    func set(_ continuation: CheckedContinuation<T, Never>) {
+        lock.withLock {
+            if done, let pending { continuation.resume(returning: pending); self.pending = nil } else { self.continuation = continuation }
+        }
+    }
+
+    func resume(_ value: T) {
+        lock.withLock {
+            guard !done else { return }
+            done = true
+            if let continuation { continuation.resume(returning: value); self.continuation = nil } else { pending = value }
         }
     }
 }
