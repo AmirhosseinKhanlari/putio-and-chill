@@ -231,7 +231,7 @@ public final class SubtitleFinder {
         return matching.min { (rank[$0.source ?? ""] ?? 2) < (rank[$1.source ?? ""] ?? 2) }
     }
 
-    private static func choice(for track: PutioSubtitle, offset: Double = 0) -> SubtitleChoice {
+    static func choice(for track: PutioSubtitle, offset: Double = 0) -> SubtitleChoice {
         SubtitleChoice(subtitleFileID: 0, language: track.languageCode ?? track.language ?? "",
                        release: track.name ?? track.language ?? "put.io subtitle", offset: offset, putioKey: track.key)
     }

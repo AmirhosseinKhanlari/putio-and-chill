@@ -283,6 +283,13 @@ public final class AppModel {
                 subtitleCache.writePutio(text, fileID: fileID, key: track.key)
             }
         }
+        // A downloaded video comes with its subtitle switched on: the preferred language from Settings when put.io
+        // has it, else put.io's first subtitle. A pick the user already made for this file (including Off) stays.
+        guard await store.snapshot.subtitleChoices[fileID] == nil else { return }
+        let saved = tracks.filter { subtitleCache.readPutio(fileID: fileID, key: $0.key) != nil }
+        guard let pick = settings.subtitleLanguage.flatMap({ SubtitleFinder.bestTrack(saved, for: $0) }) ?? saved.first else { return }
+        let choice = SubtitleFinder.choice(for: pick)
+        await store.update { $0.subtitleChoices[fileID] = choice }
     }
 
     /// Signs in to OpenSubtitles and remembers the account in the Keychain.
