@@ -7,6 +7,23 @@ struct AMDBWidgets: WidgetBundle {
     var body: some Widget {
         ContinueWatchingWidget()
         TransferLiveActivity()
+        if #available(iOS 18.0, *) { SurpriseControl() }
+    }
+}
+
+// MARK: Control Center
+
+/// A Control Center / Lock Screen / Action button control that opens Surprise Me.
+@available(iOS 18.0, *)
+struct SurpriseControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "app.amdb.surprise") {
+            ControlWidgetButton(action: OpenSurpriseIntent()) {
+                Label("Surprise Me", systemImage: "dice")
+            }
+        }
+        .displayName("Surprise Me")
+        .description("Pick a mood and get a great movie or series.")
     }
 }
 

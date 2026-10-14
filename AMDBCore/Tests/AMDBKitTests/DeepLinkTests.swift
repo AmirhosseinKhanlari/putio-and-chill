@@ -17,4 +17,9 @@ import Testing
         #expect(DeepLink(url: URL(string: "https://example.com/play/1")!) == nil)
         #expect(DeepLink(url: URL(string: "amdb://play/notanumber")!) == nil)
     }
+
+    @Test func surpriseRoundTrips() {
+        #expect(DeepLink.surprise.url.absoluteString == "amdb://surprise")
+        #expect(DeepLink(url: URL(string: "amdb://surprise")!) == .surprise)
+    }
 }

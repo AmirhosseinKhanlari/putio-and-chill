@@ -6,12 +6,14 @@ public enum DeepLink: Equatable, Sendable {
     case play(fileID: Int64)
     case title(tmdbID: Int, kind: MediaKind)
     case library
+    case surprise
 
     public var url: URL {
         switch self {
         case let .play(fileID): URL(string: "amdb://play/\(fileID)")!
         case let .title(tmdbID, kind): URL(string: "amdb://title/\(kind.rawValue)/\(tmdbID)")!
         case .library: URL(string: "amdb://library")!
+        case .surprise: URL(string: "amdb://surprise")!
         }
     }
 
@@ -27,6 +29,8 @@ public enum DeepLink: Equatable, Sendable {
             self = .title(tmdbID: id, kind: kind)
         case "library":
             self = .library
+        case "surprise":
+            self = .surprise
         default:
             return nil
         }

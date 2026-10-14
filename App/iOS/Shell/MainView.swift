@@ -53,6 +53,7 @@ struct MainView: View {
             await app.downloads.load()
             downloader.restore()
             DemoMode.apply(to: router)
+            openPendingLink()
             await app.transfers.restore()
             await app.refreshLibraryIfDue()
             await runAutoClean()
@@ -68,6 +69,9 @@ struct MainView: View {
         .onChange(of: app.transfers.tracked) { _, tracked in liveActivities.sync(tracked) }
         .onChange(of: app.library.continueWatching.map(\.id)) { _, _ in Task { await WidgetPublisher.publish(app.library) } }
         .onOpenURL { url in open(DeepLink(url: url)) }
+        // Controls (Control Center, Action button) leave the screen to open in the App Group.
+        .onReceive(NotificationCenter.default.publisher(for: PendingLink.notification)) { _ in openPendingLink() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in openPendingLink() }
         .sheet(item: Binding(get: { cleanupReview.map(CleanupList.init) }, set: { if $0 == nil { cleanupReview = nil } })) { list in
             AutoCleanReview(entries: list.entries) {
                 cleanupReview = nil
@@ -101,6 +105,10 @@ struct MainView: View {
         }
     }
 
+    private func openPendingLink() {
+        if let url = PendingLink.take() { open(DeepLink(url: url)) }
+    }
+
     /// Widget / Live Activity / Siri links.
     private func open(_ link: DeepLink?) {
         switch link {
@@ -115,6 +123,8 @@ struct MainView: View {
             router.open(CatalogItem(tmdbID: tmdbID, mediaType: kind, title: ""))
         case .library?:
             router.tab = .library
+        case .surprise?:
+            router.showSurprise = true
         case nil:
             break
         }
