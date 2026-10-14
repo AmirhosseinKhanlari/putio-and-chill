@@ -6,7 +6,8 @@ import TVServices
 /// Screen) and tells tvOS to refresh it when something changed.
 @MainActor
 enum TVTopShelfPublisher {
-    static func publish(_ library: LibraryIndex) {
+    /// `force` asks tvOS to reload the Top Shelf even when nothing changed (on leaving the app).
+    static func publish(_ library: LibraryIndex, force: Bool = false) {
         let resumable = library.continueWatching.prefix(10).map { item($0, resume: true) }
         var seen: Set<Int> = []
         let recent = library.recentlyAdded.filter { entry in
@@ -17,7 +18,7 @@ enum TVTopShelfPublisher {
             .init(title: "Continue Watching", items: Array(resumable)),
             .init(title: "Recently Added", items: Array(recent)),
         ])
-        if feed.save() { TVTopShelfContentProvider.topShelfContentDidChange() }
+        if feed.save() || force { TVTopShelfContentProvider.topShelfContentDidChange() }
     }
 
     private static func item(_ entry: LibraryEntry, resume: Bool) -> TopShelfFeed.Item {

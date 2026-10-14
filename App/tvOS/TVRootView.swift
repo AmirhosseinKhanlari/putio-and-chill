@@ -6,6 +6,7 @@ import SwiftUI
 struct TVRootView: View {
     @Environment(AppModel.self) private var app
     @Environment(TVRouter.self) private var router
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         @Bindable var router = router
@@ -38,6 +39,10 @@ struct TVRootView: View {
             }
         }
         .preferredColorScheme(.dark)
+        // Leaving the app: make sure the Top Shelf shows what you were just watching.
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active, app.putio != nil { TVTopShelfPublisher.publish(app.library, force: true) }
+        }
         // Top Shelf items: play resumes, select opens the title.
         .onOpenURL { url in Task { await open(DeepLink(url: url)) } }
         .fullScreenCover(item: $router.player) { request in
