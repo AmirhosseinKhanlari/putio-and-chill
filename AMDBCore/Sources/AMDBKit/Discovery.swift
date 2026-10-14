@@ -73,9 +73,13 @@ public enum Mood: String, CaseIterable, Sendable, Identifiable {
     }
 }
 
-/// Random well-rated pick (TMDB rating ≥ 7 with ≥ 500 votes) for a mood, avoiding recent repeats.
+/// Random well-rated pick (TMDB rating ≥ 6.5 with ≥ 500 votes) for a mood, avoiding recent repeats.
 @Observable @MainActor
 public final class SurpriseModel {
+    /// Lowest TMDB rating a pick can have, and the votes needed for that rating to count.
+    public static let minRating = 6.5
+    public static let minVotes = 500
+
     public private(set) var pick: CatalogItem?
     /// Other good matches for the same mood, offered as "not feeling it?" options.
     public private(set) var alternatives: [CatalogItem] = []
@@ -95,14 +99,14 @@ public final class SurpriseModel {
         isRolling = true
         defer { isRolling = false }
         let genres = mood.genreIDs(for: kind)
-        guard let first = try? await catalog.discover(kind, genreIDs: genres, minRating: 7, minVotes: 500, page: 1) else {
+        guard let first = try? await catalog.discover(kind, genreIDs: genres, minRating: Self.minRating, minVotes: Self.minVotes, page: 1) else {
             pick = nil
             isEmpty = true
             return
         }
         var items = first.items
         let page = random(1..<(min(first.totalPages, 10) + 1))
-        if page > 1, let other = try? await catalog.discover(kind, genreIDs: genres, minRating: 7, minVotes: 500, page: page),
+        if page > 1, let other = try? await catalog.discover(kind, genreIDs: genres, minRating: Self.minRating, minVotes: Self.minVotes, page: page),
            !other.items.isEmpty {
             items = other.items
         }

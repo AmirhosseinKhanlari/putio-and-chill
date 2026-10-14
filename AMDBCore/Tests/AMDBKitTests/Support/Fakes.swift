@@ -112,6 +112,8 @@ struct FakeCatalog: CatalogService {
     var movieSearch: [String: [CatalogItem]] = [:]
     var tvSearch: [String: [CatalogItem]] = [:]
     var failAll = false
+    /// Records the rating filters discover was asked for.
+    var discoverCalls: DiscoverCalls?
     var multiPages: [String: [Int: [CatalogItem]]] = [:]
     var multiTotalPages = 1
 
@@ -147,7 +149,8 @@ struct FakeCatalog: CatalogService {
         return try guarded(collection)
     }
     func discover(_ kind: MediaKind, genreIDs: [Int], minRating: Double, minVotes: Int, page: Int) async throws -> CatalogPage {
-        try guarded(CatalogPage(items: page == 1 ? discovered : [], page: page, totalPages: 1))
+        discoverCalls?.append(minRating: minRating, minVotes: minVotes)
+        return try guarded(CatalogPage(items: page == 1 ? discovered : [], page: page, totalPages: 1))
     }
     func item(_ kind: MediaKind, id: Int) async throws -> CatalogItem {
         if let detail = details[id] { return try guarded(detail.item) }
@@ -241,4 +244,11 @@ final class FakeCharts: ChartsService, @unchecked Sendable {
         return [ChartEntry(rank: 1, kind: chart.kind, title: "First", year: 1994, imdbID: "tt1", tmdbID: 278),
                 ChartEntry(rank: 2, kind: chart.kind, title: "No TMDB", year: 2000, imdbID: "tt2", tmdbID: nil)]
     }
+}
+
+final class DiscoverCalls: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [(minRating: Double, minVotes: Int)] = []
+    var all: [(minRating: Double, minVotes: Int)] { lock.withLock { calls } }
+    func append(minRating: Double, minVotes: Int) { lock.withLock { calls.append((minRating, minVotes)) } }
 }

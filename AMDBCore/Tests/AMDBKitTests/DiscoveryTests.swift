@@ -59,4 +59,14 @@ import Testing
         #expect(surprise.pick == nil)
         #expect(surprise.isEmpty)
     }
+
+    @Test func surprisePicksAreRatedAtLeastSixAndAHalf() async {
+        let calls = DiscoverCalls()
+        var catalog = FakeCatalog()
+        catalog.discovered = [movie(1, "Arrival")]
+        catalog.discoverCalls = calls
+        await SurpriseModel(catalog: catalog, random: { $0.lowerBound }).roll(kind: .movie, mood: .anything)
+        #expect(!calls.all.isEmpty)
+        #expect(calls.all.allSatisfy { $0.minRating == 6.5 && $0.minVotes == 500 })
+    }
 }
