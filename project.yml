@@ -122,14 +122,23 @@ targets:
     sources:
       - path: App/tvOS
       - path: App/SharedUI
+      - path: App/TVShared
     dependencies:
       - package: AMDBCore
         product: AMDBCore
       - package: AMDBCore
         product: AMDBKit
+      - target: AMDBTopShelf
+    entitlements:
+      path: App/tvOS/AMDBTV.entitlements
+      properties:
+        com.apple.security.application-groups: [group.app.amdb]
     info:
       path: App/tvOS/Info.plist
       properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: app.amdb
+            CFBundleURLSchemes: [amdb]
         CFBundleDisplayName: AMDB
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -149,6 +158,31 @@ targets:
         TARGETED_DEVICE_FAMILY: "3"
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
+  AMDBTopShelf:
+    type: app-extension
+    platform: tvOS
+    sources:
+      - path: App/TopShelf
+      - path: App/TVShared
+    entitlements:
+      path: App/TopShelf/AMDBTopShelf.entitlements
+      properties:
+        com.apple.security.application-groups: [group.app.amdb]
+    info:
+      path: App/TopShelf/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: AMDB Top Shelf
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.tv-top-shelf
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ContentProvider
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.amdb.ios.topshelf
+        TARGETED_DEVICE_FAMILY: "3"
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
   AMDBTVUITests:
     type: bundle.ui-testing
     platform: tvOS

@@ -31,9 +31,13 @@ struct TVRootView: View {
                 }
                 .overlay(alignment: .topTrailing) { readyNotice }
                 .task { await startUp() }
+                .onChange(of: app.library.entries) { _, _ in TVTopShelfPublisher.publish(app.library) }
+                .onChange(of: app.library.continueWatching.map(\.id)) { _, _ in TVTopShelfPublisher.publish(app.library) }
             }
         }
         .preferredColorScheme(.dark)
+        // Top Shelf items: play resumes, select opens the title.
+        .onOpenURL { url in Task { await open(DeepLink(url: url)) } }
         .fullScreenCover(item: $router.player) { request in
             TVPlayerView(request: request).ignoresSafeArea()
         }
@@ -79,6 +83,26 @@ struct TVRootView: View {
         }
     }
 
+    private func open(_ link: DeepLink?) async {
+        guard let link, app.putio != nil else { return }
+        if app.library.entries.isEmpty { await app.library.loadCached() }
+        switch link {
+        case let .play(fileID):
+            if let entry = app.library.entries.first(where: { $0.id == fileID }) {
+                router.play(entry, from: app.library.resumeSeconds(for: entry))
+            }
+        case let .title(tmdbID, kind):
+            guard let catalog = app.catalog, let item = try? await catalog.item(kind, id: tmdbID) else { return }
+            router.tab = .home
+            router.homePath = [.title(item)]
+        case .library:
+            router.tab = .library
+        case .surprise:
+            router.tab = .home
+            router.homePath = [.surprise]
+        }
+    }
+
     /// Saved library first (instant), then put.io when due — same as the iPhone app.
     private func startUp() async {
         app.transfers.onEvent = { [router] event in
@@ -104,6 +128,7 @@ struct TVRootView: View {
         default: break
         }
         await app.library.loadCached()
+        TVTopShelfPublisher.publish(app.library)
         await app.myList.load()
         await app.transfers.restore()
         await app.refreshLibraryIfDue()
