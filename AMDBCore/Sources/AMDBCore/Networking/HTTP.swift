@@ -26,13 +26,35 @@ public enum AppError: Error, Equatable, Sendable {
 public struct HTTPRequester: Sendable {
     public let service: String
     public let transport: any HTTPTransport
+    /// First wait after "429 Too Many Requests" when the server doesn't say how long (doubles each retry).
+    let rateLimitBackoff: Duration
 
-    public init(service: String, transport: any HTTPTransport) {
+    public init(service: String, transport: any HTTPTransport, rateLimitBackoff: Duration = .seconds(1)) {
         self.service = service
         self.transport = transport
+        self.rateLimitBackoff = rateLimitBackoff
     }
 
+    /// Sends the request; on "429 Too Many Requests" (TMDB allows about 50 a second) waits as long as the server
+    /// asks (Retry-After) or 1, 2, 4 s, up to three retries.
     public func data(_ request: URLRequest) async throws -> Data {
+        for attempt in 0... {
+            let (data, response) = try await send(request)
+            if response.statusCode == 429, attempt < 3 {
+                let asked = response.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init).map { Duration.seconds(min($0, 10)) }
+                try await Task.sleep(for: asked ?? rateLimitBackoff * (1 << attempt))
+                continue
+            }
+            switch response.statusCode {
+            case 200..<300: return data
+            case 401: throw AppError.unauthorized(service: service)
+            default: throw AppError.http(service: service, status: response.statusCode)
+            }
+        }
+        fatalError("unreachable")
+    }
+
+    private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let result: (Data, HTTPURLResponse)
         do {
             result = try await transport.send(request)
@@ -47,12 +69,7 @@ public struct HTTPRequester: Sendable {
         } catch {
             throw AppError.transport("\(service): \(error.localizedDescription)")
         }
-        let (data, response) = result
-        switch response.statusCode {
-        case 200..<300: return data
-        case 401: throw AppError.unauthorized(service: service)
-        default: throw AppError.http(service: service, status: response.statusCode)
-        }
+        return result
     }
 
     public func decode<T: Decodable>(_ type: T.Type, _ request: URLRequest, decoder: JSONDecoder = JSONDecoder()) async throws -> T {

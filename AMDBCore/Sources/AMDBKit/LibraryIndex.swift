@@ -90,7 +90,9 @@ public final class LibraryIndex {
     private var matcher: LibraryMatcher?
     /// Files found on put.io that are still being matched to TMDB (not shown yet).
     public private(set) var pendingMatches = 0
-    private let matchParallelism = 6
+    /// Four lookups at a time keeps well under TMDB's rate limit (each file can take two searches).
+    private let matchParallelism = 4
+    @ObservationIgnored private var currentRefresh: Task<Void, Never>?
     private var progressOverrides: [Int64: Int] = [:]
     /// Order in which files were watched this session (higher = more recent); a counter, so ties can't happen.
     private var touchedOrder: [Int64: Int] = [:]
@@ -136,7 +138,22 @@ public final class LibraryIndex {
     /// Re-reads put.io and matches new files to TMDB. `retryUnmatched` (pull to refresh, Update Now) also looks up
     /// again every file that had no match.
     public func refresh(retryUnmatched: Bool = false, now: Date = Date()) async {
-        guard let putio, !isRefreshing else { return }
+        // An update is already running (e.g. the one at launch): wait for it. If this one was asked for by the user
+        // (pull to refresh, Update Now), run again afterwards so misses are retried, rather than doing nothing.
+        if let running = currentRefresh {
+            await running.value
+            guard retryUnmatched else { return }
+            // Someone else already started a newer one meanwhile: that one will do.
+            if let another = currentRefresh, another != running { await another.value; return }
+        }
+        let task = Task { await self.performRefresh(retryUnmatched: retryUnmatched, now: now) }
+        currentRefresh = task
+        await task.value
+        if currentRefresh == task { currentRefresh = nil }
+    }
+
+    private func performRefresh(retryUnmatched: Bool, now: Date) async {
+        guard let putio else { return }
         isRefreshing = true
         defer { isRefreshing = false }
         let before = Set(entries.map(\.id))

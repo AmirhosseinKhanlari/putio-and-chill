@@ -105,6 +105,21 @@ import Testing
         #expect(again.entries.first { $0.id == 11 }?.match?.title == "Heat", "Update Now retries misses")
     }
 
+    /// Pulling to refresh while an update is already running waits for it, then runs again (retrying misses),
+    /// instead of silently doing nothing.
+    @Test func refreshDuringARefreshRunsAgainAfterIt() async {
+        var slow = Self.catalog
+        slow.searchDelay = .milliseconds(200)
+        let store = LocalStore(fileURL: nil)
+        await store.update { $0.unmatched = [11]; $0.unmatchedAt = [11: Date()] }
+        let index = makeIndex(catalog: slow, store: store)
+        let first = Task { await index.refresh() }
+        for _ in 0..<100 where !index.isRefreshing { try? await Task.sleep(for: .milliseconds(5)) }
+        await index.refresh(retryUnmatched: true)
+        await first.value
+        #expect(index.entries.first { $0.id == 11 }?.match?.title == "Heat", "the second, user-asked refresh ran")
+    }
+
     @Test func continueWatchingShowsEachTitleOnce() async {
         let putio = Self.tree()
         // A second, older-watched version of Dune and a started episode next to S02E04.
