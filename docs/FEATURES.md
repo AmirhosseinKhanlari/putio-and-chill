@@ -27,7 +27,7 @@ Everything AMDB does, by area. Unless noted, a feature works on iPhone, iPad and
 
 ## Home and browsing
 
-<img src="images/iphone-home.png" width="260" alt="Home"> <img src="images/iphone-browse.png" width="260" alt="Browse">
+<img src="images/iphone-home.png" width="260" alt="Home"> <img src="images/iphone-movies.png" width="260" alt="Browse">
 
 - **Featured slider**: six trending titles with logo art, ratings and actions; advances on its own and pauses while you
   interact.
@@ -47,6 +47,8 @@ Everything AMDB does, by area. Unless noted, a feature works on iPhone, iPad and
 
 ## Titles, people and collections
 
+<img src="images/iphone-title.png" width="260" alt="Title page"> <img src="images/ipad-title.png" width="400" alt="Title page on iPad">
+
 - **Title page**: full-bleed art and logo, year, runtime, genres, all ratings, overview, trailer (native IMDb trailer
   when available), cast and crew (round photos), More Like This.
 - **Smart action button**: Get & Watch, Play, Resume, a progress ring while put.io downloads, or Try Another Version if
@@ -59,7 +61,7 @@ Everything AMDB does, by area. Unless noted, a feature works on iPhone, iPad and
 
 ## Coming Up
 
-<img src="images/iphone-coming-up.png" width="260" alt="Coming Up"> <img src="images/tv-coming-up.png" width="520" alt="Coming Up on Apple TV">
+<img src="images/iphone-upcoming.png" width="260" alt="Coming Up"> <img src="images/tv-upcoming.png" width="560" alt="Coming Up on Apple TV">
 
 - **Movies**: this weekend's US box office top 10 with grosses (Trakt), In Cinemas Now, and Coming Soon with release
   dates.
@@ -143,7 +145,7 @@ Everything AMDB does, by area. Unless noted, a feature works on iPhone, iPad and
 ## Apple TV
 
 <img src="images/tv-home.png" width="420" alt="Apple TV Home"> <img src="images/tv-search.png" width="420" alt="Apple TV Search">
-<img src="images/tv-top-shelf.png" width="420" alt="Top Shelf"> <img src="images/tv-title.png" width="420" alt="Apple TV title page">
+<img src="images/tv-topshelf.png" width="420" alt="Top Shelf"> <img src="images/tv-surprise.png" width="420" alt="Surprise Me on Apple TV">
 
 - Full-screen Apple TV-style design: black, full-bleed art, glass buttons that turn white when focused.
 - Tabs: Home, Movies, TV Shows, Coming Up, Top 250, Library, Search, Settings.
