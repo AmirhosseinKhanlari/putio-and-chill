@@ -44,4 +44,15 @@ import Testing
         #expect(state.recentSearches == ["dune"])
         #expect(state.myList.isEmpty)
     }
+
+    @Test func myListComesBackFromTheBackupWhenTheFileIsGone() async {
+        let url = FileManager.default.temporaryDirectory.appending(path: "state-\(UUID()).json")
+        let suite = "amdb.test.backup.\(UUID().uuidString)"
+        let store = LocalStore(fileURL: url, backupSuite: suite)
+        let saved = SavedTitle(CatalogItem(tmdbID: 95396, mediaType: .tv, title: "Severance"))
+        await store.update { $0.myList = [saved] }
+        try? FileManager.default.removeItem(at: url)   // tvOS cleared Caches
+        let reopened = LocalStore(fileURL: url, backupSuite: suite)
+        #expect(await reopened.snapshot.myList == [saved])
+    }
 }

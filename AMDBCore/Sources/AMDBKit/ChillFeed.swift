@@ -47,7 +47,7 @@ public final class ChillFeed {
     public init(fileURL: URL?) { self.fileURL = fileURL }
 
     public static func defaultURL() -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "AMDB/chill-feed.json")
+        StorageLocation.directory.appending(path: "chill-feed.json")
     }
 
     public func load(service: (any ChillCatalogService)?, extra: [any LatestTitlesSource] = [],

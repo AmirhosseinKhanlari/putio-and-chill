@@ -84,7 +84,7 @@ public final class SubtitleFileCache: @unchecked Sendable {
     public init(directory: URL?) { self.directory = directory }
 
     public static func defaultDirectory() -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "AMDB/Subtitles")
+        StorageLocation.directory.appending(path: "Subtitles")
     }
 
     public func read(_ id: Int) -> String? { read(name: "\(id).srt") }

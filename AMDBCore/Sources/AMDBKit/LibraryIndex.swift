@@ -38,7 +38,7 @@ public actor LibraryCache {
     public init(fileURL: URL?) { self.fileURL = fileURL }
 
     public static func defaultURL() -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "AMDB/library.json")
+        StorageLocation.directory.appending(path: "library.json")
     }
 
     public func load() -> LibrarySnapshot? {

@@ -25,8 +25,7 @@ public actor RatingsCache {
     }
 
     public static func defaultURL() -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appending(path: "AMDB/ratings-v2.json")
+        StorageLocation.directory.appending(path: "ratings-v2.json")
     }
 
     public func fresh(_ imdbID: String, now: Date = Date()) -> Ratings? {

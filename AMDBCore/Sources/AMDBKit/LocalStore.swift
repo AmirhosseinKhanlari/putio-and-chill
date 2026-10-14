@@ -121,20 +121,30 @@ public struct LocalState: Codable, Sendable, Equatable {
 public actor LocalStore {
     private let fileURL: URL?
     private var state: LocalState
+    /// Apple TV keeps files in Caches, which tvOS may clear when storage runs low; My List (which exists nowhere
+    /// else) is also kept here and restored if the file is gone.
+    private nonisolated(unsafe) let backup: UserDefaults?
+    static let myListBackupKey = "amdb.myList.backup"
 
-    public init(fileURL: URL?) {
+    /// - Parameter backupSuite: a UserDefaults suite that also keeps My List (used on Apple TV).
+    public init(fileURL: URL?, backupSuite: String? = nil) {
         self.fileURL = fileURL
+        let backup = backupSuite.flatMap(UserDefaults.init(suiteName:))
+        self.backup = backup
         if let fileURL, let data = try? Data(contentsOf: fileURL),
            let decoded = try? JSONDecoder().decode(LocalState.self, from: data) {
             state = decoded
         } else {
             state = LocalState()
+            if let data = backup?.data(forKey: Self.myListBackupKey),
+               let saved = try? JSONDecoder().decode([SavedTitle].self, from: data) {
+                state.myList = saved
+            }
         }
     }
 
     public static func defaultURL() -> URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appending(path: "AMDB/state.json")
+        StorageLocation.directory.appending(path: "state.json")
     }
 
     public var snapshot: LocalState { state }
@@ -157,5 +167,6 @@ public actor LocalStore {
         guard let fileURL else { return }
         try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let data = try? JSONEncoder().encode(state) { try? data.write(to: fileURL, options: .atomic) }
+        if let backup, let list = try? JSONEncoder().encode(state.myList) { backup.set(list, forKey: Self.myListBackupKey) }
     }
 }

@@ -14,7 +14,7 @@ struct AMDBTVApp: App {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         let info = Bundle.main
         _model = State(initialValue: DemoMode.isEnabled ? DemoMode.makeModel() : AppModel(
-            tokens: KeychainTokenStore(), store: LocalStore(fileURL: LocalStore.defaultURL()),
+            tokens: KeychainTokenStore(), store: LocalStore(fileURL: LocalStore.defaultURL(), backupSuite: "app.amdb.backup"),
             bundledTMDBToken: info.object(forInfoDictionaryKey: "TMDBReadToken") as? String,
             ratingsCache: RatingsCache(fileURL: RatingsCache.defaultURL()),
             bundledTraktClientID: info.object(forInfoDictionaryKey: "TraktClientID") as? String,
