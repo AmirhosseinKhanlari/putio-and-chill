@@ -22,6 +22,10 @@ final class PlayerChrome {
     /// Playing the downloaded copy rather than streaming.
     var playingFromDevice = false
     var subtitleStyle = SubtitleStyle.standard
+    /// Stops playback after a while or at the end of the episode.
+    var sleepTimer: SleepTimer?
+    /// "29:41 left", refreshed by the coordinator every second.
+    var sleepLabel: String?
 
     @ObservationIgnored var onClose: () -> Void = {}
     @ObservationIgnored var onNext: () -> Void = {}
@@ -184,6 +188,7 @@ struct PlayerControlsView: View {
             HStack(spacing: regular ? 12 : 8) {
                 Text(timeLabel).font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.8))
                 Spacer(minLength: 8)
+                sleepMenu
                 speedMenu
                 if chrome.subtitles != nil {
                     pillButton(chrome.subtitles?.isShowing == true ? "captions.bubble.fill" : "captions.bubble",
@@ -196,6 +201,33 @@ struct PlayerControlsView: View {
                            title: nil, label: chrome.fillsScreen ? "Fit to screen" : "Fill screen") { toggleFill() }
             }
         }
+    }
+
+    private var sleepMenu: some View {
+        Menu {
+            if chrome.sleepTimer != nil {
+                Button(role: .destructive) { chrome.sleepTimer = nil; chrome.sleepLabel = nil; poke() } label: {
+                    Label("Turn Off", systemImage: "moon.zzz")
+                }
+            }
+            ForEach(SleepTimer.Option.choices, id: \.self) { option in
+                Button { chrome.sleepTimer = SleepTimer(option, startedAt: .now); poke() } label: {
+                    if chrome.sleepTimer?.option == option { Label(option.title, systemImage: "checkmark") } else { Text(option.title) }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: chrome.sleepTimer == nil ? "moon" : "moon.fill")
+                if let label = chrome.sleepLabel, regular || chrome.sleepTimer != nil {
+                    Text(label.replacingOccurrences(of: " left", with: "")).monospacedDigit()
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 12).frame(height: 36)
+            .background(.white.opacity(chrome.sleepTimer == nil ? 0.12 : 0.25), in: Capsule())
+        }
+        .foregroundStyle(.white)
+        .accessibilityLabel(chrome.sleepLabel.map { "Sleep timer, \($0)" } ?? "Sleep timer")
     }
 
     private var speedMenu: some View {

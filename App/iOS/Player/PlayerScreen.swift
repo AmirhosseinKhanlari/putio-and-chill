@@ -144,10 +144,32 @@ final class PlayerCoordinator {
             let total = engine.duration
             if position > 0 { await session.tick(seconds: position, duration: total) }
             let remaining = total > 0 ? total - position : .infinity
+            applySleepTimer(position: position, duration: total)
             chrome.showNextButton = request.next != nil && remaining < 30
             if remaining < 1.5, request.next != nil, app.settings.autoPlayNextEpisode, !countdownDismissed {
                 chrome.showCountdown = true
             }
+        }
+    }
+
+    /// Fades the sound over the last 15 seconds, then pauses. "End of episode" also skips the next-episode countdown.
+    private func applySleepTimer(position: Double, duration: Double) {
+        guard let timer = chrome.sleepTimer else {
+            if engine.player.volume < 1 { engine.player.volume = 1 }
+            chrome.sleepLabel = nil
+            return
+        }
+        let now = Date()
+        chrome.sleepLabel = timer.label(now: now, position: position, duration: duration)
+        engine.player.volume = timer.volume(now: now, position: position, duration: duration)
+        if timer.option == .endOfEpisode { countdownDismissed = true }
+        if timer.shouldStop(now: now, position: position, duration: duration) {
+            engine.pause()
+            engine.player.volume = 1
+            chrome.sleepTimer = nil
+            chrome.sleepLabel = nil
+            chrome.showCountdown = false
+            chrome.controlsVisible = true
         }
     }
 

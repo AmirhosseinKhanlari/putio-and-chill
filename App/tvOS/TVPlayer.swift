@@ -46,6 +46,8 @@ final class TVPlaybackCoordinator {
     private var finished = false
     private var endObserver: NSObjectProtocol?
     private var selectionObserver: NSObjectProtocol?
+    private var sleepTimer: SleepTimer?
+    private var lastSleepMinute = -1
     /// The next episode when it's already in put.io; offered near the end and auto-played if Settings say so.
     private let next: LibraryEntry?
     private var offeringNext = false
@@ -110,7 +112,7 @@ final class TVPlaybackCoordinator {
         endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification,
                                                              object: player.currentItem, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.app.settings.autoPlayNextEpisode else { return }
+                guard let self, self.app.settings.autoPlayNextEpisode, self.sleepTimer?.option != .endOfEpisode else { return }
                 self.playNext()
             }
         }
@@ -125,6 +127,7 @@ final class TVPlaybackCoordinator {
         let text = finder.text(at: seconds)
         if line.text != text { line.text = text }
         updateNextOffer(at: seconds)
+        applySleepTimer(position: seconds)
         if seconds - lastSync >= 10, let session {
             lastSync = seconds
             let duration = player.currentItem?.duration.seconds ?? 0
@@ -164,6 +167,50 @@ final class TVPlaybackCoordinator {
         guard let next, !finished else { return }
         finish()
         onNext?(next)
+    }
+
+    // MARK: Sleep timer
+
+    /// Fades the sound over the last 15 seconds, then pauses.
+    private func applySleepTimer(position: Double) {
+        guard let timer = sleepTimer else { return }
+        let duration = player.currentItem?.duration.seconds ?? 0
+        let now = Date()
+        player.volume = timer.volume(now: now, position: position, duration: duration)
+        if timer.shouldStop(now: now, position: position, duration: duration) {
+            player.pause()
+            player.volume = 1
+            sleepTimer = nil
+            controller?.contextualActions = []
+            rebuildMenus()
+            return
+        }
+        // Refresh "about N min left" in the menu once a minute.
+        let minute = Int((timer.remaining(now: now, position: position, duration: duration) ?? 0) / 60)
+        if minute != lastSleepMinute { lastSleepMinute = minute; rebuildMenus() }
+    }
+
+    private func sleepMenu() -> UIMenu {
+        var items: [UIMenuElement] = []
+        if let sleepTimer {
+            let position = player.currentTime().seconds
+            let duration = player.currentItem?.duration.seconds ?? 0
+            let left = sleepTimer.remaining(now: Date(), position: position, duration: duration).map { max(1, Int(($0 / 60).rounded())) }
+            items.append(UIAction(title: left.map { "Stops in about \($0) min" } ?? sleepTimer.option.title, attributes: .disabled) { _ in })
+            items.append(UIAction(title: "Turn Off", image: UIImage(systemName: "xmark")) { [weak self] _ in
+                self?.sleepTimer = nil
+                self?.player.volume = 1
+                self?.rebuildMenus()
+            })
+        }
+        for option in SleepTimer.Option.choices {
+            items.append(UIAction(title: option.title, state: sleepTimer?.option == option ? .on : .off) { [weak self] _ in
+                self?.sleepTimer = SleepTimer(option, startedAt: Date())
+                self?.lastSleepMinute = -1
+                self?.rebuildMenus()
+            })
+        }
+        return UIMenu(title: "Sleep Timer", image: UIImage(systemName: sleepTimer == nil ? "moon" : "moon.fill"), children: items)
     }
 
     // MARK: One subtitle at a time
@@ -250,6 +297,7 @@ final class TVPlaybackCoordinator {
         }
         controller?.transportBarCustomMenuItems = [
             UIMenu(title: "Subtitles", image: UIImage(systemName: "captions.bubble.fill"), children: items),
+            sleepMenu(),
         ]
     }
 
