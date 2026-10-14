@@ -61,6 +61,12 @@ enum DemoMode {
         case "player":
             router.player = PlayerRequest(file: PutioFile(id: 1, name: "Interstellar.2014.1080p.BluRay.x264.mkv", fileType: "VIDEO"),
                                           title: "Interstellar", resumeFrom: 4360, played: nil, next: nil)
+        case "player-episode":
+            // Severance S2 E4, a few seconds before the credits, to show the Next Episode card.
+            router.player = PlayerRequest(file: PutioFile(id: 2, name: "Severance.S02E04.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO"),
+                                          title: "Severance", resumeFrom: 1745,
+                                          played: PlayedTitle(tmdbID: DemoCatalog.shows[0].tmdbID, kind: .tv, title: "Severance"),
+                                          next: nil, season: 2, episode: 4)
         default: break
         }
     }
@@ -152,7 +158,8 @@ struct DemoCatalog: CatalogService {
                                                backdropPath: "/zI0q2ENcQOLECbe0gAEGlncVh2j.jpg") : nil)
     }
     func season(tvID: Int, number: Int) async throws -> [Episode] {
-        (1...8).map { Episode(number: $0, name: "Episode \($0)", overview: "Things get complicated at Lumon.", runtimeMinutes: 50 + $0) }
+        (1...8).map { Episode(number: $0, name: "Episode \($0)", overview: "Things get complicated at Lumon.",
+                              stillPath: Self.art["Severance"]?.backdrop, runtimeMinutes: 50 + $0, airDate: "2025-0\(min($0, 9))-01") }
     }
     func person(id: Int) async throws -> PersonDetail {
         PersonDetail(id: id, name: "Anya Taylor-Joy",
@@ -213,6 +220,8 @@ final class DemoPutio: PutioService, @unchecked Sendable {
         PutioFile(id: 4, name: "Heat.1995.REMASTERED.1080p.BluRay.mkv", fileType: "VIDEO", size: 11_000_000_000,
                   createdAt: "2026-10-01T10:00:00", updatedAt: "2026-10-03T10:00:00", startFrom: 600),
         PutioFile(id: 5, name: "Home.Video.2019.mov", fileType: "VIDEO", size: 300_000_000, createdAt: "2026-09-01T10:00:00"),
+        PutioFile(id: 6, name: "Severance.S02E05.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO", size: 2_000_000_000,
+                  createdAt: "2026-08-20T10:00:00"),
     ]
 
     func accountInfo() async throws -> PutioAccount {

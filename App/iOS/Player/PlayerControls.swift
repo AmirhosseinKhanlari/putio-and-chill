@@ -12,10 +12,14 @@ final class PlayerChrome {
     var preparing = false
     var failure: String?
     var failureLink: URL?
-    /// "S1 · E2" while the next-episode button is offered near the end.
+    /// "S1 E2" for the bottom bar's Next button.
     var nextLabel: String?
-    var showNextButton = false
-    var showCountdown = false
+    /// The episode after this one (Netflix-style Next Episode card), when there is one.
+    var nextUp: NextUp?
+    var nextUpCard: NextUpCardState = .hidden
+    /// Counts down and plays the next episode by itself (Settings → Auto-play next episode; not with a sleep timer).
+    var nextUpAutoplay = true
+    var nextUpGetting: NextUpGetting?
     var pipSupported = false
     var pipActive = false
     var fillsScreen = false
@@ -29,7 +33,8 @@ final class PlayerChrome {
 
     @ObservationIgnored var onClose: () -> Void = {}
     @ObservationIgnored var onNext: () -> Void = {}
-    @ObservationIgnored var onCancelCountdown: () -> Void = {}
+    @ObservationIgnored var onWatchCredits: () -> Void = {}
+    @ObservationIgnored var onChooseNextVersion: () -> Void = {}
     @ObservationIgnored var onTogglePiP: () -> Void = {}
     @ObservationIgnored var onFillChanged: (Bool) -> Void = { _ in }
     @ObservationIgnored var onStyleChanged: (SubtitleStyle) -> Void = { _ in }
@@ -78,17 +83,16 @@ struct PlayerControlsView: View {
                         .padding(.horizontal, 14).padding(.vertical, 7).glassCapsule()
                         .offset(y: 90)
                 }
-                if chrome.showNextButton, !chrome.showCountdown, let label = chrome.nextLabel {
-                    nextButton(label)
-                }
-                if chrome.showCountdown, let label = chrome.nextLabel {
-                    NextEpisodeCountdown(label: label, onPlay: chrome.onNext, onCancel: chrome.onCancelCountdown)
+                if chrome.nextUpCard != .hidden, let next = chrome.nextUp {
+                    NextUpCard(next: next, chrome: chrome, regular: regular, liftedBy: visible ? (regular ? 150 : 110) : 0)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
                 if let failure = chrome.failure {
                     PlayerFailureView(message: failure, link: chrome.failureLink, close: chrome.onClose)
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: visible)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: chrome.nextUpCard)
         }
         .ignoresSafeArea()
         .preferredColorScheme(.dark)
@@ -255,20 +259,6 @@ struct PlayerControlsView: View {
         }
         .tint(.white)
         .accessibilityLabel("Playback speed")
-    }
-
-    private func nextButton(_ label: String) -> some View {
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                Button { chrome.onNext() } label: { Label("Next: \(label)", systemImage: "forward.end.fill") }
-                    .buttonStyle(.primaryPill)
-            }
-        }
-        .padding(.horizontal, regular ? 32 : 20)
-        .padding(.bottom, visible ? (regular ? 150 : 110) : 40)
-        .safeAreaPadding(.all)
     }
 
     // MARK: Gestures
@@ -502,45 +492,133 @@ struct PlayerFailureView: View {
     }
 }
 
-struct NextEpisodeCountdown: View {
-    let label: String
-    let onPlay: () -> Void
-    let onCancel: () -> Void
-    @State private var remaining = 5
-    @State private var started = false
+
+enum NextUpCardState: Equatable {
+    case hidden
+    /// The credits have started.
+    case credits
+    /// The episode has ended.
+    case end
+}
+
+enum NextUpGetting: Equatable {
+    case searching
+    case downloading(percent: Int)
+    case failed(String)
+}
+
+/// Netflix-style Next Episode: a picture and title of the next episode, Watch Credits, and a Next Episode button that
+/// fills up as it counts down, then plays. Not in put.io yet: Get Next Episode sends it there and plays when ready.
+struct NextUpCard: View {
+    let next: NextUp
+    let chrome: PlayerChrome
+    let regular: Bool
+    let liftedBy: CGFloat
+    @State private var fill: Double = 0
+
+    private var counting: Bool { chrome.nextUpAutoplay && next.isInPutio && chrome.nextUpGetting == nil }
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea()
-            VStack(spacing: 16) {
-                ZStack {
-                    ProgressRing(progress: Double(5 - remaining) / 5, lineWidth: 5)
-                    Text("\(remaining)").font(.system(size: 34, weight: .ultraLight)).monospacedDigit()
-                }
-                .frame(width: 88, height: 88)
-                Text("Next episode").font(.caption.weight(.semibold)).tracking(2).foregroundStyle(.white.opacity(0.7))
-                Text(label).font(.title3.weight(.semibold))
-                HStack(spacing: 12) {
-                    Button { go() } label: { Label("Play Now", systemImage: "play.fill") }.buttonStyle(.primaryPill)
-                    Button("Cancel", action: onCancel).buttonStyle(.glassPill)
-                }
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                card.frame(width: regular ? 400 : 360)
             }
-            .padding(32)
-            .glassRounded(28)
         }
-        .task {
-            while remaining > 0 {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
-                remaining -= 1
+        .padding(.horizontal, regular ? 32 : 20)
+        .padding(.bottom, liftedBy + (regular ? 28 : 16))
+        .safeAreaPadding(.all)
+        .task(id: chrome.nextUpCard) { await countdown() }
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                RemoteImage(path: next.stillPath, size: "w300", seed: next.name)
+                    .frame(width: regular ? 136 : 104, height: regular ? 76 : 58)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("NEXT EPISODE").font(.caption2.weight(.bold)).tracking(1.5).foregroundStyle(.white.opacity(0.6))
+                    Text("\(next.label) · \(next.name)").font(.subheadline.weight(.semibold)).lineLimit(2)
+                    if regular, !next.overview.isEmpty {
+                        Text(next.overview).font(.caption).foregroundStyle(.white.opacity(0.7)).lineLimit(2)
+                    }
+                }
             }
-            go()
+            status
+            HStack(spacing: 10) {
+                Button { chrome.onWatchCredits() } label: { Text("Watch Credits").lineLimit(1).fixedSize() }
+                    .buttonStyle(.glassPill)
+                    .opacity(chrome.nextUpCard == .credits ? 1 : 0)
+                    .disabled(chrome.nextUpCard != .credits)
+                primary
+            }
+        }
+        .padding(14)
+        .glassRounded(22)
+        .foregroundStyle(.white)
+    }
+
+    @ViewBuilder private var status: some View {
+        switch chrome.nextUpGetting {
+        case .searching?:
+            Label("Finding the best version…", systemImage: "magnifyingglass").font(.caption).foregroundStyle(.white.opacity(0.75))
+        case let .downloading(percent)?:
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Getting it from put.io… \(percent)%").font(.caption).foregroundStyle(.white.opacity(0.75))
+                ProgressView(value: Double(percent), total: 100).tint(.white)
+            }
+        case let .failed(message)?:
+            Text(message).font(.caption).foregroundStyle(.white.opacity(0.75))
+        case nil:
+            EmptyView()
         }
     }
 
-    private func go() {
-        guard !started else { return }
-        started = true
-        onPlay()
+    @ViewBuilder private var primary: some View {
+        if case .failed? = chrome.nextUpGetting {
+            Button { chrome.onChooseNextVersion() } label: { Label("Choose Version", systemImage: "square.stack.3d.up") }
+                .buttonStyle(.primaryPill)
+        } else if next.isInPutio {
+            Button { chrome.onNext() } label: {
+                Label("Next Episode", systemImage: "play.fill")
+                    .lineLimit(1)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 18).frame(height: 44)
+                    .frame(maxWidth: .infinity)
+                    .background {
+                        // Fills left to right as it counts down, like Netflix.
+                        GeometryReader { proxy in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(.white.opacity(0.75))
+                                Capsule().fill(.white).frame(width: proxy.size.width * (counting ? fill : 1))
+                            }
+                        }
+                    }
+                    .clipShape(Capsule())
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Next episode, \(next.label)")
+        } else {
+            Button { chrome.onNext() } label: {
+                Label(chrome.nextUpGetting == nil ? "Get Next Episode" : "Getting…", systemImage: "icloud.and.arrow.down")
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.primaryPill)
+            .disabled(chrome.nextUpGetting != nil)
+        }
+    }
+
+    private func countdown() async {
+        fill = 0
+        guard counting, chrome.nextUpCard != .hidden else { return }
+        withAnimation(.linear(duration: NextUp.countdown)) { fill = 1 }
+        try? await Task.sleep(for: .seconds(NextUp.countdown))
+        guard !Task.isCancelled, counting, chrome.nextUpCard != .hidden else { return }
+        chrome.onNext()
     }
 }

@@ -65,7 +65,11 @@ final class PlayerCoordinator {
     private let app: AppModel
     private let router: Router
     private var progressTask: Task<Void, Never>?
+    /// No next-episode card or auto-play (a sleep timer set to "end of episode").
     private var countdownDismissed = false
+    /// The user chose Watch Credits: the card comes back when the episode ends.
+    private var creditsDismissed = false
+    private var gettingNext: Task<Void, Never>?
     private var appliedLanguages = false
     private var inPictureInPicture = false
     private var triedFallback = false
@@ -83,7 +87,7 @@ final class PlayerCoordinator {
         let episode = request.season.map { season in request.episode.map { "Season \(season) · Episode \($0)" } ?? "Season \(season)" }
         chrome = PlayerChrome(title: request.played?.title ?? request.title, subtitle: episode,
                               subtitles: app.subtitleFinder(for: request.subtitleContext, fileSize: request.file.size))
-        chrome.nextLabel = request.next?.label
+
         chrome.playingFromDevice = localURL != nil
         chrome.subtitleStyle = app.settings.subtitleStyle
         chrome.failureLink = localURL == nil ? URL(string: "https://app.put.io/files/\(request.file.id)") : nil
@@ -92,15 +96,13 @@ final class PlayerCoordinator {
 
     func start(from seconds: Int, on presenter: UIViewController) {
         chrome.onClose = { [weak self] in self?.controller.dismiss(animated: true) }
-        chrome.onNext = { [weak self] in
-            guard let self, let next = request.next else { return }
-            advance(to: next)
+        chrome.onNext = { [weak self] in self?.playNext() }
+        chrome.onWatchCredits = { [weak self] in
+            self?.creditsDismissed = true
+            self?.chrome.nextUpCard = .hidden
         }
+        chrome.onChooseNextVersion = { [weak self] in self?.chooseNextVersion() }
         chrome.onStyleChanged = { [weak app] style in app?.updateSubtitleStyle(style) }
-        chrome.onCancelCountdown = { [weak self] in
-            self?.countdownDismissed = true
-            self?.chrome.showCountdown = false
-        }
         controller.onPiPChanged = { [weak self] active in
             guard let self else { return }
             inPictureInPicture = active
@@ -118,6 +120,7 @@ final class PlayerCoordinator {
         if seconds > 0 { engine.seek(to: Double(seconds)) }
         presenter.present(controller, animated: true) { [engine] in engine.play() }
         progressTask = Task { [weak self] in await self?.run() }
+        Task { [weak self] in await self?.findNextUp() }
         Task { await chrome.subtitles?.restore() }
     }
 
@@ -145,10 +148,7 @@ final class PlayerCoordinator {
             if position > 0 { await session.tick(seconds: position, duration: total) }
             let remaining = total > 0 ? total - position : .infinity
             applySleepTimer(position: position, duration: total)
-            chrome.showNextButton = request.next != nil && remaining < 30
-            if remaining < 1.5, request.next != nil, app.settings.autoPlayNextEpisode, !countdownDismissed {
-                chrome.showCountdown = true
-            }
+            updateNextUpCard(remaining: remaining, duration: total)
         }
     }
 
@@ -168,7 +168,7 @@ final class PlayerCoordinator {
             engine.player.volume = 1
             chrome.sleepTimer = nil
             chrome.sleepLabel = nil
-            chrome.showCountdown = false
+            chrome.nextUpCard = .hidden
             chrome.controlsVisible = true
         }
     }
@@ -191,6 +191,7 @@ final class PlayerCoordinator {
         guard !finished else { return }
         finished = true
         progressTask?.cancel()
+        gettingNext?.cancel()
         let position = engine.position
         let duration = engine.duration
         engine.tearDown()
@@ -215,15 +216,94 @@ final class PlayerCoordinator {
         }
     }
 
-    private func advance(to next: NextEpisode) {
-        let app = app, router = router
-        controller.dismiss(animated: true) {
-            let library = app.library
-            if let entry = library.matching(tmdbID: next.target.tmdbID, season: next.target.season, episode: next.target.episode).first {
-                router.play(entry, resumeFrom: library.resumeSeconds(for: entry))
-            } else if let query = next.query {
-                router.versions = VersionsRequest(query: query, target: next.target, playNow: [])
+    // MARK: Next episode (Netflix-style)
+
+    /// What comes after this episode, from TMDB, wherever playback started.
+    private func findNextUp() async {
+        guard let played = request.played, played.kind == .tv, let season = request.season, let episode = request.episode else { return }
+        let next = await NextUpFinder.find(tmdbID: played.tmdbID, season: season, episode: episode, catalog: app.catalog,
+                                           library: app.library)
+        chrome.nextUp = next
+        chrome.nextLabel = next?.label
+    }
+
+    /// The card shows when the credits start (or at the end after Watch Credits), and hides if you seek back.
+    private func updateNextUpCard(remaining: Double, duration: Double) {
+        chrome.nextUpAutoplay = app.settings.autoPlayNextEpisode && !countdownDismissed
+        if let next = chrome.nextUp, !next.isInPutio, chrome.nextUpGetting == nil {
+            let resolved = next.resolved(in: app.library)
+            if resolved != next { chrome.nextUp = resolved }
+        }
+        guard chrome.nextUp != nil, duration > 0, !countdownDismissed || chrome.nextUpGetting != nil else {
+            if chrome.nextUpCard != .hidden { chrome.nextUpCard = .hidden }
+            return
+        }
+        let credits = NextUp.creditsLength(duration: duration)
+        let state: NextUpCardState
+        if remaining < 1.5 {
+            state = .end
+        } else if remaining <= credits {
+            state = creditsDismissed && chrome.nextUpGetting == nil ? .hidden : .credits
+        } else {
+            creditsDismissed = false
+            state = chrome.nextUpGetting != nil ? .credits : .hidden
+        }
+        if chrome.nextUpCard != state { chrome.nextUpCard = state }
+    }
+
+    /// In put.io: play it. Not yet: send the best version to put.io and play it as soon as it's ready.
+    private func playNext() {
+        guard let next = chrome.nextUp else { return }
+        if let entry = next.entry {
+            let app = app, router = router
+            controller.dismiss(animated: true) {
+                router.play(entry, resumeFrom: app.library.resumeSeconds(for: entry))
             }
+            return
+        }
+        guard gettingNext == nil, let query = next.query else {
+            if next.query == nil { chrome.nextUpGetting = .failed("Couldn't look this episode up. Try from the show's page.") }
+            return
+        }
+        chrome.nextUpGetting = .searching
+        gettingNext = Task { [weak self] in
+            guard let self else { return }
+            switch await app.smartGet(query, target: next.target) {
+            case .sent:
+                await waitForNext(next)
+            case .noMatch:
+                chrome.nextUpGetting = .failed("No good version found automatically.")
+            case .failed:
+                chrome.nextUpGetting = .failed("Couldn't send it to put.io.")
+            }
+            gettingNext = nil
         }
     }
+
+    private func waitForNext(_ next: NextUp) async {
+        while !Task.isCancelled, !finished {
+            if let transfer = app.transfers.latest(tmdbID: next.target.tmdbID, season: next.season, episode: next.episode) {
+                if transfer.playableFile != nil {
+                    let router = router
+                    controller.dismiss(animated: true) { router.play(transfer) }
+                    return
+                }
+                if case .failed = transfer.phase {
+                    chrome.nextUpGetting = .failed("put.io couldn't download this version.")
+                    return
+                }
+                chrome.nextUpGetting = .downloading(percent: transfer.percent)
+            }
+            try? await Task.sleep(for: .seconds(1))
+        }
+    }
+
+    private func chooseNextVersion() {
+        guard let next = chrome.nextUp, let query = next.query else { return }
+        let router = router
+        controller.dismiss(animated: true) {
+            router.versions = VersionsRequest(query: query, target: next.target, playNow: [])
+        }
+    }
+
 }

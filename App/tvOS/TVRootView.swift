@@ -52,8 +52,11 @@ struct TVRootView: View {
         }
         // Top Shelf items: play resumes, select opens the title.
         .onOpenURL { url in Task { await open(DeepLink(url: url)) } }
-        .fullScreenCover(item: $router.player) { request in
-            TVPlayerView(request: request).ignoresSafeArea()
+        // The cover stays up when one episode hands over to the next; only the player inside is replaced.
+        .fullScreenCover(isPresented: Binding(get: { router.player != nil }, set: { if !$0 { router.player = nil } })) {
+            if let request = router.player {
+                TVPlayerView(request: request).id(request.id).ignoresSafeArea()
+            }
         }
     }
 
@@ -135,6 +138,12 @@ struct TVRootView: View {
         case "settings": router.tab = .settings
         case "movies": router.tab = .movies
         case "tvshows": router.tab = .tv
+        case "player-episode":
+            router.player = TVPlayRequest(entry: LibraryEntry(
+                file: PutioFile(id: 2, name: "Severance.S02E04.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO", size: 2_000_000_000),
+                match: LibraryMatch(tmdbID: DemoCatalog.shows[0].tmdbID, mediaType: .tv, season: 2, episode: 4, confidence: 1,
+                                    title: "Severance"),
+                folderName: nil), resumeFrom: 1745)
         case "player":
             router.player = TVPlayRequest(entry: LibraryEntry(
                 file: PutioFile(id: 2, name: "Severance.S02E04.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO", size: 2_000_000_000),

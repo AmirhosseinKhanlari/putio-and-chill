@@ -13,6 +13,11 @@ struct TVPlayerView: UIViewControllerRepresentable {
     func makeCoordinator() -> TVPlaybackCoordinator {
         let coordinator = TVPlaybackCoordinator(request: request, app: app)
         coordinator.onNext = { [router] next in router.play(next, from: 0) }
+        coordinator.onNextTransfer = { [router] transfer in router.playTransfer(transfer) }
+        coordinator.onChooseVersion = { [router] request in
+            router.player = nil
+            router.open(.versions(request))
+        }
         return coordinator
     }
 
@@ -48,10 +53,17 @@ final class TVPlaybackCoordinator {
     private var selectionObserver: NSObjectProtocol?
     private var sleepTimer: SleepTimer?
     private var lastSleepMinute = -1
-    /// The next episode when it's already in put.io; offered near the end and auto-played if Settings say so.
-    private let next: LibraryEntry?
-    private var offeringNext = false
+    /// The episode after this one (from TMDB, wherever playback started): offered when the credits start.
+    private var nextUp: NextUp?
+    private var creditsDismissed = false
+    private var countdownStarted: Date?
+    private var shownActions: [String] = []
+    private var gettingStatus: String?
+    private var gettingTask: Task<Void, Never>?
+    private var gettingFailed = false
     var onNext: ((LibraryEntry) -> Void)?
+    var onNextTransfer: ((TrackedTransfer) -> Void)?
+    var onChooseVersion: ((TVVersionsRequest) -> Void)?
 
     init(request: TVPlayRequest, app: AppModel) {
         self.request = request
@@ -67,13 +79,13 @@ final class TVPlaybackCoordinator {
         }
         finder = app.subtitleFinder(for: request.subtitleContext, fileSize: request.entry.file.size)
         line.style = app.settings.subtitleStyle
-        next = Self.nextEpisode(after: request.entry, in: app.library)
-    }
-
-    static func nextEpisode(after entry: LibraryEntry, in library: LibraryIndex) -> LibraryEntry? {
-        guard let match = entry.match, match.mediaType == .tv, let season = match.season, let episode = match.episode else { return nil }
-        return library.matching(tmdbID: match.tmdbID, season: season, episode: episode + 1).first
-            ?? library.matching(tmdbID: match.tmdbID, season: season + 1, episode: 1).first
+        if let match = request.entry.match, match.mediaType == .tv, let season = match.season, let episode = match.episode {
+            Task { [weak self, app] in
+                let next = await NextUpFinder.find(tmdbID: match.tmdbID, season: season, episode: episode, catalog: app.catalog,
+                                                   library: app.library)
+                self?.nextUp = next
+            }
+        }
     }
 
     func makeController() -> AVPlayerViewController {
@@ -112,8 +124,9 @@ final class TVPlaybackCoordinator {
         endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification,
                                                              object: player.currentItem, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.app.settings.autoPlayNextEpisode, self.sleepTimer?.option != .endOfEpisode else { return }
-                self.playNext()
+                guard let self, let next = self.nextUp else { return }
+                // The episode is over: play the next one now if it's in put.io (and auto-play is on), else offer it.
+                if self.autoplay, next.isInPutio { self.playNext() } else { self.creditsDismissed = false; self.refreshNextActions(atEnd: true) }
             }
         }
         rebuildMenus()
@@ -140,6 +153,7 @@ final class TVPlaybackCoordinator {
         finished = true
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        gettingTask?.cancel()
         if let selectionObserver { NotificationCenter.default.removeObserver(selectionObserver) }
         player.pause()
         let position = player.currentTime().seconds
@@ -149,24 +163,103 @@ final class TVPlaybackCoordinator {
         }
     }
 
-    // MARK: Next episode
+    // MARK: Next episode (Netflix-style)
 
-    /// "Next Episode" button over the video for the last 30 seconds (like Skip Intro in Apple's apps).
+    private var autoplay: Bool { app.settings.autoPlayNextEpisode && sleepTimer?.option != .endOfEpisode }
+
+    /// From the start of the credits: "Next Episode · 8" counting down (then it plays), and "Watch Credits".
+    /// Not in put.io yet: "Get Next Episode", which fetches it and plays it when ready.
     private func updateNextOffer(at seconds: Double) {
-        guard let next, let duration = player.currentItem?.duration.seconds, duration.isFinite, duration > 0 else { return }
-        let offer = duration - seconds < 30
-        guard offer != offeringNext else { return }
-        offeringNext = offer
-        let label = next.match.flatMap { match in match.episode.map { "Next: S\(match.season ?? 0) E\($0)" } } ?? "Next Episode"
-        controller?.contextualActions = offer
-            ? [UIAction(title: label, image: UIImage(systemName: "forward.end.fill")) { [weak self] _ in self?.playNext() }]
-            : []
+        guard nextUp != nil, let duration = player.currentItem?.duration.seconds, duration.isFinite, duration > 0 else { return }
+        let remaining = duration - seconds
+        if remaining > NextUp.creditsLength(duration: duration) {
+            // Before the credits (or seeked back): nothing on screen unless a download is under way.
+            creditsDismissed = false
+            countdownStarted = nil
+        }
+        refreshNextActions(atEnd: remaining < 1.5, inCredits: remaining <= NextUp.creditsLength(duration: duration))
+    }
+
+    private func refreshNextActions(atEnd: Bool, inCredits: Bool = true) {
+        guard var next = nextUp, !finished else { return }
+        if !next.isInPutio, gettingTask == nil { next = next.resolved(in: app.library); nextUp = next }
+        var actions: [UIAction] = []
+        let show = (inCredits && !creditsDismissed) || atEnd || gettingStatus != nil || gettingFailed
+        if show {
+            if next.isInPutio {
+                var title = "Next Episode"
+                if autoplay {
+                    let started = countdownStarted ?? Date()
+                    countdownStarted = started
+                    let left = Int((NextUp.countdown - Date().timeIntervalSince(started)).rounded(.up))
+                    if left <= 0 { playNext(); return }
+                    title += " · \(left)"
+                }
+                actions.append(UIAction(title: title, image: UIImage(systemName: "play.fill")) { [weak self] _ in self?.playNext() })
+            } else if gettingFailed {
+                actions.append(UIAction(title: "Choose Version", image: UIImage(systemName: "square.stack.3d.up")) { [weak self] _ in
+                    self?.chooseVersion()
+                })
+            } else {
+                actions.append(UIAction(title: gettingStatus ?? "Get Next Episode",
+                                        image: UIImage(systemName: "icloud.and.arrow.down")) { [weak self] _ in self?.getNext() })
+            }
+            if !atEnd, gettingStatus == nil {
+                actions.append(UIAction(title: "Watch Credits") { [weak self] _ in
+                    self?.creditsDismissed = true
+                    self?.countdownStarted = nil
+                    self?.refreshNextActions(atEnd: false)
+                })
+            }
+        }
+        let titles = actions.map(\.title)
+        guard titles != shownActions else { return }
+        shownActions = titles
+        controller?.contextualActions = actions
     }
 
     private func playNext() {
-        guard let next, !finished else { return }
+        guard let entry = nextUp?.entry, !finished else { return }
         finish()
-        onNext?(next)
+        onNext?(entry)
+    }
+
+    private func getNext() {
+        guard let next = nextUp, gettingTask == nil else { return }
+        guard let query = next.query else { gettingFailed = true; refreshNextActions(atEnd: false); return }
+        gettingStatus = "Finding the best version…"
+        refreshNextActions(atEnd: false)
+        gettingTask = Task { [weak self] in
+            guard let self else { return }
+            switch await app.smartGet(query, target: next.target) {
+            case .sent:
+                while !Task.isCancelled, !finished {
+                    if let transfer = app.transfers.latest(tmdbID: next.target.tmdbID, season: next.season, episode: next.episode) {
+                        if transfer.playableFile != nil {
+                            finish()
+                            onNextTransfer?(transfer)
+                            return
+                        }
+                        if case .failed = transfer.phase { break }
+                        gettingStatus = "Getting Next Episode · \(transfer.percent)%"
+                        refreshNextActions(atEnd: false)
+                    }
+                    try? await Task.sleep(for: .seconds(1))
+                }
+                if !finished { gettingFailed = true }
+            case .noMatch, .failed:
+                gettingFailed = true
+            }
+            gettingStatus = nil
+            gettingTask = nil
+            refreshNextActions(atEnd: false)
+        }
+    }
+
+    private func chooseVersion() {
+        guard let next = nextUp, let query = next.query else { return }
+        finish()
+        onChooseVersion?(TVVersionsRequest(query: query, target: next.target, playNow: []))
     }
 
     // MARK: Sleep timer
