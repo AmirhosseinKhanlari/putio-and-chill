@@ -33,6 +33,9 @@ final class PlayerChrome {
     @ObservationIgnored var onTogglePiP: () -> Void = {}
     @ObservationIgnored var onFillChanged: (Bool) -> Void = { _ in }
     @ObservationIgnored var onStyleChanged: (SubtitleStyle) -> Void = { _ in }
+    /// Swipe down on the video to close: how far, and (at the end) how far it would have gone.
+    @ObservationIgnored var onSwipeDownChanged: (CGFloat) -> Void = { _ in }
+    @ObservationIgnored var onSwipeDownEnded: (_ drag: CGFloat, _ predicted: CGFloat) -> Void = { _, _ in }
 
     init(title: String, subtitle: String? = nil, subtitles: SubtitleFinder? = nil) {
         self.title = title
@@ -275,6 +278,20 @@ struct PlayerControlsView: View {
                     skip(value.location.x < width / 2 ? -10 : 10)
                 }
                 .exclusively(before: TapGesture().onEnded { toggleControls() })
+            )
+            // Swipe down to close. Only on the video itself, so buttons above it keep their own touches.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 24, coordinateSpace: .global)
+                    .onChanged { value in
+                        guard value.translation.height > 0,
+                              abs(value.translation.height) > abs(value.translation.width) * 1.5 else { return }
+                        chrome.onSwipeDownChanged(value.translation.height - 24)
+                    }
+                    .onEnded { value in
+                        let vertical = abs(value.translation.height) > abs(value.translation.width) * 1.5
+                        chrome.onSwipeDownEnded(vertical ? value.translation.height - 24 : 0,
+                                                vertical ? value.predictedEndTranslation.height - 24 : 0)
+                    }
             )
             .simultaneousGesture(MagnifyGesture().onEnded { value in
                 if value.magnification > 1.1, !chrome.fillsScreen { toggleFill() }

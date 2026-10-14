@@ -49,9 +49,8 @@ final class PlayerViewController: UIViewController, @MainActor AVPictureInPictur
         view.addSubview(controls.view)
         controls.didMove(toParent: self)
 
-        let swipe = UIPanGestureRecognizer(target: self, action: #selector(swipeDown(_:)))
-        swipe.delegate = self
-        view.addGestureRecognizer(swipe)
+        chrome.onSwipeDownChanged = { [weak self] drag in self?.followSwipe(drag) }
+        chrome.onSwipeDownEnded = { [weak self] drag, predicted in self?.endSwipe(drag, predicted: predicted) }
 
         chrome.onFillChanged = { [weak self] fill in
             CATransaction.begin()
@@ -74,28 +73,24 @@ final class PlayerViewController: UIViewController, @MainActor AVPictureInPictur
 
     // MARK: Swipe down to close
 
-    /// Drag the video down: it follows your finger and shrinks a little; let go far or fast enough and the player closes.
-    @objc private func swipeDown(_ pan: UIPanGestureRecognizer) {
-        let drag = max(0, pan.translation(in: view).y)
-        let progress = min(1, drag / max(1, view.bounds.height))
-        switch pan.state {
-        case .changed:
-            let scale = 1 - progress * 0.25
-            view.transform = CGAffineTransform(translationX: 0, y: drag).scaledBy(x: scale, y: scale)
-            view.layer.cornerRadius = min(28, progress * 120)
-            view.clipsToBounds = true
-        case .ended, .cancelled:
-            let velocity = pan.velocity(in: view).y
-            if pan.state == .ended, drag > 140 || velocity > 900 {
-                chrome.onClose()
-            } else {
-                UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) {
-                    self.view.transform = .identity
-                    self.view.layer.cornerRadius = 0
-                }
+    /// Drag the video down (from the video, not a button): it follows your finger and shrinks a little; let go far or
+    /// fast enough and the player closes. The drag gesture lives in the SwiftUI controls (see PlayerControlsView).
+    private func followSwipe(_ drag: CGFloat) {
+        let progress = min(1, max(0, drag) / max(1, view.bounds.height))
+        let scale = 1 - progress * 0.25
+        view.transform = CGAffineTransform(translationX: 0, y: max(0, drag)).scaledBy(x: scale, y: scale)
+        view.layer.cornerRadius = min(28, progress * 120)
+        view.clipsToBounds = true
+    }
+
+    private func endSwipe(_ drag: CGFloat, predicted: CGFloat) {
+        if drag > 120 || (drag > 40 && predicted > drag + 160) {
+            chrome.onClose()
+        } else {
+            UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0) {
+                self.view.transform = .identity
+                self.view.layer.cornerRadius = 0
             }
-        default:
-            break
         }
     }
 
@@ -124,15 +119,5 @@ final class PlayerViewController: UIViewController, @MainActor AVPictureInPictur
     func pictureInPictureController(_ controller: AVPictureInPictureController,
                                     restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
         onPiPRestore(completionHandler)
-    }
-}
-
-extension PlayerViewController: UIGestureRecognizerDelegate {
-    /// Only a mostly-downward drag that doesn't start on the progress bar and buttons at the bottom.
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let pan = gestureRecognizer as? UIPanGestureRecognizer, pip?.isPictureInPictureActive != true else { return false }
-        let velocity = pan.velocity(in: view)
-        let start = pan.location(in: view)
-        return velocity.y > 0 && abs(velocity.y) > abs(velocity.x) * 1.5 && start.y < view.bounds.height - 150
     }
 }

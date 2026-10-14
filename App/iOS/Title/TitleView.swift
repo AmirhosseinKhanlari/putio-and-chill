@@ -149,11 +149,13 @@ struct BackButton: View {
 
     var body: some View {
         Button { dismiss() } label: {
-            Image(systemName: "chevron.left").font(.headline).frame(width: 40, height: 40).glassCapsule()
+            Image(systemName: "chevron.left").font(.headline).frame(width: 44, height: 44).glassCapsule()
+                // A forgiving touch area around the visible circle.
+                .padding(8)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.leading, 16)
-        .padding(.top, 8)
+        .padding(.leading, 8)
         .accessibilityLabel("Back")
     }
 }
