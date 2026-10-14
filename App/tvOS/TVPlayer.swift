@@ -45,6 +45,7 @@ final class TVPlaybackCoordinator {
     private var timeObserver: Any?
     private var finished = false
     private var endObserver: NSObjectProtocol?
+    private var selectionObserver: NSObjectProtocol?
     /// The next episode when it's already in put.io; offered near the end and auto-played if Settings say so.
     private let next: LibraryEntry?
     private var offeringNext = false
@@ -99,7 +100,12 @@ final class TVPlaybackCoordinator {
         // put.io's tracks, then the saved pick or the preferred language from Settings.
         Task {
             await finder.restore()
-            rebuildMenus()
+            await ourSubtitleChanged()
+        }
+        // Only one subtitle at a time: captions picked in Apple's own menu turn ours off.
+        selectionObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.mediaSelectionDidChangeNotification,
+                                                                   object: player.currentItem, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.systemSelectionChanged() }
         }
         endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification,
                                                              object: player.currentItem, queue: .main) { [weak self] _ in
@@ -131,6 +137,7 @@ final class TVPlaybackCoordinator {
         finished = true
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        if let selectionObserver { NotificationCenter.default.removeObserver(selectionObserver) }
         player.pause()
         let position = player.currentTime().seconds
         let duration = player.currentItem?.duration.seconds ?? 0
@@ -159,6 +166,26 @@ final class TVPlaybackCoordinator {
         onNext?(next)
     }
 
+    // MARK: One subtitle at a time
+
+    /// Ours turned on: switch off whatever Apple's own Subtitles menu is showing (captions inside the video).
+    private func ourSubtitleChanged() async {
+        if finder.isShowing, let item = player.currentItem,
+           let group = try? await item.asset.loadMediaSelectionGroup(for: .legible), group.allowsEmptySelection,
+           item.currentMediaSelection.selectedMediaOption(in: group) != nil {
+            item.select(nil, in: group)
+        }
+        rebuildMenus()
+    }
+
+    /// Something picked in Apple's own Subtitles menu: turn ours off so two never show at once.
+    private func systemSelectionChanged() {
+        guard finder.isShowing, let item = player.currentItem,
+              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible),
+              item.currentMediaSelection.selectedMediaOption(in: group) != nil else { return }
+        Task { await finder.turnOff(); rebuildMenus() }
+    }
+
     // MARK: Subtitles menu (the player's swipe-down bar)
 
     /// One button with everything: put.io's subtitles, OpenSubtitles, timing and style. tvOS allows only one menu
@@ -175,7 +202,7 @@ final class TVPlaybackCoordinator {
             for track in finder.putioTracks {
                 let showing = finder.isShowing && finder.choice?.putioKey == track.key
                 items.append(UIAction(title: Self.title(track), state: showing ? .on : .off) { [weak self] _ in
-                    Task { await self?.finder.choose(track); self?.rebuildMenus() }
+                    Task { await self?.finder.choose(track); await self?.ourSubtitleChanged() }
                 })
             }
         }
@@ -193,7 +220,7 @@ final class TVPlaybackCoordinator {
                 let showing = finder.isShowing && finder.choice?.putioKey == nil && finder.choice?.subtitleFileID == result.fileID
                 let badge = result.hashMatch ? "  ·  matches this file" : ""
                 items.append(UIAction(title: "\(result.release)\(badge)", state: showing ? .on : .off) { [weak self] _ in
-                    Task { await self?.finder.choose(result); self?.rebuildMenus() }
+                    Task { await self?.finder.choose(result); await self?.ourSubtitleChanged() }
                 })
             }
         } else {
