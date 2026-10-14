@@ -29,6 +29,10 @@ final class TVPlayerUITests: XCTestCase {
     }
 
     private func attach(_ name: String) {
-        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = name; shot.lifetime = .keepAlways; add(shot)
+        let screenshot = XCUIScreen.main.screenshot()
+        let shot = XCTAttachment(screenshot: screenshot); shot.name = name; shot.lifetime = .keepAlways; add(shot)
+        if let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
+            try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))
+        }
     }
 }

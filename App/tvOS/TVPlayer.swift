@@ -3,9 +3,8 @@ import AMDBKit
 import AVKit
 import SwiftUI
 
-/// Apple's TV player. put.io's subtitles are in its own Subtitles menu (they're in the stream); one extra
-/// OpenSubtitles button searches, picks and fixes timing, drawn over the video in the chosen style.
-/// Progress syncs to put.io.
+/// Apple's TV player with one Subtitles button of ours (like the iPhone app): put.io's subtitles and OpenSubtitles,
+/// timing, and style, all drawn over the video in the chosen style. Progress syncs to put.io.
 struct TVPlayerView: UIViewControllerRepresentable {
     let request: TVPlayRequest
     @Environment(AppModel.self) private var app
@@ -31,6 +30,7 @@ struct TVPlayerView: UIViewControllerRepresentable {
 @Observable @MainActor
 final class TVSubtitleLine {
     var text: String?
+    var style = SubtitleStyle.standard
 }
 
 @MainActor
@@ -43,7 +43,6 @@ final class TVPlaybackCoordinator {
     private let player: AVPlayer
     private weak var controller: AVPlayerViewController?
     private var timeObserver: Any?
-    private var selectionObserver: NSObjectProtocol?
     private var finished = false
     private var endObserver: NSObjectProtocol?
     /// The next episode when it's already in put.io; offered near the end and auto-played if Settings say so.
@@ -57,13 +56,14 @@ final class TVPlaybackCoordinator {
         if let putio = app.putio {
             session = PlaybackSession(fileID: request.entry.id, resumeFrom: request.resumeFrom, putio: putio,
                                       library: app.library, store: app.store)
-            // put.io's subtitles ride in the stream, so they're in the player's own Subtitles menu.
-            player = AVPlayer(url: putio.hlsURL(fileID: request.entry.id, subtitles: true))
+            // Subtitles stay out of the stream: ours draws them, so style and timing apply to all of them.
+            player = AVPlayer(url: putio.hlsURL(fileID: request.entry.id, subtitles: false))
         } else {
             session = nil
             player = AVPlayer()
         }
-        finder = app.subtitleFinder(for: request.subtitleContext, fileSize: request.entry.file.size, includePutio: false)
+        finder = app.subtitleFinder(for: request.subtitleContext, fileSize: request.entry.file.size)
+        line.style = app.settings.subtitleStyle
         next = Self.nextEpisode(after: request.entry, in: app.library)
     }
 
@@ -77,7 +77,7 @@ final class TVPlaybackCoordinator {
         let controller = AVPlayerViewController()
         controller.player = player
         self.controller = controller
-        let overlay = UIHostingController(rootView: TVSubtitleOverlay(line: line, style: app.settings.subtitleStyle))
+        let overlay = UIHostingController(rootView: TVSubtitleOverlay(line: line))
         overlay.view.backgroundColor = .clear
         overlay.view.isUserInteractionEnabled = false
         if let content = controller.contentOverlayView {
@@ -96,15 +96,10 @@ final class TVPlaybackCoordinator {
             MainActor.assumeIsolated { self?.tick(time.seconds) }
         }
         player.play()
+        // put.io's tracks, then the saved pick or the preferred language from Settings.
         Task {
             await finder.restore()
-            await applySubtitleLanguage()
             rebuildMenus()
-        }
-        // Picking a subtitle in the player's own menu turns OpenSubtitles off (never two at once).
-        selectionObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.mediaSelectionDidChangeNotification,
-                                                                   object: player.currentItem, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.systemSelectionChanged() }
         }
         endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification,
                                                              object: player.currentItem, queue: .main) { [weak self] _ in
@@ -135,7 +130,6 @@ final class TVPlaybackCoordinator {
         guard !finished else { return }
         finished = true
         if let timeObserver { player.removeTimeObserver(timeObserver) }
-        if let selectionObserver { NotificationCenter.default.removeObserver(selectionObserver) }
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         player.pause()
         let position = player.currentTime().seconds
@@ -165,39 +159,28 @@ final class TVPlaybackCoordinator {
         onNext?(next)
     }
 
-    // MARK: Menus (Subtitles, Timing) in the player's swipe-down bar
+    // MARK: Subtitles menu (the player's swipe-down bar)
 
-    /// The preferred language from Settings, on put.io's tracks in the stream — unless an OpenSubtitles pick is showing.
-    private func applySubtitleLanguage() async {
-        guard let item = player.currentItem, let group = try? await item.asset.loadMediaSelectionGroup(for: .legible) else { return }
-        if finder.isShowing {
-            if group.allowsEmptySelection { item.select(nil, in: group) }
-            return
-        }
-        if let language = app.settings.subtitleLanguage,
-           let index = LanguageMatcher.bestIndex(available: group.options.map { $0.extendedLanguageTag ?? $0.locale?.identifier },
-                                                 preferred: language) {
-            item.select(group.options[index], in: group)
-        }
-    }
-
-    private func systemSelectionChanged() {
-        guard finder.isShowing, let item = player.currentItem,
-              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible),
-              item.currentMediaSelection.selectedMediaOption(in: group) != nil else { return }
-        Task { await finder.turnOff(); rebuildMenus() }
-    }
-
-    /// Turns the stream's own subtitles off while an OpenSubtitles pick is showing.
-    private func clearSystemSubtitles() async {
-        guard let item = player.currentItem, let group = try? await item.asset.loadMediaSelectionGroup(for: .legible),
-              group.allowsEmptySelection else { return }
-        item.select(nil, in: group)
-    }
-
-    /// One extra button next to the player's own Subtitles: search OpenSubtitles, pick, and fix timing.
+    /// One button with everything: put.io's subtitles, OpenSubtitles, timing and style. tvOS allows only one menu
+    /// level here, so sections are gray labels and style options step through their values.
     private func rebuildMenus() {
         var items: [UIMenuElement] = []
+        let off = !finder.isShowing
+        items.append(UIAction(title: "Off", state: off ? .on : .off) { [weak self] _ in
+            Task { await self?.finder.turnOff(); self?.rebuildMenus() }
+        })
+
+        if !finder.putioTracks.isEmpty {
+            items.append(header("From put.io"))
+            for track in finder.putioTracks {
+                let showing = finder.isShowing && finder.choice?.putioKey == track.key
+                items.append(UIAction(title: Self.title(track), state: showing ? .on : .off) { [weak self] _ in
+                    Task { await self?.finder.choose(track); self?.rebuildMenus() }
+                })
+            }
+        }
+
+        items.append(header("OpenSubtitles"))
         if finder.canSearch {
             if finder.results.isEmpty {
                 items.append(UIAction(title: finder.isSearching ? "Searching…" : "Search OpenSubtitles",
@@ -206,53 +189,89 @@ final class TVPlaybackCoordinator {
                     Task { await self?.finder.search(); self?.rebuildMenus() }
                 })
             }
-            for result in finder.results.prefix(15) {
-                let showing = finder.isShowing && finder.choice?.subtitleFileID == result.fileID
+            for result in finder.results.prefix(12) {
+                let showing = finder.isShowing && finder.choice?.putioKey == nil && finder.choice?.subtitleFileID == result.fileID
                 let badge = result.hashMatch ? "  ·  matches this file" : ""
                 items.append(UIAction(title: "\(result.release)\(badge)", state: showing ? .on : .off) { [weak self] _ in
-                    Task {
-                        guard let self else { return }
-                        await self.finder.choose(result)
-                        if self.finder.isShowing { await self.clearSystemSubtitles() }
-                        self.rebuildMenus()
-                    }
+                    Task { await self?.finder.choose(result); self?.rebuildMenus() }
                 })
             }
         } else {
             items.append(UIAction(title: "Add an OpenSubtitles API key in Settings", attributes: .disabled) { _ in })
         }
+
         if finder.isShowing {
             let offset = finder.choice?.offset ?? 0
-            items.append(UIAction(title: offset == 0 ? "Timing: in sync" : String(format: "Timing: %+.1f s", offset), attributes: .disabled) { _ in })
+            items.append(header(offset == 0 ? "Timing: in sync" : String(format: "Timing: %+.1f s", offset)))
             items.append(UIAction(title: "Show Earlier  (−0.5 s)", image: UIImage(systemName: "backward")) { [weak self] _ in
                 Task { await self?.finder.shiftTiming(by: -0.5); self?.rebuildMenus() }
             })
             items.append(UIAction(title: "Show Later  (+0.5 s)", image: UIImage(systemName: "forward")) { [weak self] _ in
                 Task { await self?.finder.shiftTiming(by: 0.5); self?.rebuildMenus() }
             })
-            items.append(UIAction(title: "Turn Off OpenSubtitles", image: UIImage(systemName: "xmark")) { [weak self] _ in
-                Task { await self?.finder.turnOff(); self?.rebuildMenus() }
-            })
         }
+
+        items.append(header("Style"))
+        let style = line.style
+        items.append(styleAction("Size", Self.name(style.size), image: "textformat.size") { $0.size = Self.next($0.size) })
+        items.append(styleAction("Background", Self.name(style.background), image: "rectangle.fill") { $0.background = Self.next($0.background) })
+        items.append(styleAction("Color", Self.name(style.color), image: "paintpalette") { $0.color = Self.next($0.color) })
+        items.append(styleAction("Font", Self.name(style.typeface), image: "textformat") { $0.typeface = Self.next($0.typeface) })
+
         if let message = finder.message {
             items.append(UIAction(title: message, attributes: .disabled) { _ in })
         }
         controller?.transportBarCustomMenuItems = [
-            UIMenu(title: "OpenSubtitles", image: UIImage(systemName: "text.magnifyingglass"), children: items),
+            UIMenu(title: "Subtitles", image: UIImage(systemName: "captions.bubble.fill"), children: items),
         ]
+    }
+
+    private func header(_ title: String) -> UIAction {
+        UIAction(title: title, attributes: .disabled) { _ in }
+    }
+
+    /// "Size: Large" — selecting it steps to the next value; the change shows at once and is saved for next time.
+    private func styleAction(_ label: String, _ value: String, image: String, _ change: @escaping (inout SubtitleStyle) -> Void) -> UIAction {
+        UIAction(title: "\(label): \(value)", image: UIImage(systemName: image)) { [weak self] _ in
+            guard let self else { return }
+            var style = line.style
+            change(&style)
+            line.style = style
+            app.updateSubtitleStyle(style)
+            rebuildMenus()
+        }
+    }
+
+    static func title(_ track: PutioSubtitle) -> String {
+        let language = track.language ?? track.languageCode?.uppercased() ?? "Subtitle"
+        let source = switch track.source { case "mkv": "in the file"; case "folder": "next to the file"; default: track.name }
+        return [language, source].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    static func next<Value: CaseIterable & Equatable>(_ value: Value) -> Value where Value.AllCases: BidirectionalCollection {
+        let all = Array(Value.allCases)
+        guard let index = all.firstIndex(of: value) else { return value }
+        return all[(index + 1) % all.count]
+    }
+
+    static func name(_ value: some RawRepresentable<String>) -> String {
+        switch value.rawValue {
+        case "extraLarge": "Extra Large"
+        case "none": "None"
+        default: value.rawValue.prefix(1).uppercased() + value.rawValue.dropFirst()
+        }
     }
 }
 
 /// Subtitle text near the bottom of the picture, sized for the TV.
 struct TVSubtitleOverlay: View {
     let line: TVSubtitleLine
-    let style: SubtitleStyle
 
     var body: some View {
         VStack {
             Spacer()
             if let text = line.text {
-                StyledSubtitleText(text: text, style: style, compact: false, scale: 1.9)
+                StyledSubtitleText(text: text, style: line.style, compact: false, scale: 1.9)
                     .padding(.horizontal, 160)
                     .padding(.bottom, 90)
             }
