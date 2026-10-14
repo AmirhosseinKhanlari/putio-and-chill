@@ -9,7 +9,8 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    # Build number for uploads: raise it for every TestFlight/App Store upload.
+    CURRENT_PROJECT_VERSION: "2"
 packages:
   AMDBCore:
     path: AMDBCore
@@ -40,6 +41,8 @@ targets:
     info:
       path: App/iOS/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: AMDB
         UILaunchScreen:
           UIColorName: ""
@@ -97,6 +100,8 @@ targets:
     info:
       path: App/Widgets/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: AMDB
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
