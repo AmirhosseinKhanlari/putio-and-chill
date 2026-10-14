@@ -167,41 +167,6 @@ struct TVBrowseView: View {
     }
 }
 
-/// Search with the TV keyboard; results as a poster grid that pages in more as you scroll.
-struct TVSearchView: View {
-    @Environment(AppModel.self) private var app
-    @Environment(TVRouter.self) private var router
-    @State private var model: SearchModel?
-    @State private var text = ""
-
-    var body: some View {
-        ScrollView(.vertical) {
-            if let model {
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(TVMetrics.poster.width), spacing: 40), count: 6), spacing: 50) {
-                    ForEach(model.grid) { item in
-                        TVPosterButton(item: item) { router.open(item) }
-                            .onAppear {
-                                if item.id == model.grid.last?.id, model.canLoadMore { Task { await model.loadMore() } }
-                            }
-                    }
-                }
-                .padding(TVMetrics.edge)
-                if model.isSearching || model.isLoadingMore { ProgressView().padding() }
-                if !text.isEmpty, model.grid.isEmpty, !model.isSearching {
-                    Text("No results for \u{201C}\(text)\u{201D}").foregroundStyle(TVMetrics.secondaryText).padding(.top, 40)
-                }
-            }
-        }
-        .searchable(text: $text, prompt: "Movies, shows, people")
-        .onChange(of: text) { _, value in model?.query = value }
-        .tvPageBackground()
-        .task {
-            guard model == nil, let catalog = app.catalog else { return }
-            model = SearchModel(catalog: catalog, store: app.store)
-        }
-    }
-}
-
 /// Everything saved with ＋ My List.
 struct TVMyListView: View {
     @Environment(AppModel.self) private var app

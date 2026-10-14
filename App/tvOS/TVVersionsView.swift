@@ -15,7 +15,7 @@ struct TVVersionsView: View {
     var body: some View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 14) {
-                TVPageHeader(title: request.target.title + label, subtitle: status)
+                TVPageHeader(title: (request.target?.title ?? Self.queryText(request.query)) + label, subtitle: status)
                     .padding(.bottom, 20)
                 if let message { Text(message).font(.system(size: 24, weight: .semibold)).padding(.bottom, 10) }
                 if !request.playNow.isEmpty {
@@ -57,6 +57,11 @@ struct TVVersionsView: View {
         .onDisappear { model?.cancel() }
     }
 
+    static func queryText(_ query: MediaQuery) -> String {
+        if case let .text(text) = query { return "\u{201C}\(text)\u{201D}" }
+        return query.searchText
+    }
+
     private var status: String {
         guard let model else { return "Searching sources…" }
         if model.isLoading { return model.rows.isEmpty ? "Searching sources…" : "\(model.rows.count) found · still searching…" }
@@ -68,7 +73,7 @@ struct TVVersionsView: View {
     }
 
     private var label: String {
-        switch (request.target.season, request.target.episode) {
+        switch (request.target?.season, request.target?.episode) {
         case let (season?, episode?): " · S\(season) E\(episode)"
         case let (season?, nil): " · Season \(season)"
         default: ""
@@ -95,7 +100,11 @@ struct TVVersionsView: View {
         sending = release.id
         defer { sending = nil }
         do {
-            try await app.transfers.send(release, target: request.target)
+            let target = request.target ?? TransferTarget(
+                tmdbID: 0, kind: release.parsed.season == nil ? .movie : .tv,
+                title: release.parsed.title.isEmpty ? release.name : release.parsed.title,
+                posterPath: nil, backdropPath: nil, season: release.parsed.season, episode: release.parsed.episode)
+            try await app.transfers.send(release, target: target)
             dismiss()
         } catch {
             message = "Couldn't send that to put.io. Try another version."

@@ -8,7 +8,8 @@ enum TVTab: Hashable { case home, movies, tv, top250, search, library, settings 
 /// Release list for a title (movie, season or episode).
 struct TVVersionsRequest: Hashable {
     let query: MediaQuery
-    let target: TransferTarget
+    /// nil for a free-text release search (from Search): the release's own name decides where it goes.
+    let target: TransferTarget?
     let playNow: [LibraryEntry]
 }
 
