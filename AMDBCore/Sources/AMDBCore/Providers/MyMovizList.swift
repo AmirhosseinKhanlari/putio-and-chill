@@ -1,28 +1,31 @@
 import Foundation
 
-/// A list of newly released or updated movies from another site (no account needed).
-public protocol LatestMoviesSource: Sendable {
-    func latestMovies() async throws -> [ChillTitle]
+/// A list of newly released or updated movies or shows from another site (no account needed).
+public protocol LatestTitlesSource: Sendable {
+    var kind: MediaKind { get }
+    func latestTitles() async throws -> [ChillTitle]
 }
 
-/// mymoviz.co "latest movies" (آخرین بروزرسانی فیلم ها): the page is server-rendered HTML, newest first.
-/// Each card carries the English title with its year and the IMDb id in the poster's file name.
-public struct MyMovizClient: LatestMoviesSource {
+/// mymoviz.co "latest movies" / "latest TV shows": server-rendered HTML, newest first. Each card carries the English
+/// title with its year and the IMDb id in the poster's file name.
+public struct MyMovizClient: LatestTitlesSource {
+    public let kind: MediaKind
     private let http: HTTPRequester
     private let url: URL
 
-    public init(transport: any HTTPTransport, url: URL = URL(string: "https://mymoviz.co/main/latest-movies")!) {
+    public init(kind: MediaKind, transport: any HTTPTransport) {
+        self.kind = kind
         self.http = HTTPRequester(service: "mymoviz", transport: transport)
-        self.url = url
+        self.url = URL(string: kind == .tv ? "https://mymoviz.co/tvshows/tv-latest" : "https://mymoviz.co/main/latest-movies")!
     }
 
-    public func latestMovies() async throws -> [ChillTitle] {
+    public func latestTitles() async throws -> [ChillTitle] {
         let data = try await http.data(.get(url, headers: ["Accept": "text/html", "Accept-Language": "en"]))
         // The first page is the newest 24; that's all the app shows from here.
-        return Array(Self.parse(String(decoding: data, as: UTF8.self)).prefix(24))
+        return Array(Self.parse(String(decoding: data, as: UTF8.self), kind: kind).prefix(24))
     }
 
-    static func parse(_ html: String) -> [ChillTitle] {
+    static func parse(_ html: String, kind: MediaKind = .movie) -> [ChillTitle] {
         let card = try! NSRegularExpression(pattern: #"<a class="mv-card"[^>]*\btitle="([^"]+)""#)
         let ns = html as NSString
         let matches = card.matches(in: html, range: NSRange(location: 0, length: ns.length))
@@ -35,7 +38,7 @@ public struct MyMovizClient: LatestMoviesSource {
             let imdbID = body.range(of: #"tt\d{6,}"#, options: .regularExpression).map { String(body[$0]) }
             let (title, year) = splitYear(label)
             guard !title.isEmpty else { continue }
-            titles.append(ChillTitle(imdbID: imdbID, title: title, year: year, kind: .movie, source: "MYMOVIZ"))
+            titles.append(ChillTitle(imdbID: imdbID, title: title, year: year, kind: kind, source: "MYMOVIZ"))
         }
         return titles
     }

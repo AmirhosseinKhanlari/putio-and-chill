@@ -15,29 +15,32 @@ private final class FakeChill: ChillCatalogService, @unchecked Sendable {
     }
 }
 
-private struct FakeLatest: LatestMoviesSource {
-    func latestMovies() async throws -> [ChillTitle] {
-        [ChillTitle(imdbID: nil, title: "Animals", year: 2026, kind: .movie, source: "MYMOVIZ"),
-         ChillTitle(imdbID: nil, title: "Anora", year: 2024, kind: .movie, source: "MYMOVIZ")]
+private struct FakeLatest: LatestTitlesSource {
+    let kind: MediaKind
+    func latestTitles() async throws -> [ChillTitle] {
+        kind == .tv
+            ? [ChillTitle(imdbID: nil, title: "Seinfeld", year: 1989, kind: .tv, source: "MYMOVIZ")]
+            : [ChillTitle(imdbID: nil, title: "Animals", year: 2026, kind: .movie, source: "MYMOVIZ"),
+               ChillTitle(imdbID: nil, title: "Anora", year: 2024, kind: .movie, source: "MYMOVIZ")]
     }
 }
 
 @MainActor @Suite struct ChillFeedTests {
     let catalog = FakeCatalog(movieSearch: ["anora": [movie(1, "Anora")], "animals": [movie(2, "Animals", year: 2026)]],
-                              tvSearch: ["severance": [show(95396, "Severance")]])
+                              tvSearch: ["severance": [show(95396, "Severance")], "seinfeld": [show(1400, "Seinfeld", year: 1989)]])
 
     @Test func mergesChillAndOtherListsAndMatchesThemToTMDB() async {
         let feed = ChillFeed(fileURL: nil)
-        await feed.load(service: FakeChill(), extraMovies: [FakeLatest()], catalog: catalog)
+        await feed.load(service: FakeChill(), extra: [FakeLatest(kind: .movie), FakeLatest(kind: .tv)], catalog: catalog)
         #expect(feed.movies.map(\.title) == ["Animals", "Anora"], "newest first; unmatched titles dropped; Anora once")
-        #expect(feed.shows.map(\.tmdbID) == [95396])
+        #expect(feed.shows.map(\.tmdbID) == [95396, 1400], "chill's shows and MyMoviz's, newest first")
     }
 
     @Test func worksWithoutChill() async {
         let feed = ChillFeed(fileURL: nil)
-        await feed.load(service: nil, extraMovies: [FakeLatest()], catalog: catalog)
+        await feed.load(service: nil, extra: [FakeLatest(kind: .movie), FakeLatest(kind: .tv)], catalog: catalog)
         #expect(feed.movies.map(\.title) == ["Animals", "Anora"])
-        #expect(feed.shows.isEmpty)
+        #expect(feed.shows.map(\.title) == ["Seinfeld"])
     }
 
     @Test func keepsResultsForSixHoursAndOnDisk() async {

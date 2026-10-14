@@ -23,7 +23,7 @@ enum DemoMode {
             episodeRatings: DemoEpisodeRatings(),
             makeSubtitles: { _ in DemoSubtitles() },
             makeChillCatalog: { _ in DemoChill() },
-            latestMovies: [])
+            latestLists: [])
         let model = AppModel(tokens: InMemoryTokenStore([.putio: "demo", .tmdb: "demo", .chill: "demo"]),
                              defaults: UserDefaults(suiteName: "amdb.demo") ?? .standard,
                              store: LocalStore(fileURL: nil), factory: factory, bundledTraktClientID: "demo",

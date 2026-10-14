@@ -64,6 +64,30 @@ import Testing
         #expect(account.source == "MOVIES_SOURCE_YTS")
     }
 
+    /// RSS feeds (one per source, token in the URL) are used first, so the account's settings are never touched.
+    @Test func readsRSSFeedsWithoutChangingSettings() async throws {
+        let rss: @Sendable (String, String) -> Data = { title, imdb in Data("""
+            <?xml version="1.0"?><rss version="2.0"><channel><title>chill</title>
+            <item><title>\(title)</title><link>magnet:?xt=urn:btih:aaaa</link><guid>https://www.imdb.com/title/\(imdb)/</guid></item>
+            <item><title><![CDATA[\(title).1080p.WEBRip]]></title><description>\(imdb)</description></item>
+            </channel></rss>
+            """.utf8) }
+        let stub = StubTransport { request in
+            let path = request.url!.path
+            #expect(!path.hasSuffix("/SaveUserSettings"))
+            switch path {
+            case "/rss/movies/yts": return (200, rss("Heat (1995)", "tt0113277"))
+            case "/rss/movies/rotten-tomatoes": return (200, rss("Anora 2024", "tt28607951"))
+            case "/rss/movies/trakt", "/rss/movies/imdb/moviemeter", "/rss/movies/imdb/top-250": return (200, rss("Anora 2024", "tt28607951"))
+            default: return (404, Data())
+            }
+        }
+        let movies = try await ChillCatalogClient(token: "tok", transport: stub).combinedMovies()
+        #expect(movies.map(\.title) == ["Anora", "Heat"])
+        #expect(movies.map(\.imdbID) == ["tt28607951", "tt0113277"])
+        #expect(stub.requests.allSatisfy { $0.url!.query == "auth_token=tok" })
+    }
+
     @Test func showsComeFromAllProvidersNewestFirst() async throws {
         let shows = try await ChillCatalogClient(token: "tok", transport: Account().transport()).combinedShows()
         #expect(shows.map(\.title) == ["Severance", "Breaking Bad"])

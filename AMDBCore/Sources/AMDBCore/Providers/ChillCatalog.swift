@@ -55,9 +55,11 @@ public enum ChillMerge {
         }.map(\.element)
     }
 
+    /// A title with only a year counts as late that year, so lists without exact dates (MyMoviz, RSS) mix in by
+    /// year instead of always sinking below dated ones.
     private static func date(_ title: ChillTitle) -> String? {
         if let date = title.releaseDate, !date.isEmpty { return date }
-        return title.year.map { "\($0)-00-00" }
+        return title.year.map { "\($0)-12-31" }
     }
 
     /// "tt1234567" from an id or an IMDb link.
@@ -71,8 +73,9 @@ public enum ChillMerge {
 
 /// chill.institute's catalog lists, with the user's chill token.
 ///
-/// chill only serves the movie list chosen in the account's settings, so the combined row walks through every
-/// source by saving each choice in turn, then always puts the user's own choice back.
+/// Movie lists come from chill's per-source RSS feeds (`/rss/movies/<source>?auth_token=…`), which don't touch the
+/// account. If a feed can't be read, it falls back to the API, which only serves the list chosen in the account's
+/// settings: it saves each choice in turn, then always puts the user's own choice back.
 public actor ChillCatalogClient: ChillCatalogService {
     private let token: String
     private let baseURL: URL
@@ -85,6 +88,34 @@ public actor ChillCatalogClient: ChillCatalogService {
     }
 
     public func combinedMovies() async throws -> [ChillTitle] {
+        if let lists = try? await rssLists() { return ChillMerge.combine(lists) }
+        return try await switchingSettings()
+    }
+
+    static let rssPaths: [String: String] = [
+        "MOVIES_SOURCE_ROTTEN_TOMATOES": "rotten-tomatoes", "MOVIES_SOURCE_IMDB_MOVIEMETER": "imdb/moviemeter",
+        "MOVIES_SOURCE_YTS": "yts", "MOVIES_SOURCE_TRAKT": "trakt", "MOVIES_SOURCE_IMDB_TOP_250": "imdb/top-250",
+    ]
+
+    /// Every movie list from its RSS feed; nil-ish (throws) when any feed is missing or empty, so the caller falls back.
+    private func rssLists() async throws -> [[ChillTitle]] {
+        let root = baseURL.deletingLastPathComponent()
+        var lists: [[ChillTitle]] = []
+        for source in ChillMerge.movieSources {
+            guard let path = Self.rssPaths[source],
+                  var components = URLComponents(url: root.appending(path: "rss/movies/\(path)"), resolvingAgainstBaseURL: false)
+            else { throw AppError.decoding(service: "chill", detail: "rss path") }
+            components.queryItems = [URLQueryItem(name: "auth_token", value: token)]
+            guard let url = components.url else { throw AppError.decoding(service: "chill", detail: "rss url") }
+            let data = try await http.data(.get(url, headers: ["Accept": "application/rss+xml, application/xml, text/xml"]))
+            let titles = ChillRSS.parse(data, source: source)
+            guard !titles.isEmpty else { throw AppError.decoding(service: "chill", detail: "empty rss") }
+            lists.append(titles)
+        }
+        return lists
+    }
+
+    private func switchingSettings() async throws -> [ChillTitle] {
         let original = try await raw("GetUserSettings", body: Data("{}".utf8))
         guard var settings = try JSONSerialization.jsonObject(with: original) as? [String: Any] else {
             throw AppError.decoding(service: "chill", detail: "settings")
@@ -169,6 +200,55 @@ public actor ChillCatalogClient: ChillCatalogService {
         var chillTitle: ChillTitle {
             ChillTitle(imdbID: ChillMerge.imdbID(in: imdbId), title: title ?? "", year: year == 0 ? nil : year, kind: .tv,
                        releaseDate: firstAirDate, overview: overview, rating: rating, source: source ?? "TV_SHOWS_SOURCE_ALL_PROVIDERS")
+        }
+    }
+}
+
+/// Reads a chill movie RSS feed: each item's title (a movie or release name) and any IMDb id in the item.
+/// Several releases of one movie collapse into one title.
+enum ChillRSS {
+    static func parse(_ data: Data, source: String) -> [ChillTitle] {
+        let reader = ItemReader()
+        let parser = XMLParser(data: data)
+        parser.delegate = reader
+        parser.parse()
+        var seen: Set<String> = []
+        return reader.items.compactMap { item -> ChillTitle? in
+            let parsed = ReleaseNameParser.parse(item.title)
+            let name = parsed.title.isEmpty ? item.title : parsed.title
+            guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+            let title = ChillTitle(imdbID: ChillMerge.imdbID(in: item.text), title: name, year: parsed.year, kind: .movie,
+                                   source: source)
+            return seen.insert(title.mergeKey).inserted ? title : nil
+        }
+    }
+
+    final class ItemReader: NSObject, XMLParserDelegate {
+        struct Item { var title = ""; var text = "" }
+        var items: [Item] = []
+        private var current: Item?
+        private var element = ""
+
+        func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?,
+                    attributes: [String: String] = [:]) {
+            element = name
+            if name == "item" || name == "entry" { current = Item() }
+            if current != nil { current?.text += " " + attributes.values.joined(separator: " ") }
+        }
+
+        func parser(_ parser: XMLParser, foundCharacters string: String) { append(string) }
+
+        func parser(_ parser: XMLParser, foundCDATA block: Data) { append(String(decoding: block, as: UTF8.self)) }
+
+        func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) {
+            if name == "item" || name == "entry", let current { items.append(current); self.current = nil }
+            element = ""
+        }
+
+        private func append(_ string: String) {
+            guard current != nil else { return }
+            if element == "title" { current?.title += string }
+            current?.text += " " + string
         }
     }
 }

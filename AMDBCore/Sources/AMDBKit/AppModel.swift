@@ -12,8 +12,8 @@ public struct ServiceFactory: Sendable {
     public var episodeRatings: any EpisodeRatingsService
     public var makeSubtitles: @Sendable (String) -> any SubtitleService
     public var makeChillCatalog: @Sendable (String) -> any ChillCatalogService
-    /// Latest-movie lists that need no account (MyMoviz).
-    public var latestMovies: [any LatestMoviesSource]
+    /// Latest movie / show lists that need no account (MyMoviz).
+    public var latestLists: [any LatestTitlesSource]
 
     public init(makePutio: @escaping @Sendable (String) -> any PutioService,
                 makeCatalog: @escaping @Sendable (String) -> any CatalogService,
@@ -32,7 +32,8 @@ public struct ServiceFactory: Sendable {
                 makeChillCatalog: @escaping @Sendable (String) -> any ChillCatalogService = {
                     ChillCatalogClient(token: $0, transport: URLSessionTransport())
                 },
-                latestMovies: [any LatestMoviesSource] = [MyMovizClient(transport: URLSessionTransport())]) {
+                latestLists: [any LatestTitlesSource] = [MyMovizClient(kind: .movie, transport: URLSessionTransport()),
+                                                         MyMovizClient(kind: .tv, transport: URLSessionTransport())]) {
         self.makePutio = makePutio
         self.makeCatalog = makeCatalog
         self.makeProvider = makeProvider
@@ -42,7 +43,7 @@ public struct ServiceFactory: Sendable {
         self.episodeRatings = episodeRatings
         self.makeSubtitles = makeSubtitles
         self.makeChillCatalog = makeChillCatalog
-        self.latestMovies = latestMovies
+        self.latestLists = latestLists
     }
 
     public static let live: ServiceFactory = {
@@ -315,7 +316,7 @@ public final class AppModel {
     /// Combined latest lists (chill when connected, plus MyMoviz) for the Movies / TV Shows tabs;
     /// at most every six hours unless forced.
     public func refreshChillFeed(force: Bool = false) async {
-        await chillFeed.load(service: chillCatalog, extraMovies: factory.latestMovies, catalog: catalog, force: force)
+        await chillFeed.load(service: chillCatalog, extra: factory.latestLists, catalog: catalog, force: force)
     }
 
     public func notePlayed(_ title: PlayedTitle) async {

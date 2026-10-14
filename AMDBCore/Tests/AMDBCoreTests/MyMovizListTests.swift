@@ -26,8 +26,15 @@ import Testing
 
     @Test func fetchesThePage() async throws {
         let stub = StubTransport { _ in (200, Data(Self.page.utf8)) }
-        let titles = try await MyMovizClient(transport: stub).latestMovies()
+        let titles = try await MyMovizClient(kind: .movie, transport: stub).latestTitles()
         #expect(titles.count == 3)
         #expect(stub.requests.first?.url?.absoluteString == "https://mymoviz.co/main/latest-movies")
+    }
+
+    @Test func tvShowsComeFromTheTVPage() async throws {
+        let stub = StubTransport { _ in (200, Data(Self.page.utf8)) }
+        let titles = try await MyMovizClient(kind: .tv, transport: stub).latestTitles()
+        #expect(titles.allSatisfy { $0.kind == .tv })
+        #expect(stub.requests.first?.url?.absoluteString == "https://mymoviz.co/tvshows/tv-latest")
     }
 }

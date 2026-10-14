@@ -30,8 +30,8 @@ public struct ChillFeedSnapshot: Codable, Sendable {
     public var shows: [FeedTitle]
 }
 
-/// "Latest" rows for the Movies and TV Shows tabs: every chill list (with a chill account) plus other latest-movie
-/// lists such as MyMoviz, combined, matched to TMDB and kept for six hours (chill's movie lists briefly switch the
+/// "Latest" rows for the Movies and TV Shows tabs: every chill list (with a chill account) plus MyMoviz's newest
+/// movies and shows, combined, matched to TMDB and kept for six hours (chill's movie lists briefly switch the
 /// source saved in the chill account, so this shouldn't run often).
 @Observable @MainActor
 public final class ChillFeed {
@@ -50,20 +50,26 @@ public final class ChillFeed {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "AMDB/chill-feed.json")
     }
 
-    public func load(service: (any ChillCatalogService)?, extraMovies: [any LatestMoviesSource] = [],
-                     catalog: (any CatalogService)?, force: Bool = false, now: Date = Date(), limit: Int = 40) async {
+    public func load(service: (any ChillCatalogService)?, extra: [any LatestTitlesSource] = [],
+                     catalog: (any CatalogService)?, force: Bool = false, now: Date = Date(), limit: Int = 48) async {
         readCacheOnce()
         if !force, let updatedAt, now.timeIntervalSince(updatedAt) < Self.maxAge { return }
-        guard service != nil || !extraMovies.isEmpty, let catalog, !isLoading else { return }
+        guard service != nil || !extra.isEmpty, let catalog, !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
         async let chillMovies = try? service?.combinedMovies()
-        async let showTitles = try? service?.combinedShows()
+        async let chillShows = try? service?.combinedShows()
         var movieLists: [[ChillTitle]] = []
-        for source in extraMovies { if let list = try? await source.latestMovies() { movieLists.append(list) } }
-        let (fromChill, foundShows) = await (chillMovies, showTitles)
-        if let fromChill { movieLists.insert(fromChill, at: 0) }
+        var showLists: [[ChillTitle]] = []
+        for source in extra {
+            guard let list = try? await source.latestTitles() else { continue }
+            if source.kind == .tv { showLists.append(list) } else { movieLists.append(list) }
+        }
+        let (fromChillMovies, fromChillShows) = await (chillMovies, chillShows)
+        if let fromChillMovies { movieLists.insert(fromChillMovies, at: 0) }
+        if let fromChillShows { showLists.insert(fromChillShows, at: 0) }
         let foundMovies: [ChillTitle]? = movieLists.isEmpty ? nil : ChillMerge.combine(movieLists)
+        let foundShows: [ChillTitle]? = showLists.isEmpty ? nil : ChillMerge.combine(showLists)
         guard foundMovies != nil || foundShows != nil else { return }
         let resolvedMovies = await Self.resolve(Array((foundMovies ?? []).prefix(limit)), catalog: catalog)
         let resolvedShows = await Self.resolve(Array((foundShows ?? []).prefix(limit)), catalog: catalog)
