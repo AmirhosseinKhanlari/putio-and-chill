@@ -13,7 +13,7 @@ final class EpisodeDownloadUITests: XCTestCase {
         XCTAssertTrue(seasonMenu.waitForExistence(timeout: 20))
         seasonMenu.tap()
         app.buttons["Season 2"].tap()
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Download season' OR label == 'Season downloaded'")).firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Download season' OR label == 'Season downloaded' OR label ENDSWITH ' downloaded' OR label BEGINSWITH 'Download '")).firstMatch.waitForExistence(timeout: 10))
         let play = app.buttons.matching(NSPredicate(format: "label == 'Play episode' OR label == 'Resume episode'")).firstMatch
         for _ in 0..<4 where !(play.exists && play.isHittable) { app.swipeUp() }
         XCTAssertTrue(play.exists)
@@ -24,6 +24,13 @@ final class EpisodeDownloadUITests: XCTestCase {
             let item = app.buttons.matching(NSPredicate(format: "label == 'Download to This Device' OR label == 'Remove Download'")).firstMatch
             XCTAssertTrue(item.waitForExistence(timeout: 5))
         }
-        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "season2"; shot.lifetime = .keepAlways; add(shot)
+        // Only E4 of season 2 is downloaded in demo mode, so the season isn't "downloaded".
+        XCTAssertFalse(app.buttons["Season downloaded"].exists)
+        XCTAssertTrue(app.buttons["1 of 8 downloaded"].exists)
+        let screenshot = XCUIScreen.main.screenshot()
+        let shot = XCTAttachment(screenshot: screenshot); shot.name = "season2"; shot.lifetime = .keepAlways; add(shot)
+        if let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"] {
+            try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("season2.png"))
+        }
     }
 }

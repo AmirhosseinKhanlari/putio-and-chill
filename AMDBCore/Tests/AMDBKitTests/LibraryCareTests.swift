@@ -76,3 +76,22 @@ import Testing
         #expect(downloads.finished.map(\.fileID) == [7])
     }
 }
+
+@Suite struct SeasonDownloadStatusTests {
+    @Test func oneOfTenDownloadedIsNotTheWholeSeason() {
+        #expect(SeasonDownloadStatus.of(total: 10, inPutio: 1, downloaded: 1, active: 0) == .partial(downloaded: 1, total: 10))
+    }
+
+    @Test func everyEpisodeOnTheDeviceIsTheSeason() {
+        #expect(SeasonDownloadStatus.of(total: 8, inPutio: 8, downloaded: 8, active: 0) == .seasonDownloaded)
+    }
+
+    @Test func offersWhatsInPutioButNotOnTheDevice() {
+        #expect(SeasonDownloadStatus.of(total: 10, inPutio: 4, downloaded: 1, active: 0) == .download(count: 3, wholeSeason: false))
+        #expect(SeasonDownloadStatus.of(total: 8, inPutio: 8, downloaded: 0, active: 0) == .download(count: 8, wholeSeason: true))
+    }
+
+    @Test func showsDownloadsInProgress() {
+        #expect(SeasonDownloadStatus.of(total: 10, inPutio: 3, downloaded: 1, active: 2) == .downloading(count: 2))
+    }
+}

@@ -87,3 +87,24 @@ public final class DownloadsIndex {
         await store.update { $0.downloads = snapshot }
     }
 }
+
+/// What the season's download button says, from how many of the season's episodes are in put.io and on the device.
+public enum SeasonDownloadStatus: Equatable, Sendable {
+    /// Some episodes in put.io aren't on the device yet.
+    case download(count: Int, wholeSeason: Bool)
+    case downloading(count: Int)
+    /// Every episode of the season is on the device.
+    case seasonDownloaded
+    /// Everything in put.io is on the device, but the season has more episodes than that.
+    case partial(downloaded: Int, total: Int)
+
+    /// - Parameters: total = episodes in the season; inPutio = how many of them are in put.io;
+    ///   downloaded / active = of those, finished and in-progress device downloads.
+    public static func of(total: Int, inPutio: Int, downloaded: Int, active: Int) -> SeasonDownloadStatus {
+        let missing = inPutio - downloaded - active
+        if missing > 0 { return .download(count: missing, wholeSeason: missing == total) }
+        if active > 0 { return .downloading(count: active) }
+        if total > 0, downloaded >= total { return .seasonDownloaded }
+        return .partial(downloaded: downloaded, total: total)
+    }
+}

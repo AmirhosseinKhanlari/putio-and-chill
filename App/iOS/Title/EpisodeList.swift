@@ -39,16 +39,34 @@ struct EpisodeList: View {
         .padding(.horizontal, Metrics.gutter(sizeClass))
     }
 
-    /// Saves every episode of the season that's already in put.io to this device.
+    /// Saves every episode of the season that's already in put.io to this device. Says "Season downloaded" only when
+    /// every episode of the season is on the device.
     @ViewBuilder private func downloadSeasonButton(_ season: Int) -> some View {
         let inPutio = model.episodes.compactMap { app.library.matching(tmdbID: model.item.tmdbID, season: season, episode: $0.number).first }
-        let missing = inPutio.filter { app.downloads.record(fileID: $0.id) == nil }
+        let states = inPutio.map { app.downloads.record(fileID: $0.id)?.state }
+        let downloaded = states.filter { if case .done? = $0 { true } else { false } }.count
+        let active = states.filter { if case .downloading? = $0 { true } else if case .queued? = $0 { true } else { false } }.count
+        // Not on the device yet (never downloaded, or a download that failed).
+        let missing = zip(inPutio, states).filter { _, state in
+            switch state { case nil, .failed?: true; default: false }
+        }.map(\.0)
+        let status = SeasonDownloadStatus.of(total: model.episodes.count, inPutio: inPutio.count, downloaded: downloaded,
+                                             active: active)
         if !inPutio.isEmpty {
             Button {
                 Task { for entry in missing { await downloader.start(entry) } }
             } label: {
-                Label(missing.isEmpty ? "Season downloaded" : "Download season",
-                      systemImage: missing.isEmpty ? "checkmark.circle.fill" : "arrow.down.to.line")
+                switch status {
+                case let .download(count, wholeSeason):
+                    Label(wholeSeason ? "Download season" : "Download \(count) episode\(count == 1 ? "" : "s")",
+                          systemImage: "arrow.down.to.line")
+                case let .downloading(count):
+                    Label("Downloading \(count)…", systemImage: "arrow.down.circle")
+                case .seasonDownloaded:
+                    Label("Season downloaded", systemImage: "checkmark.circle.fill")
+                case let .partial(done, total):
+                    Label("\(done) of \(total) downloaded", systemImage: "checkmark.circle")
+                }
             }
             .buttonStyle(.glassPill)
             .disabled(missing.isEmpty || !OfflineDownloader.isSupported)
