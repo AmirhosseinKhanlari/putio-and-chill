@@ -3,7 +3,7 @@ import AMDBKit
 import Observation
 import SwiftUI
 
-enum TVTab: Hashable { case home, movies, tv, top250, search, library, settings }
+enum TVTab: Hashable { case home, movies, tv, upcoming, top250, search, library, settings }
 
 /// Release list for a title (movie, season or episode).
 struct TVVersionsRequest: Hashable {
@@ -45,6 +45,7 @@ final class TVRouter {
     var searchPath: [TVRoute] = []
     var libraryPath: [TVRoute] = []
     var topPath: [TVRoute] = []
+    var upcomingPath: [TVRoute] = []
     var player: TVPlayRequest?
     /// "Ready to watch" notice for a finished transfer.
     var ready: TrackedTransfer?
@@ -56,6 +57,7 @@ final class TVRouter {
         case .tv: tvPath.append(route)
         case .search: searchPath.append(route)
         case .top250: topPath.append(route)
+        case .upcoming: upcomingPath.append(route)
         case .library, .settings: libraryPath.append(route)
         }
     }

@@ -20,6 +20,8 @@ struct TVRootView: View {
                         .tabItem { Text("Movies") }.tag(TVTab.movies)
                     stack($router.tvPath) { TVBrowseView(kind: .tv) }
                         .tabItem { Text("TV Shows") }.tag(TVTab.tv)
+                    stack($router.upcomingPath) { TVComingUpView() }
+                        .tabItem { Text("Coming Up") }.tag(TVTab.upcoming)
                     stack($router.topPath) { TVChartView() }
                         .tabItem { Text("Top 250") }.tag(TVTab.top250)
                     stack($router.libraryPath) { TVLibraryView() }
@@ -115,6 +117,7 @@ struct TVRootView: View {
         case "collection": router.homePath = [.collection(8945)]
         case "surprise": router.homePath = [.surprise]
         case "chart": router.tab = .top250
+        case "upcoming": router.tab = .upcoming
         case "library": router.tab = .library
         case "search": router.tab = .search
         case "settings": router.tab = .settings
