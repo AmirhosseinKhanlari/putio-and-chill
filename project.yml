@@ -140,6 +140,7 @@ targets:
           - CFBundleURLName: app.amdb
             CFBundleURLSchemes: [amdb]
         CFBundleDisplayName: AMDB
+        UIRequiredDeviceCapabilities: [arm64]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
@@ -174,6 +175,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: AMDB Top Shelf
+        UIRequiredDeviceCapabilities: [arm64]
         NSExtension:
           NSExtensionPointIdentifier: com.apple.tv-top-shelf
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ContentProvider
