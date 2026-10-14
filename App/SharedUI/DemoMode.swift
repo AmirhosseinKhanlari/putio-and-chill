@@ -23,8 +23,12 @@ enum DemoMode {
             episodeRatings: DemoEpisodeRatings(),
             makeSubtitles: { _ in DemoSubtitles() },
             makeChillCatalog: { _ in DemoChill() },
-            latestLists: [])
-        let model = AppModel(tokens: InMemoryTokenStore([.putio: "demo", .tmdb: "demo", .chill: "demo"]),
+            latestLists: [],
+            imdbLists: DemoIMDbList())
+        // `-demoIMDb` starts with an IMDb watchlist connected.
+        var tokens: [TokenKey: String] = [.putio: "demo", .tmdb: "demo", .chill: "demo"]
+        if ProcessInfo.processInfo.arguments.contains("-demoIMDb") { tokens[.imdb] = "https://www.imdb.com/user/ur12345678/watchlist" }
+        let model = AppModel(tokens: InMemoryTokenStore(tokens),
                              defaults: UserDefaults(suiteName: "amdb.demo") ?? .standard,
                              store: LocalStore(fileURL: nil), factory: factory, bundledTraktClientID: "demo",
                              bundledOpenSubtitlesKey: "demo")
@@ -195,6 +199,11 @@ struct DemoCatalog: CatalogService {
     }
     func discover(_ kind: MediaKind, genreIDs: [Int], minRating: Double, minVotes: Int, page: Int) async throws -> CatalogPage {
         CatalogPage(items: kind == .tv ? Self.shows : Self.movies, page: page, totalPages: 1)
+    }
+    /// Demo IMDb ids are "tt" + the TMDB id.
+    func findByIMDb(_ imdbID: String) async throws -> CatalogItem? {
+        guard let id = Int(imdbID.dropFirst(2)) else { return nil }
+        return Self.everything.first { $0.tmdbID == id }
     }
     func item(_ kind: MediaKind, id: Int) async throws -> CatalogItem {
         guard let item = Self.everything.first(where: { $0.tmdbID == id }) else { throw AppError.http(service: "tmdb", status: 404) }
@@ -500,5 +509,16 @@ struct DemoChill: ChillCatalogService {
     }
     func combinedShows() async throws -> [ChillTitle] {
         DemoCatalog.shows.map { ChillTitle(imdbID: nil, title: $0.title, year: $0.year, kind: .tv, source: "DEMO") }
+    }
+}
+
+/// A demo IMDb watchlist: a few of the demo movies and shows. "ur0000000" is a private one.
+struct DemoIMDbList: IMDbListService {
+    func titles(_ ref: IMDbListRef, limit: Int) async throws -> [IMDbListTitle] {
+        try await Task.sleep(for: .milliseconds(400))
+        if ref == .watchlist(userID: "ur0000000") { throw IMDbWatchlistError.privateOrMissing }
+        let picks = Array(DemoCatalog.shows.prefix(2)) + Array(DemoCatalog.movies.suffix(5))
+        return picks.map { IMDbListTitle(imdbID: "tt\($0.tmdbID)", title: $0.title, kind: $0.mediaType == .tv ? "tvSeries" : "movie",
+                                         year: $0.year) }
     }
 }

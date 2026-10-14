@@ -83,6 +83,9 @@ struct SettingsView: View {
     }
 
     @State private var confirmSignOut = false
+    @State private var imdbLink = ""
+    @State private var imdbProblem: String?
+    @State private var connectingIMDb = false
 
     var body: some View {
         NavigationStack {
@@ -224,7 +227,7 @@ struct SettingsView: View {
     }
 
     private var servicesSummary: String {
-        let count = [app.catalog != nil, app.hasRatings, app.hasChill, app.hasSubtitleSearch].filter { $0 }.count
+        let count = [app.catalog != nil, app.hasRatings, app.hasChill, app.hasSubtitleSearch, app.imdbWatchlist.isConnected].filter { $0 }.count
         return "\(count) connected"
     }
 
@@ -413,6 +416,43 @@ struct SettingsView: View {
         }
     }
 
+    /// IMDb watchlist: paste a profile or watchlist link; the list must be public (read-only).
+    private var imdbSection: some View {
+        Section {
+            if app.imdbWatchlist.isConnected {
+                LabeledContent("IMDb Watchlist", value: app.imdbWatchlist.isLoading ? "Loading…"
+                    : "\(app.imdbWatchlist.items.count) title\(app.imdbWatchlist.items.count == 1 ? "" : "s")")
+                if let problem = app.imdbWatchlist.problem { Text(problem).font(.footnote).foregroundStyle(Theme.okay) }
+                Button("Disconnect IMDb", role: .destructive) { app.disconnectIMDb() }
+            } else {
+                TextField("IMDb profile or watchlist link", text: $imdbLink)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                Button {
+                    connectingIMDb = true
+                    Task {
+                        imdbProblem = await app.connectIMDb(imdbLink)
+                        connectingIMDb = false
+                        if imdbProblem == nil { imdbLink = "" }
+                    }
+                } label: {
+                    HStack {
+                        Text("Connect IMDb")
+                        Spacer()
+                        if connectingIMDb { ProgressView() }
+                    }
+                }
+                .disabled(imdbLink.trimmingCharacters(in: .whitespaces).isEmpty || connectingIMDb)
+                if let imdbProblem { Text(imdbProblem).font(.footnote).foregroundStyle(Theme.poor) }
+            }
+        } header: {
+            Text("IMDb")
+        } footer: {
+            Text("Your IMDb watchlist shows on Home (here and on Apple TV). Paste the link to your IMDb profile or watchlist (IMDb app: You → Watchlist → Share). It must be public: on imdb.com open your Watchlist → Edit → Privacy → Public. The app only reads it.")
+        }
+    }
+
     private var servicesPage: some View {
         Form {
             Section {
@@ -455,6 +495,7 @@ struct SettingsView: View {
             } footer: {
                 Text("IMDb, Rotten Tomatoes, Metacritic and Letterboxd scores on title pages.")
             }
+            imdbSection
             Section {
                 LabeledContent("chill.institute", value: app.hasChill ? "Connected" : "Not connected")
                 if app.hasChill {

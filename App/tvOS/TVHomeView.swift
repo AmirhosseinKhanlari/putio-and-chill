@@ -60,6 +60,11 @@ struct TVHomeView: View {
                 if !app.library.recentlyAdded.isEmpty {
                     TVEntryShelf(title: "Recently Added to put.io", entries: app.library.recentlyAdded)
                 }
+                if !app.imdbWatchlist.items.isEmpty {
+                    TVShelf(title: "IMDb Watchlist") {
+                        ForEach(Array(app.imdbWatchlist.items.prefix(40))) { item in TVPosterButton(item: item) { router.open(item) } }
+                    }
+                }
                 ForEach(model?.rows ?? []) { TVCatalogShelf(row: $0) }
                 if model?.error != nil {
                     Text("Couldn't load the catalog.").foregroundStyle(TVMetrics.secondaryText).padding(.horizontal, TVMetrics.edge)
@@ -70,6 +75,7 @@ struct TVHomeView: View {
         // The featured art runs up behind the floating tab bar.
         .ignoresSafeArea(edges: .top)
         .tvPageBackground()
+        .task { await app.imdbWatchlist.load() }
         .task {
             guard model == nil, let catalog = app.catalog else { return }
             let home = HomeModel(catalog: catalog, store: app.store)

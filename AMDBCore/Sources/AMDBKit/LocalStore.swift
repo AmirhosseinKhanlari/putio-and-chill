@@ -98,10 +98,15 @@ public struct LocalState: Codable, Sendable, Equatable {
     public var downloads: [DownloadRecord] = []
     /// OpenSubtitles pick per put.io file ID.
     public var subtitleChoices: [Int64: SubtitleChoice] = [:]
+    /// The IMDb watchlist as last loaded (shown at once, and offline).
+    public var imdbWatchlist: [SavedTitle] = []
+    /// IMDb id → TMDB title, so each watchlist title is looked up once.
+    public var imdbMatches: [String: SavedTitle] = [:]
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case matches, unmatched, unmatchedAt, pending, recentSearches, lastPlayed, folderIDs, myList, finished, downloads, subtitleChoices
+        case imdbWatchlist, imdbMatches
     }
 
     /// Every field is optional on disk, so files written by older versions keep loading.
@@ -118,6 +123,8 @@ public struct LocalState: Codable, Sendable, Equatable {
         finished = try c.decodeIfPresent([FinishedFile].self, forKey: .finished) ?? []
         downloads = try c.decodeIfPresent([DownloadRecord].self, forKey: .downloads) ?? []
         subtitleChoices = try c.decodeIfPresent([Int64: SubtitleChoice].self, forKey: .subtitleChoices) ?? [:]
+        imdbWatchlist = try c.decodeIfPresent([SavedTitle].self, forKey: .imdbWatchlist) ?? []
+        imdbMatches = try c.decodeIfPresent([String: SavedTitle].self, forKey: .imdbMatches) ?? [:]
     }
 }
 

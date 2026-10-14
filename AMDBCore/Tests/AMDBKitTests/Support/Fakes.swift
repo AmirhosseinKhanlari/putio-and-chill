@@ -210,6 +210,8 @@ struct FakeCatalog: CatalogService {
     var discoverCalls: DiscoverCalls?
     var multiPages: [String: [Int: [CatalogItem]]] = [:]
     var multiTotalPages = 1
+    var imdb: [String: CatalogItem] = [:]
+    func findByIMDb(_ imdbID: String) async throws -> CatalogItem? { try guarded(imdb[imdbID]) }
 
     private func guarded<T>(_ value: T) throws -> T {
         if failAll { throw AppError.transport("offline") }

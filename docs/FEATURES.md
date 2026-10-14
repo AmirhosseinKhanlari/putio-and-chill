@@ -90,6 +90,12 @@ Everything Putio & Chill does, by area. Unless noted, a feature works on iPhone,
 - **put.io folders**: downloads go to Movies / TV folders you choose (with optional season folders); **Organize
   library** previews and moves existing files into them.
 
+## IMDb Watchlist
+
+- Settings → Connected Services → IMDb: paste your IMDb profile or watchlist link (the watchlist must be public).
+- Your watchlist shows as a row on Home (iPhone, iPad and Apple TV) and as a full page with Movies / Shows filters;
+  every title opens its page with Get & Watch. Read-only; refreshed every 15 minutes or on pull to refresh.
+
 ## Library
 
 - Your whole put.io, matched to TMDB, as posters with filters (All, Movies, TV, Other).

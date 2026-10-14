@@ -31,6 +31,11 @@ struct HomeView: View {
                 if !app.library.recentlyAdded.isEmpty {
                     EntryRowView(title: "Recently Added to put.io", entries: app.library.recentlyAdded)
                 }
+                if !app.imdbWatchlist.items.isEmpty {
+                    CatalogRowView(row: CatalogRow(id: "imdb", title: "IMDb Watchlist", items: Array(app.imdbWatchlist.items.prefix(30)))) {
+                        router.openIMDbWatchlist()
+                    }
+                }
                 ForEach(model?.rows ?? []) { CatalogRowView(row: $0) }
                 if let error = model?.error {
                     VStack(alignment: .leading, spacing: 10) {
@@ -49,8 +54,10 @@ struct HomeView: View {
         .toolbar(.hidden, for: .navigationBar)
         .refreshable {
             await model?.load()
+            await app.imdbWatchlist.load(force: true)
             await app.library.refresh(retryUnmatched: true)
         }
+        .task { await app.imdbWatchlist.load() }
         .task {
             guard model == nil, let catalog = app.catalog else { return }
             let home = HomeModel(catalog: catalog, store: app.store)

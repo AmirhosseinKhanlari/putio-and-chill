@@ -237,6 +237,7 @@ private struct TabStack: View {
                     case .downloads: DownloadsPage()
                     case let .files(folder): FilesPage(folder: folder)
                     case .trash: TrashPage()
+                    case .imdbWatchlist: IMDbWatchlistPage()
                     }
                 }
         }

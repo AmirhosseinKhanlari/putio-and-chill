@@ -14,6 +14,7 @@ public struct ServiceFactory: Sendable {
     public var makeChillCatalog: @Sendable (String) -> any ChillCatalogService
     /// Latest movie / show lists that need no account (MyMoviz).
     public var latestLists: [any LatestTitlesSource]
+    public var imdbLists: any IMDbListService
 
     public init(makePutio: @escaping @Sendable (String) -> any PutioService,
                 makeCatalog: @escaping @Sendable (String) -> any CatalogService,
@@ -33,7 +34,9 @@ public struct ServiceFactory: Sendable {
                     ChillCatalogClient(token: $0, transport: URLSessionTransport())
                 },
                 latestLists: [any LatestTitlesSource] = [MyMovizClient(kind: .movie, transport: URLSessionTransport()),
-                                                         MyMovizClient(kind: .tv, transport: URLSessionTransport())]) {
+                                                         MyMovizClient(kind: .tv, transport: URLSessionTransport())],
+                imdbLists: any IMDbListService = IMDbWatchlistClient(transport: URLSessionTransport())) {
+        self.imdbLists = imdbLists
         self.makePutio = makePutio
         self.makeCatalog = makeCatalog
         self.makeProvider = makeProvider
@@ -99,6 +102,8 @@ public final class AppModel {
     public let chillFeed: ChillFeed
     /// put.io's used / free space and trash size.
     public let storage = PutioStorage()
+    /// The user's public IMDb watchlist, matched to TMDB.
+    public let imdbWatchlist: IMDbWatchlistModel
     /// put.io MP4 conversions of videos Apple devices can't play as they are.
     public let conversions = VideoConversions()
     @ObservationIgnored private var filesChangedRefresh: Task<Void, Never>?
@@ -144,6 +149,7 @@ public final class AppModel {
         myList = MyList(store: store)
         downloads = DownloadsIndex(store: store)
         chillFeed = ChillFeed(fileURL: chillFeedURL)
+        imdbWatchlist = IMDbWatchlistModel(store: store)
         rebuild()
     }
 
@@ -174,6 +180,29 @@ public final class AppModel {
             await library.refresh()
             await storage.refresh()
         }
+    }
+
+    /// Connects a public IMDb watchlist from a link the user pasted. Returns what's wrong, or nil when it worked.
+    public func connectIMDb(_ link: String) async -> String? {
+        guard let ref = IMDbListRef.parse(link) else {
+            return "That doesn't look like an IMDb profile, watchlist or list link."
+        }
+        do {
+            _ = try await factory.imdbLists.titles(ref, limit: 1)
+        } catch IMDbWatchlistError.privateOrMissing {
+            return "IMDb didn't share that watchlist. Make it public on imdb.com (Watchlist → Edit → Privacy: Public)."
+        } catch {
+            return "Couldn't reach IMDb. Try again in a moment."
+        }
+        tokens.write(link.trimmingCharacters(in: .whitespacesAndNewlines), for: .imdb)
+        rebuild()
+        await imdbWatchlist.load(force: true)
+        return nil
+    }
+
+    public func disconnectIMDb() {
+        tokens.write(nil, for: .imdb)
+        rebuild()
     }
 
     /// Updates the library from put.io when automatic updates are on and it's older than the chosen interval
@@ -381,6 +410,7 @@ public final class AppModel {
         library.configure(putio: putio, catalog: catalog)
         storage.configure(putio: putio)
         conversions.configure(putio: putio)
+        imdbWatchlist.configure(link: tokens.read(.imdb), service: factory.imdbLists, catalog: catalog)
         transfers.configure(putio: putio, library: library)
         transfers.layout = FolderLayout(settings: settings)
     }

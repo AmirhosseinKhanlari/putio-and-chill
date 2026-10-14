@@ -113,3 +113,10 @@ public protocol EpisodeRatingsService: Sendable {
 }
 
 extension IMDbEpisodeRatingsClient: EpisodeRatingsService {}
+
+/// A public IMDb watchlist or list.
+public protocol IMDbListService: Sendable {
+    func titles(_ ref: IMDbListRef, limit: Int) async throws -> [IMDbListTitle]
+}
+
+extension IMDbWatchlistClient: IMDbListService {}

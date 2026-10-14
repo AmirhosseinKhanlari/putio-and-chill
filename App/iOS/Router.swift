@@ -39,6 +39,7 @@ enum Route: Hashable {
     case downloads
     case files(FilesFolder)
     case trash
+    case imdbWatchlist
 }
 
 struct NextEpisode: Hashable {
@@ -138,6 +139,7 @@ final class Router {
     func openFiles() { push(.files(.root)) }
     func openFolder(_ folder: FilesFolder) { push(.files(folder)) }
     func openTrash() { push(.trash) }
+    func openIMDbWatchlist() { push(.imdbWatchlist) }
 
     private func push(_ route: Route) {
         switch tab {
