@@ -143,6 +143,8 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
 
     func localURL(fileID: Int64) -> URL? {
         guard case let .done(stored)? = app.downloads.record(fileID: fileID)?.state else { return nil }
+        // Demo mode's "downloads" have no file behind them; they play the demo video.
+        if DemoMode.isEnabled { return app.putio?.hlsURL(fileID: fileID, subtitles: false) }
         let path = DownloadPaths.resolve(stored: stored, home: NSHomeDirectory())
         for candidate in [path, "/private" + path] where FileManager.default.fileExists(atPath: candidate) {
             return URL(fileURLWithPath: candidate)
