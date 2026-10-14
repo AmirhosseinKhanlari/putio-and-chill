@@ -215,8 +215,12 @@ struct FilesPage: View {
     }
 
     private func row(_ file: PutioFile) -> some View {
-        FileRow(file: file, selected: selecting ? selection.contains(file.id) : nil, resume: resume(file)) {
-            if selecting { toggle(file.id) } else { open(file) }
+        HStack(spacing: 10) {
+            FileRow(file: file, selected: selecting ? selection.contains(file.id) : nil, resume: resume(file)) {
+                if selecting { toggle(file.id) } else { open(file) }
+            }
+            // Save to this device for offline viewing, with its progress (like episode rows).
+            if file.isVideo, !selecting { DownloadButton(entry: entry(file), plain: true) }
         }
         .listRowBackground(Color.clear)
         .listRowSeparatorTint(.white.opacity(0.08))
@@ -225,10 +229,17 @@ struct FilesPage: View {
         .swipeActions(edge: .trailing) {
             if !selecting {
                 Button(role: .destructive) { deleting = [file.id] } label: { Label("Delete", systemImage: "trash") }
+                    .tint(Theme.poor)
                 Button { destination = DestinationRequest(action: .move, ids: [file.id], source: folder.id) } label: {
                     Label("Move", systemImage: "folder")
                 }
                 .tint(.indigo)
+            }
+        }
+        .swipeActions(edge: .leading) {
+            if !selecting, file.isFolder || file.isVideo, OfflineDownloader.isSupported {
+                Button { download(file) } label: { Label("Download", systemImage: "arrow.down.to.line") }
+                    .tint(Theme.good)
             }
         }
     }
@@ -241,7 +252,11 @@ struct FilesPage: View {
                     Label("Download to This Device", systemImage: "arrow.down.to.line")
                 }
             }
-        } else if !file.isFolder {
+        } else if file.isFolder {
+            if OfflineDownloader.isSupported {
+                Button { download(file) } label: { Label("Download All Videos", systemImage: "arrow.down.to.line") }
+            }
+        } else {
             Button { open(file) } label: { Label("Open", systemImage: "arrow.up.forward.app") }
         }
         Button { newName = file.name; renaming = file } label: { Label("Rename", systemImage: "pencil") }
@@ -326,6 +341,24 @@ struct FilesPage: View {
                 }
                 openURL(url)
             }
+        }
+    }
+
+    /// A video, or every video in a folder (a whole season pack), saved to this device.
+    private func download(_ file: PutioFile) {
+        guard file.isFolder else {
+            Task { await downloader.start(entry(file)) }
+            return
+        }
+        Task {
+            guard let putio = app.putio, let videos = try? await PlaybackResolver.videos(in: file.id, putio: putio) else {
+                errorMessage = "Couldn't read this folder from put.io."
+                return
+            }
+            let missing = videos.filter { app.downloads.record(fileID: $0.id) == nil }
+            router.toast = missing.isEmpty ? "Already on this device"
+                : "Downloading \(missing.count) video\(missing.count == 1 ? "" : "s")"
+            for video in missing { await downloader.start(entry(video)) }
         }
     }
 

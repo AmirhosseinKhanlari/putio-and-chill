@@ -77,6 +77,24 @@ public final class DownloadsIndex {
         records.filter { if case .done = $0.state { true } else { false } }
     }
 
+    /// Downloads saved with less than the library now knows (no title match, or a season-pack episode saved without
+    /// its episode number by earlier builds) take the library's details. The downloaded copy itself is untouched.
+    public func adopt(_ entries: [LibraryEntry]) async {
+        var changed = false
+        for index in records.indices {
+            let record = records[index]
+            guard record.tmdbID == nil || (record.kind == .tv && record.episode == nil),
+                  let match = entries.first(where: { $0.id == record.fileID })?.match,
+                  match.tmdbID != record.tmdbID || match.episode != record.episode else { continue }
+            records[index] = DownloadRecord(fileID: record.fileID, title: match.title.isEmpty ? record.title : match.title,
+                                            posterPath: match.posterPath ?? record.posterPath, tmdbID: match.tmdbID,
+                                            kind: match.mediaType, season: match.season, episode: match.episode,
+                                            state: record.state)
+            changed = true
+        }
+        if changed { await persist() }
+    }
+
     public func remove(fileID: Int64) async {
         records.removeAll { $0.fileID == fileID }
         await persist()

@@ -146,15 +146,24 @@ public final class TransferMonitor {
         guard let putio, let item = tracked.first(where: { $0.id == id }), !item.notified else { return }
         switch item.phase {
         case let .completed(fileID?):
-            guard let file = try? await PlaybackResolver.playableFile(fileID, putio: putio),
-                  let index = tracked.firstIndex(where: { $0.id == id }) else { return }
+            let pending = item.pending
+            // A whole season: every episode in it goes into the library, and Play starts at the first one.
+            var episodes: [(file: PutioFile, match: LibraryMatch)] = []
+            if pending.tmdbID > 0, pending.kind == .tv, pending.season != nil, pending.episode == nil,
+               let videos = try? await PlaybackResolver.videos(in: fileID, putio: putio) {
+                episodes = EpisodeNumbering.packEpisodes(videos, target: pending)
+            }
+            let resolved = episodes.isEmpty ? try? await PlaybackResolver.playableFile(fileID, putio: putio) : episodes[0].file
+            guard let file = resolved, let index = tracked.firstIndex(where: { $0.id == id }) else { return }
             tracked[index].playableFile = file
             tracked[index].notified = true
-            let pending = item.pending
-            if pending.tmdbID > 0 {
-                await library?.record(file: file, match: LibraryMatch(
+            if !episodes.isEmpty {
+                await library?.record(episodes)
+            } else if pending.tmdbID > 0 {
+                let match = LibraryMatch(
                     tmdbID: pending.tmdbID, mediaType: pending.kind, season: pending.season, episode: pending.episode,
-                    confidence: 1, title: pending.title, posterPath: pending.posterPath, backdropPath: pending.backdropPath))
+                    confidence: 1, title: pending.title, posterPath: pending.posterPath, backdropPath: pending.backdropPath)
+                await library?.record(file: file, match: EpisodeNumbering.repaired(match, fileName: file.name) ?? match)
             }
             await store.update { $0.pending.removeAll { $0.transferID == id } }
             if let done = tracked.first(where: { $0.id == id }) { onEvent?(.ready(done)) }

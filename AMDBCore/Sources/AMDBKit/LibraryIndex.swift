@@ -98,7 +98,7 @@ public final class LibraryIndex {
     private var touchedOrder: [Int64: Int] = [:]
     private var touchCount = 0
 
-    public init(store: LocalStore, cache: LibraryCache = LibraryCache(fileURL: nil), maxFolders: Int = 300, parallelism: Int = 6) {
+    public init(store: LocalStore, cache: LibraryCache = LibraryCache(fileURL: nil), maxFolders: Int = 2000, parallelism: Int = 6) {
         self.store = store
         self.cache = cache
         self.maxFolders = maxFolders
@@ -120,7 +120,11 @@ public final class LibraryIndex {
     /// Shows the library saved last time, instantly, before any network request.
     public func loadCached() async {
         guard entries.isEmpty, let snapshot = await cache.load() else { return }
-        entries = Self.sorted(snapshot.entries)
+        entries = Self.sorted(snapshot.entries.map { entry in
+            var entry = entry
+            if let fixed = EpisodeNumbering.repaired(entry.match, fileName: entry.file.name) { entry.match = fixed }
+            return entry
+        })
         lastUpdated = snapshot.updatedAt
         folderTree = FolderTree(folders: snapshot.folders ?? [])
         for (id, seconds) in snapshot.progress ?? [:] where progressOverrides[id] == nil { progressOverrides[id] = seconds }
@@ -163,6 +167,19 @@ public final class LibraryIndex {
             folderTree = FolderTree(folders: folders)
             let state = await store.snapshot
             var result = found.map { LibraryEntry(file: $0.file, match: state.matches[$0.file.id], folderName: $0.folder) }
+            // Earlier builds saved one file of each finished season pack as "season N" with no episode: complete
+            // those from the file name (nothing else saved about them changes).
+            var repaired: [Int64: LibraryMatch] = [:]
+            for index in result.indices {
+                if let fixed = EpisodeNumbering.repaired(result[index].match, fileName: result[index].file.name) {
+                    result[index].match = fixed
+                    repaired[result[index].id] = fixed
+                }
+            }
+            if !repaired.isEmpty {
+                let fixes = repaired
+                await store.update { state in for (id, match) in fixes { state.matches[id] = match } }
+            }
             lastError = nil
             guard let matcher else {
                 entries = Self.sorted(result)
@@ -295,16 +312,25 @@ public final class LibraryIndex {
     }
 
     public func record(file: PutioFile, match: LibraryMatch) async {
-        let id = file.id
+        await record([(file, match)])
+    }
+
+    /// Several files at once (every episode of a season pack).
+    public func record(_ items: [(file: PutioFile, match: LibraryMatch)]) async {
+        guard !items.isEmpty else { return }
         await store.update { state in
-            state.matches[id] = match
-            state.unmatched.remove(id)
-            state.unmatchedAt[id] = nil
+            for (file, match) in items {
+                state.matches[file.id] = match
+                state.unmatched.remove(file.id)
+                state.unmatchedAt[file.id] = nil
+            }
         }
-        if let index = entries.firstIndex(where: { $0.id == id }) {
-            entries[index].match = match
-        } else {
-            entries.insert(LibraryEntry(file: file, match: match, folderName: nil), at: 0)
+        for (file, match) in items.reversed() {
+            if let index = entries.firstIndex(where: { $0.id == file.id }) {
+                entries[index].match = match
+            } else {
+                entries.insert(LibraryEntry(file: file, match: match, folderName: nil), at: 0)
+            }
         }
         await persist()
     }
@@ -333,8 +359,8 @@ public final class LibraryIndex {
             for (index, files) in listed {
                 for file in files {
                     if file.isFolder {
-                        queue.append((file.id, file.name))
                         onFolder(file)
+                        if !isSkippedFolder(file.name) { queue.append((file.id, file.name)) }
                     } else if file.isVideo, !isSample(file) {
                         videos.append(FoundVideo(file: file, folder: batch[index].name))
                     }
@@ -350,7 +376,14 @@ public final class LibraryIndex {
                                          folders: Array(folderTree.folders.values)))
     }
 
-    static func isSample(_ file: PutioFile) -> Bool {
+    /// Folders that only hold subtitles, samples or artwork: not read (a season pack's "Subs" folder alone can hold
+    /// a folder per episode).
+    public nonisolated static func isSkippedFolder(_ name: String) -> Bool {
+        ["subs", "subtitles", "sub", "sample", "samples", "screens", "screenshots", "proof", "artwork", "covers"]
+            .contains(name.trimmingCharacters(in: .whitespaces).lowercased())
+    }
+
+    nonisolated static func isSample(_ file: PutioFile) -> Bool {
         file.name.lowercased().contains("sample") && (file.size ?? 0) < 300_000_000
     }
 

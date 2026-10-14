@@ -24,6 +24,29 @@ public enum PlaybackResolver {
         }
         return best
     }
+
+    /// Every video inside `fileID` (three folder levels down; samples and subtitle folders skipped), in name order.
+    public static func videos(in fileID: Int64, putio: any PutioService) async throws -> [PutioFile] {
+        let root = try await putio.file(id: fileID)
+        if root.isVideo { return [root] }
+        guard root.isFolder else { return [] }
+        var found: [PutioFile] = []
+        var level = [root.id]
+        for _ in 0..<3 where !level.isEmpty {
+            var next: [Int64] = []
+            for folderID in level {
+                for file in try await putio.listFiles(parentID: folderID).files {
+                    if file.isFolder {
+                        if !LibraryIndex.isSkippedFolder(file.name) { next.append(file.id) }
+                    } else if file.isVideo, !LibraryIndex.isSample(file) {
+                        found.append(file)
+                    }
+                }
+            }
+            level = next
+        }
+        return found.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
 }
 
 public enum FolderResolver {

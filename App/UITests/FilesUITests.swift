@@ -85,6 +85,20 @@ final class FilesUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Empty"].waitForExistence(timeout: 5))
     }
 
+    /// Swiping a video shows Move and Delete; each video row has a download button.
+    func testSwipeActionsAndDownloadButton() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-demoScreen", "files"]
+        app.launch()
+        let row = app.buttons["Past.Lives.2023.1080p.WEB.mkv"]
+        XCTAssertTrue(row.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["Download to this device"].firstMatch.exists, "video rows have a download button")
+        row.swipeLeft()
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 3))
+        shot("files-swipe-left")
+        // Swiping right offers Download on a device; the Simulator can't download for offline use, so it isn't there.
+    }
+
     /// The search field looks through every folder.
     func testSearchFindsFilesInFolders() {
         let app = XCUIApplication()

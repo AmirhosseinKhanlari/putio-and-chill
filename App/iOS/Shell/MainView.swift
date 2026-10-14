@@ -78,6 +78,8 @@ struct MainView: View {
         }
         .onChange(of: app.transfers.tracked) { _, tracked in liveActivities.sync(tracked) }
         .onChange(of: app.library.continueWatching.map(\.id)) { _, _ in Task { await WidgetPublisher.publish(app.library) } }
+        // Downloads saved by earlier builds pick up what the library now knows (e.g. a season-pack episode's number).
+        .onChange(of: app.library.lastUpdated) { _, _ in Task { await app.downloads.adopt(app.library.entries) } }
         // Siri and Spotlight know your put.io and My List titles.
         .onChange(of: app.library.entries.count + app.myList.items.count) { _, _ in
             SpotlightIndexer.index(app)
