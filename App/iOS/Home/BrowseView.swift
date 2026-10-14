@@ -10,6 +10,7 @@ struct BrowseView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var model: BrowseModel?
     @State private var chart: ChartModel?
+    @Environment(Router.self) private var router
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -18,6 +19,17 @@ struct BrowseView: View {
                     .font(.system(size: sizeClass == .compact ? 34 : 48, weight: .ultraLight)).tracking(3)
                     .padding(.horizontal, Metrics.gutter(sizeClass))
                     .padding(.top, 12)
+                if sizeClass == .compact {
+                    // iPhone: Movies and TV share the Browse tab.
+                    Picker("Browse", selection: Binding(get: { router.tab }, set: { router.tab = $0 })) {
+                        Text("Movies").tag(AppTab.movies)
+                        Text("TV Shows").tag(AppTab.tv)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 320)
+                    .padding(.horizontal, Metrics.gutter(sizeClass))
+                    .padding(.top, -14)
+                }
                 let recent = app.library.recentlyAdded(kind)
                 if !recent.isEmpty {
                     EntryRowView(title: "Recently Added to put.io", entries: recent)

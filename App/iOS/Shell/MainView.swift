@@ -22,10 +22,20 @@ struct MainView: View {
                         .accessibilityHidden(router.tab != tab)
                 }
             }
-            GlassTabBar()
-                .padding(.horizontal, 12)
-                .padding(sizeClass == .compact ? .bottom : .top, 6)
-                .ignoresSafeArea(.keyboard)
+            if sizeClass == .compact {
+                PhoneTabBar().ignoresSafeArea(.keyboard)
+            } else {
+                GlassTabBar()
+                    .padding(.horizontal, 12)
+                    .padding(.top, 6)
+                    .ignoresSafeArea(.keyboard)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            // iPhone: Settings and status at the top right of the main pages (not over Search's field or pushed pages).
+            if sizeClass == .compact, router.tab != .search, path(for: router.tab, router: $router).wrappedValue.isEmpty {
+                PhoneStatusButtons().padding(.trailing, 16).padding(.top, 4)
+            }
         }
         .overlay(alignment: .top) { ReadyBanner() }
         .overlay {

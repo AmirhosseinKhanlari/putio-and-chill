@@ -19,7 +19,7 @@ enum Theme {
 enum Metrics {
     static func poster(_ sizeClass: UserInterfaceSizeClass?) -> CGFloat { sizeClass == .compact ? 112 : 150 }
     static func gutter(_ sizeClass: UserInterfaceSizeClass?) -> CGFloat { sizeClass == .compact ? 16 : 32 }
-    static func tabBarInset(_ sizeClass: UserInterfaceSizeClass?) -> CGFloat { sizeClass == .compact ? 72 : 76 }
+    static func tabBarInset(_ sizeClass: UserInterfaceSizeClass?) -> CGFloat { sizeClass == .compact ? 64 : 76 }
 }
 
 struct PrimaryPillStyle: ButtonStyle {
