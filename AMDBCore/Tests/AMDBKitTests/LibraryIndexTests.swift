@@ -62,15 +62,47 @@ import Testing
 
     @Test func filesWaitingForAMatchAreNotShown() async {
         var slow = Self.catalog
-        slow.searchDelay = .milliseconds(150)
+        slow.searchDelay = .milliseconds(400)
         let index = makeIndex(catalog: slow)
         let refresh = Task { await index.refresh() }
-        try? await Task.sleep(for: .milliseconds(60))
+        // Wait until put.io has been read and matching is under way.
+        for _ in 0..<100 where index.pendingMatches == 0 { try? await Task.sleep(for: .milliseconds(10)) }
         #expect(index.pendingMatches > 0, "still matching")
         #expect(index.entries.allSatisfy { $0.match != nil }, "no raw file names while matching")
         await refresh.value
         #expect(index.pendingMatches == 0)
         #expect(index.entries.map(\.id).sorted() == [10, 11, 12, 14])
+    }
+
+    /// A lookup that fails (offline, rate-limited) is not a "no match": the file is tried again next time.
+    @Test func failedLookupsAreRetriedNotForgotten() async {
+        var offline = Self.catalog
+        offline.failAll = true
+        let store = LocalStore(fileURL: nil)
+        let first = makeIndex(catalog: offline, store: store)
+        await first.refresh()
+        #expect(await store.snapshot.unmatched.isEmpty, "errors are never recorded as no-match")
+        let second = makeIndex(store: store)
+        await second.refresh()
+        #expect(second.entries.first { $0.id == 10 }?.match?.title == "Dune: Part Two")
+    }
+
+    /// Files stuck as "no match" by older builds (no date) are retried; real misses wait three days, unless the
+    /// user asks for an update.
+    @Test func unmatchedFilesAreRetried() async {
+        let store = LocalStore(fileURL: nil)
+        await store.update { $0.unmatched = [10, 11] }
+        let index = makeIndex(store: store)
+        await index.refresh()
+        #expect(index.entries.first { $0.id == 10 }?.match != nil, "old no-match without a date is retried")
+
+        let now = Date()
+        await store.update { $0.matches[11] = nil; $0.unmatched = [11]; $0.unmatchedAt = [11: now] }
+        let again = makeIndex(store: store)
+        await again.refresh(now: now.addingTimeInterval(3600))
+        #expect(again.entries.first { $0.id == 11 }?.match == nil, "a fresh miss isn't looked up again right away")
+        await again.refresh(retryUnmatched: true, now: now.addingTimeInterval(3600))
+        #expect(again.entries.first { $0.id == 11 }?.match?.title == "Heat", "Update Now retries misses")
     }
 
     @Test func continueWatchingShowsEachTitleOnce() async {

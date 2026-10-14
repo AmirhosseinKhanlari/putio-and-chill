@@ -88,7 +88,7 @@ struct LibraryView: View {
             .padding(.top, 12)
             .padding(.bottom, 120)
         }
-        .refreshable { await app.library.refresh() }
+        .refreshable { await app.library.refresh(retryUnmatched: true) }
         .ambientBackground()
         .toolbar(.hidden, for: .navigationBar)
     }

@@ -49,7 +49,7 @@ struct HomeView: View {
         .toolbar(.hidden, for: .navigationBar)
         .refreshable {
             await model?.load()
-            await app.library.refresh()
+            await app.library.refresh(retryUnmatched: true)
         }
         .task {
             guard model == nil, let catalog = app.catalog else { return }

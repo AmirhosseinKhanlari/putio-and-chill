@@ -165,7 +165,8 @@ public final class AppModel {
         guard putio != nil else { return false }
         let due = library.isStale(maxAge: TimeInterval(settings.libraryUpdateMinutes * 60), now: now)
         guard force || (settings.libraryAutoUpdate && due) || library.lastUpdated == nil else { return false }
-        await library.refresh()
+        // Asked for by the user: also retry files that had no TMDB match.
+        await library.refresh(retryUnmatched: force, now: now)
         return true
     }
 

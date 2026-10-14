@@ -87,6 +87,8 @@ public struct DownloadRecord: Codable, Sendable, Hashable, Identifiable {
 public struct LocalState: Codable, Sendable, Equatable {
     public var matches: [Int64: LibraryMatch] = [:]
     public var unmatched: Set<Int64> = []
+    /// When each file was found to have no match (older builds didn't record it: those are retried).
+    public var unmatchedAt: [Int64: Date] = [:]
     public var pending: [PendingTransfer] = []
     public var recentSearches: [String] = []
     public var lastPlayed: PlayedTitle?
@@ -99,7 +101,7 @@ public struct LocalState: Codable, Sendable, Equatable {
     public init() {}
 
     enum CodingKeys: String, CodingKey {
-        case matches, unmatched, pending, recentSearches, lastPlayed, folderIDs, myList, finished, downloads, subtitleChoices
+        case matches, unmatched, unmatchedAt, pending, recentSearches, lastPlayed, folderIDs, myList, finished, downloads, subtitleChoices
     }
 
     /// Every field is optional on disk, so files written by older versions keep loading.
@@ -107,6 +109,7 @@ public struct LocalState: Codable, Sendable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         matches = try c.decodeIfPresent([Int64: LibraryMatch].self, forKey: .matches) ?? [:]
         unmatched = try c.decodeIfPresent(Set<Int64>.self, forKey: .unmatched) ?? []
+        unmatchedAt = try c.decodeIfPresent([Int64: Date].self, forKey: .unmatchedAt) ?? [:]
         pending = try c.decodeIfPresent([PendingTransfer].self, forKey: .pending) ?? []
         recentSearches = try c.decodeIfPresent([String].self, forKey: .recentSearches) ?? []
         lastPlayed = try c.decodeIfPresent(PlayedTitle.self, forKey: .lastPlayed)

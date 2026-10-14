@@ -130,7 +130,12 @@ public final class LibraryIndex {
         return now.timeIntervalSince(lastUpdated) >= maxAge
     }
 
-    public func refresh() async {
+    /// How long a file with no TMDB match waits before it's looked up again.
+    public static let unmatchedRetry: TimeInterval = 3 * 86_400
+
+    /// Re-reads put.io and matches new files to TMDB. `retryUnmatched` (pull to refresh, Update Now) also looks up
+    /// again every file that had no match.
+    public func refresh(retryUnmatched: Bool = false, now: Date = Date()) async {
         guard let putio, !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
@@ -147,27 +152,46 @@ public final class LibraryIndex {
                 return
             }
             // A file shows once it's matched (or known not to match), never as a raw file name while it waits.
-            var settled = result.map { $0.match != nil || state.unmatched.contains($0.id) }
+            // "No match" is trusted for three days (and never when it has no date: older builds also recorded
+            // network errors as no match).
+            func knownMiss(_ id: Int64) -> Bool {
+                guard !retryUnmatched, state.unmatched.contains(id), let at = state.unmatchedAt[id] else { return false }
+                return now.timeIntervalSince(at) < Self.unmatchedRetry
+            }
+            var settled = result.map { $0.match != nil || knownMiss($0.id) }
             let pending = result.indices.filter { !settled[$0] }
             pendingMatches = pending.count
             entries = Self.sorted(result.indices.filter { settled[$0] }.map { result[$0] })
-            await withTaskGroup(of: (Int, LibraryMatch?).self) { group in
+            await withTaskGroup(of: (Int, MatchOutcome).self) { group in
                 var next = 0
                 var done = 0
                 func add() {
                     let index = pending[next]
                     let entry = result[index]
-                    group.addTask { (index, await Self.match(entry, matcher)) }
+                    group.addTask { (index, await Self.matchOutcome(entry, matcher)) }
                     next += 1
                 }
                 while next < min(matchParallelism, pending.count) { add() }
-                while let (index, match) = await group.next() {
-                    result[index].match = match
-                    settled[index] = true
+                while let (index, outcome) = await group.next() {
                     let id = result[index].id
-                    await store.update { state in
-                        if let match { state.matches[id] = match } else { state.unmatched.insert(id) }
+                    switch outcome {
+                    case let .matched(match):
+                        result[index].match = match
+                        await store.update { state in
+                            state.matches[id] = match
+                            state.unmatched.remove(id)
+                            state.unmatchedAt[id] = nil
+                        }
+                    case .noMatch:
+                        await store.update { state in
+                            state.unmatched.insert(id)
+                            state.unmatchedAt[id] = now
+                        }
+                    case .failed:
+                        // TMDB couldn't be reached: not a verdict; the next refresh tries again.
+                        break
                     }
+                    settled[index] = true
                     done += 1
                     pendingMatches -= 1
                     if done % 6 == 0 { entries = Self.sorted(result.indices.filter { settled[$0] }.map { result[$0] }) }
@@ -252,6 +276,7 @@ public final class LibraryIndex {
         await store.update { state in
             state.matches[id] = match
             state.unmatched.remove(id)
+            state.unmatchedAt[id] = nil
         }
         if let index = entries.firstIndex(where: { $0.id == id }) {
             entries[index].match = match
@@ -306,9 +331,27 @@ public final class LibraryIndex {
         file.name.lowercased().contains("sample") && (file.size ?? 0) < 300_000_000
     }
 
-    static func match(_ entry: LibraryEntry, _ matcher: LibraryMatcher) async -> LibraryMatch? {
-        if let match = try? await matcher.match(fileName: entry.file.name) { return match }
-        guard let folder = entry.folderName, let match = try? await matcher.match(fileName: folder) else { return nil }
+    enum MatchOutcome: Sendable {
+        case matched(LibraryMatch)
+        case noMatch
+        case failed
+    }
+
+    /// Matches with up to two retries (after 1.5 s and 3 s) when TMDB fails or rate-limits.
+    static func matchOutcome(_ entry: LibraryEntry, _ matcher: LibraryMatcher) async -> MatchOutcome {
+        for attempt in 0..<3 {
+            do {
+                return try await match(entry, matcher).map(MatchOutcome.matched) ?? .noMatch
+            } catch {
+                if attempt < 2 { try? await Task.sleep(for: .milliseconds(1500 * (attempt + 1))) }
+            }
+        }
+        return .failed
+    }
+
+    static func match(_ entry: LibraryEntry, _ matcher: LibraryMatcher) async throws -> LibraryMatch? {
+        if let match = try await matcher.match(fileName: entry.file.name) { return match }
+        guard let folder = entry.folderName, let match = try await matcher.match(fileName: folder) else { return nil }
         // A folder like "Show S02" names the show; keep any episode number the file name carries.
         let parsed = ReleaseNameParser.parse(entry.file.name)
         return LibraryMatch(tmdbID: match.tmdbID, mediaType: match.mediaType,
