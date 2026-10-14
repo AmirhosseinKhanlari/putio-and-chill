@@ -104,7 +104,7 @@ struct TVLibraryView: View {
 
     private var cleanMessage: String {
         let bytes: Int64 = cleanable.reduce(0) { $0 + ($1.file.size ?? 0) }
-        return "Movies you watched to the end in AMDB. Frees \(Format.bytes(bytes)). Shows and unwatched files are never touched."
+        return "Movies you watched to the end in Putio & Chill. Frees \(Format.bytes(bytes)). Shows and unwatched files are never touched."
     }
     private var doomedMessage: String {
         let bytes: Int64 = doomed.reduce(0) { $0 + ($1.file.size ?? 0) }
@@ -198,7 +198,7 @@ struct TVLibraryView: View {
 
     private func loadCare() async {
         if disk == nil { disk = try? await app.putio?.accountInfo().disk }
-        // Clean Up offers every movie finished in AMDB, or only older ones when auto-clean has a window set.
+        // Clean Up offers every movie finished in Putio & Chill, or only older ones when auto-clean has a window set.
         cleanable = AutoCleaner.candidates(entries: app.library.entries, finished: await app.store.snapshot.finished,
                                            olderThanDays: app.settings.autoCleanDays ?? 0, now: Date())
     }
@@ -259,7 +259,7 @@ struct TVOrganizeView: View {
                     if !plan.unrecognized.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Left where they are").font(.system(size: 26, weight: .semibold))
-                            Text("AMDB isn't sure what these are, so it doesn't move them.").foregroundStyle(TVMetrics.secondaryText)
+                            Text("Putio & Chill isn't sure what these are, so it doesn't move them.").foregroundStyle(TVMetrics.secondaryText)
                             ForEach(plan.unrecognized) { entry in
                                 Button {} label: { Text(entry.file.name).font(.system(size: 22)).lineLimit(1) }.tvRow()
                             }

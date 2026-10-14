@@ -13,7 +13,7 @@ final class TVTopShelfUITests: XCTestCase {
         }
     }
 
-    /// Opens the app (it writes the Top Shelf feed), goes Home and focuses AMDB to show its Top Shelf.
+    /// Opens the app (it writes the Top Shelf feed), goes Home and focuses Putio & Chill to show its Top Shelf.
     func testTopShelfShowsContinueWatching() {
         let app = XCUIApplication()
         app.launchArguments = ["-demo"]
@@ -23,9 +23,9 @@ final class TVTopShelfUITests: XCTestCase {
         remote.press(.home)
         sleep(3)
         let home = XCUIApplication(bundleIdentifier: "com.apple.HeadBoard")
-        let icon = home.otherElements["AMDB"].firstMatch
+        let icon = home.otherElements["Putio & Chill"].firstMatch
         shot("home-1")
-        // Walk the top row until AMDB has focus.
+        // Walk the top row until Putio & Chill has focus.
         for _ in 0..<12 where !(icon.exists && icon.hasFocus) {
             remote.press(.right)
             usleep(600_000)

@@ -23,7 +23,8 @@ struct OnboardingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("AMDB").font(.system(size: 56, weight: .ultraLight)).tracking(10)
+                    Text("Putio & Chill").font(.system(size: 44, weight: .ultraLight)).tracking(3)
+                        .lineLimit(1).minimumScaleFactor(0.6)
                     Text("Find it. Send it to put.io. Watch it.").foregroundStyle(.white.opacity(0.7))
                 }
                 .padding(.bottom, 12)

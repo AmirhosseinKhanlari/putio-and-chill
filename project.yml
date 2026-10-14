@@ -45,7 +45,7 @@ targets:
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        CFBundleDisplayName: AMDB
+        CFBundleDisplayName: Putio & Chill
         UILaunchScreen:
           UIColorName: ""
         UIApplicationSceneManifest:
@@ -104,7 +104,7 @@ targets:
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        CFBundleDisplayName: AMDB
+        CFBundleDisplayName: Putio & Chill
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -139,7 +139,7 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: app.amdb
             CFBundleURLSchemes: [amdb]
-        CFBundleDisplayName: AMDB
+        CFBundleDisplayName: Putio & Chill
         UIRequiredDeviceCapabilities: [arm64]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -174,7 +174,7 @@ targets:
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        CFBundleDisplayName: AMDB Top Shelf
+        CFBundleDisplayName: Putio & Chill Top Shelf
         UIRequiredDeviceCapabilities: [arm64]
         NSExtension:
           NSExtensionPointIdentifier: com.apple.tv-top-shelf

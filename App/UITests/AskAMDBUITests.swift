@@ -22,7 +22,7 @@ final class AskAMDBUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
         field.typeText("a twisty 90s thriller under 2 hours")
-        let ask = app.buttons["Ask AMDB"]
+        let ask = app.buttons["Ask Chill"]
         guard ask.waitForExistence(timeout: 5) else {
             shot("ask-unavailable")
             throw XCTSkip("Apple Intelligence isn't available in this simulator")

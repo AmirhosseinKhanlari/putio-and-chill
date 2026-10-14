@@ -5,7 +5,7 @@ import Foundation
 import FoundationModels
 #endif
 
-/// "Ask AMDB": Apple Intelligence turns a sentence into search filters; TMDB does the rest.
+/// "Ask Chill": Apple Intelligence turns a sentence into search filters; TMDB does the rest.
 enum AskAMDB {
     /// Apple Intelligence is on and its model is ready (iOS 26+, supported iPhone/iPad).
     static var isAvailable: Bool {

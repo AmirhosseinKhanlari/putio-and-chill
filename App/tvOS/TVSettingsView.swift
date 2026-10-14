@@ -132,7 +132,7 @@ struct TVSettingsView: View {
             } header: {
                 Text("Library")
             } footer: {
-                Text("Your put.io library is saved on this Apple TV so the app opens instantly. Only movies you watched to the end in AMDB are offered for deletion, never shows or unwatched files; Library → Clean Up asks first.")
+                Text("Your put.io library is saved on this Apple TV so the app opens instantly. Only movies you watched to the end in Putio & Chill are offered for deletion, never shows or unwatched files; Library → Clean Up asks first.")
             }
 
             Section {
@@ -212,7 +212,7 @@ struct TVSettingsView: View {
     }
 }
 
-/// Browse put.io folders with the remote and pick one. nil means the default AMDB folder.
+/// Browse put.io folders with the remote and pick one. nil means the default Putio & Chill folder.
 struct TVFolderPicker: View {
     let title: String
     let defaultPath: String

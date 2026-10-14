@@ -19,10 +19,10 @@ enum PendingLink {
     }
 }
 
-/// Opens AMDB on Surprise Me.
+/// Opens Putio & Chill on Surprise Me.
 struct OpenSurpriseIntent: AppIntent {
     static let title: LocalizedStringResource = "Surprise Me"
-    static let description = IntentDescription("Opens AMDB's Surprise Me: pick a mood, get a great movie or series.")
+    static let description = IntentDescription("Opens Putio & Chill's Surprise Me: pick a mood, get a great movie or series.")
     static let openAppWhenRun = true
 
     func perform() async throws -> some IntentResult {

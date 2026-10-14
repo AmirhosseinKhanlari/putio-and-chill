@@ -84,7 +84,7 @@ struct ContinueWatchingView: View {
         VStack(spacing: 8) {
             Image(systemName: "play.rectangle.on.rectangle").font(.title2)
             Text("Nothing in progress").font(.footnote.weight(.semibold))
-            Text("Start something in AMDB").font(.caption2).foregroundStyle(.white.opacity(0.6))
+            Text("Start something in Putio & Chill").font(.caption2).foregroundStyle(.white.opacity(0.6))
         }
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -122,7 +122,7 @@ struct AutoCleanReview: View {
             .background(Theme.sheet)
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 10) {
-                    Text("These movies were finished in AMDB a while ago. They'll be deleted from put.io; future cleanups happen automatically.")
+                    Text("These movies were finished in Putio & Chill a while ago. They'll be deleted from put.io; future cleanups happen automatically.")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     Button(role: .destructive, action: onConfirm) {
                         Text("Delete \(entries.count) movie\(entries.count == 1 ? "" : "s")").frame(maxWidth: .infinity)

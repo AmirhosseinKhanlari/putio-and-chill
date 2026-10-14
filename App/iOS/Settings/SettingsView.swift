@@ -178,7 +178,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Storage")
                 } footer: {
-                    Text("Only movies you watched to the end in AMDB are deleted from put.io, never shows or unwatched files. You'll see the list before the first cleanup. Data saver keeps offline downloads small (about 1 GB per hour).")
+                    Text("Only movies you watched to the end in Putio & Chill are deleted from put.io, never shows or unwatched files. You'll see the list before the first cleanup. Data saver keeps offline downloads small (about 1 GB per hour).")
                 }
 
                 Section {

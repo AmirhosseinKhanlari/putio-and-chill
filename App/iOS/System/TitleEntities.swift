@@ -3,7 +3,7 @@ import AMDBKit
 import AppIntents
 import CoreSpotlight
 
-/// A movie or show from your put.io or My List, for Siri ("Play Severance in AMDB") and Spotlight.
+/// A movie or show from your put.io or My List, for Siri ("Play Severance in Putio & Chill") and Spotlight.
 struct TitleEntity: AppEntity, IndexedEntity {
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Title"
     static let defaultQuery = TitleEntityQuery()
@@ -71,10 +71,10 @@ enum TVEntryItem {
     }
 }
 
-/// Opens a title (Spotlight results and "Open … in AMDB").
+/// Opens a title (Spotlight results and "Open … in Putio & Chill").
 struct OpenTitleIntent: OpenIntent {
     static let title: LocalizedStringResource = "Open Title"
-    static let description = IntentDescription("Opens a movie or show in AMDB.")
+    static let description = IntentDescription("Opens a movie or show in Putio & Chill.")
 
     @Parameter(title: "Title") var target: TitleEntity
     @Dependency var router: Router
@@ -87,7 +87,7 @@ struct OpenTitleIntent: OpenIntent {
     }
 }
 
-/// "Play Severance in AMDB": resumes the movie, or the show where you left off (else its first episode in put.io).
+/// "Play Severance in Putio & Chill": resumes the movie, or the show where you left off (else its first episode in put.io).
 struct PlayTitleIntent: AppIntent {
     static let title: LocalizedStringResource = "Play"
     static let description = IntentDescription("Plays a movie or show from your put.io, resuming where you left off.")
@@ -113,7 +113,7 @@ struct PlayTitleIntent: AppIntent {
     }
 }
 
-/// "What's coming up in AMDB" opens Coming Up.
+/// "What's coming up in Putio & Chill" opens Coming Up.
 struct OpenComingUpIntent: AppIntent {
     static let title: LocalizedStringResource = "What's Coming Up"
     static let description = IntentDescription("Opens Coming Up: box office, cinemas and your upcoming episodes.")

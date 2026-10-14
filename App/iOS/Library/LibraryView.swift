@@ -126,7 +126,7 @@ private struct LibraryCardView: View {
             .confirmationDialog("Delete from put.io?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) { Task { try? await app.library.delete(entries) } }
             } message: {
-                Text("This removes \(entries.count == 1 ? "the file" : "\(entries.count) files") from your put.io account. It can't be undone in AMDB.")
+                Text("This removes \(entries.count == 1 ? "the file" : "\(entries.count) files") from your put.io account. It can't be undone in Putio & Chill.")
             }
     }
 

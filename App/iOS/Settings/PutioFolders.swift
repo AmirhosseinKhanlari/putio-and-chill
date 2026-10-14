@@ -2,7 +2,7 @@ import AMDBCore
 import AMDBKit
 import SwiftUI
 
-/// Browse put.io folders and pick one (or create one). `selection` nil means the default AMDB folder.
+/// Browse put.io folders and pick one (or create one). `selection` nil means the default Putio & Chill folder.
 struct PutioFolderPicker: View {
     let title: String
     let defaultPath: String
@@ -43,7 +43,7 @@ private struct FolderLevel: View {
                     }
                     .buttonStyle(.plain)
                 } footer: {
-                    Text("AMDB creates and uses this folder. Or pick any folder in your put.io below.")
+                    Text("Putio & Chill creates and uses this folder. Or pick any folder in your put.io below.")
                 }
             }
             Section(path.isEmpty ? "Your put.io" : path.joined(separator: "/")) {
@@ -152,7 +152,7 @@ struct OrganizeSheet: View {
                         } header: {
                             Text("Left where they are")
                         } footer: {
-                            Text("AMDB isn't sure what these are, so it doesn't move them.")
+                            Text("Putio & Chill isn't sure what these are, so it doesn't move them.")
                         }
                     }
                 } else if let error {

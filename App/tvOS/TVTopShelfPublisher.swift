@@ -2,7 +2,7 @@ import AMDBCore
 import AMDBKit
 import TVServices
 
-/// Writes Continue Watching and Recently Added for the Top Shelf (shown when AMDB is in the top row of the Home
+/// Writes Continue Watching and Recently Added for the Top Shelf (shown when Putio & Chill is in the top row of the Home
 /// Screen) and tells tvOS to refresh it when something changed.
 @MainActor
 enum TVTopShelfPublisher {

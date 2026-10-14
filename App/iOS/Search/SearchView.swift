@@ -30,7 +30,7 @@ private struct SearchContent: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(AppModel.self) private var app
     @FocusState private var focused: Bool
-    /// Ask AMDB: results for the sentence in the field, and how it was understood.
+    /// Ask Chill: results for the sentence in the field, and how it was understood.
     @State private var askResults: [CatalogItem]?
     @State private var askSummary = ""
     @State private var asking = false
@@ -62,7 +62,7 @@ private struct SearchContent: View {
 
                 if AskAMDB.isAvailable, !model.query.trimmingCharacters(in: .whitespaces).isEmpty {
                     Button { Task { await ask() } } label: {
-                        Label(asking ? "Thinking…" : "Ask AMDB", systemImage: "sparkles").font(.subheadline.weight(.semibold))
+                        Label(asking ? "Thinking…" : "Ask Chill", systemImage: "sparkles").font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(.glassPill)
                     .disabled(asking)
@@ -70,7 +70,7 @@ private struct SearchContent: View {
 
                 if let askResults {
                     VStack(alignment: .leading, spacing: 6) {
-                        Label("Ask AMDB", systemImage: "sparkles").font(.headline)
+                        Label("Ask Chill", systemImage: "sparkles").font(.headline)
                         if !askSummary.isEmpty { Text(askSummary).font(.footnote).foregroundStyle(.secondary) }
                     }
                     if askResults.isEmpty {

@@ -2,7 +2,7 @@ import AMDBCore
 import AMDBKit
 import AppIntents
 
-/// "Hey Siri, get a movie with AMDB" → asks for the title → sends the best version to put.io.
+/// "Hey Siri, get a movie with Putio & Chill" → asks for the title → sends the best version to put.io.
 struct GetOnPutioIntent: AppIntent {
     static let title: LocalizedStringResource = "Get a Movie"
     static let description = IntentDescription("Finds a movie and sends the best version to put.io.")
@@ -30,12 +30,12 @@ struct GetOnPutioIntent: AppIntent {
         case .noMatch:
             return .result(dialog: "There's no good version of \(name) right now.")
         case .failed:
-            return .result(dialog: "put.io didn't accept \(name). Try again in AMDB.")
+            return .result(dialog: "put.io didn't accept \(name). Try again in Putio & Chill.")
         }
     }
 }
 
-/// "Continue watching in AMDB" → opens the app and resumes the most recent title.
+/// "Continue watching in Putio & Chill" → opens the app and resumes the most recent title.
 struct ContinueWatchingIntent: AppIntent {
     static let title: LocalizedStringResource = "Continue Watching"
     static let description = IntentDescription("Resumes the last thing you were watching.")

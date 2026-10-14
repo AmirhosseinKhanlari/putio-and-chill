@@ -11,7 +11,7 @@ struct TVSignInView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 120) {
             VStack(alignment: .leading, spacing: 28) {
-                Text("AMDB").font(.system(size: 96, weight: .bold))
+                Text("Putio & Chill").font(.system(size: 84, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
                 Text("Sign in to put.io").font(.system(size: 40, weight: .semibold))
                 VStack(alignment: .leading, spacing: 14) {
                     Label("On your phone or computer, go to put.io/link", systemImage: "1.circle")
