@@ -99,6 +99,20 @@ final class FilesUITests: XCTestCase {
         // Swiping right offers Download on a device; the Simulator can't download for offline use, so it isn't there.
     }
 
+    /// Folders have a visible Download All button (no need to touch and hold).
+    func testFolderRowsHaveADownloadButton() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-demoScreen", "files"]
+        app.launch()
+        let button = app.buttons["Download all videos in Downloads"]
+        XCTAssertTrue(button.waitForExistence(timeout: 20))
+        XCTAssertTrue(button.isHittable)
+        shot("files-folder-download")
+        button.tap()
+        // The Simulator can't save videos for offline use; on a device this starts the downloads.
+        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
+    }
+
     /// The search field looks through every folder.
     func testSearchFindsFilesInFolders() {
         let app = XCUIApplication()

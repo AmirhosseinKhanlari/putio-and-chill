@@ -24,6 +24,8 @@ struct FilesPage: View {
     @State private var destination: DestinationRequest?
     @State private var deleting: Set<Int64>?
     @State private var errorMessage: String?
+    /// Folders whose videos are being looked up for Download All.
+    @State private var gathering: Set<Int64> = []
 
     private var sort: FileSort { FileSort(rawValue: sortRaw) ?? .name }
     private var isSearching: Bool { query.trimmingCharacters(in: .whitespaces).count >= 2 }
@@ -134,6 +136,19 @@ struct FilesPage: View {
                 if let model, model.loaded {
                     Text(PutioFileStyle.summary(model.files)).font(.footnote).foregroundStyle(.white.opacity(0.55))
                 }
+                // Everything in this folder (a whole season pack) to this device.
+                if folder.id != 0, let model, model.files.contains(where: { $0.isVideo || $0.isFolder }) {
+                    Button { download(FilesFolderAsFile.make(folder)) } label: {
+                        if gathering.contains(folder.id) {
+                            HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Download All") }
+                        } else {
+                            Label("Download All", systemImage: "arrow.down.to.line")
+                        }
+                    }
+                    .buttonStyle(.glassPill)
+                    .padding(.top, 8)
+                    .accessibilityLabel("Download all videos in \(folder.name) to this device")
+                }
             }
             .padding(.top, 44)
             if folder.id == 0 {
@@ -221,6 +236,7 @@ struct FilesPage: View {
             }
             // Save to this device for offline viewing, with its progress (like episode rows).
             if file.isVideo, !selecting { DownloadButton(entry: entry(file), plain: true) }
+            if file.isFolder, !selecting, (file.size ?? 1) > 0 { folderDownloadButton(file) }
         }
         .listRowBackground(Color.clear)
         .listRowSeparatorTint(.white.opacity(0.08))
@@ -345,12 +361,31 @@ struct FilesPage: View {
     }
 
     /// A video, or every video in a folder (a whole season pack), saved to this device.
+    private func folderDownloadButton(_ folder: PutioFile) -> some View {
+        Button { download(folder) } label: {
+            if gathering.contains(folder.id) {
+                ProgressView().controlSize(.small).frame(width: 28, height: 28)
+            } else {
+                Image(systemName: "arrow.down.to.line.circle").font(.system(size: 28, weight: .light))
+            }
+        }
+        .buttonStyle(.lift)
+        .accessibilityLabel("Download all videos in \(folder.name)")
+    }
+
     private func download(_ file: PutioFile) {
+        guard OfflineDownloader.isSupported else {
+            errorMessage = "Apple's offline video downloads don't run in the Simulator. On your iPad or iPhone this saves the videos for offline viewing."
+            return
+        }
         guard file.isFolder else {
             Task { await downloader.start(entry(file)) }
             return
         }
+        guard !gathering.contains(file.id) else { return }
+        gathering.insert(file.id)
         Task {
+            defer { gathering.remove(file.id) }
             guard let putio = app.putio, let videos = try? await PlaybackResolver.videos(in: file.id, putio: putio) else {
                 errorMessage = "Couldn't read this folder from put.io."
                 return
@@ -649,4 +684,9 @@ struct TrashPage: View {
             }
         }
     }
+}
+
+/// The folder on screen, as the put.io folder Download All reads.
+private enum FilesFolderAsFile {
+    static func make(_ folder: FilesFolder) -> PutioFile { PutioFile(id: folder.id, name: folder.name, fileType: "FOLDER") }
 }
