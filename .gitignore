@@ -12,3 +12,6 @@ App/iOS/Info.plist
 Config/Secrets.xcconfig
 App/Widgets/Info.plist
 App/tvOS/Info.plist
+
+# App Store Connect API keys: never commit
+*.p8
