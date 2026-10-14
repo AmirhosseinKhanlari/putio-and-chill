@@ -20,16 +20,20 @@ struct TVRootView: View {
                         .tabItem { Text("Movies") }.tag(TVTab.movies)
                     stack($router.tvPath) { TVBrowseView(kind: .tv) }
                         .tabItem { Text("TV Shows") }.tag(TVTab.tv)
-                    stack($router.searchPath) { TVSearchView() }
-                        .tabItem { Image(systemName: "magnifyingglass") }.tag(TVTab.search)
+                    stack($router.topPath) { TVChartView() }
+                        .tabItem { Text("Top 250") }.tag(TVTab.top250)
                     stack($router.libraryPath) { TVLibraryView() }
                         .tabItem { Text("Library") }.tag(TVTab.library)
+                    stack($router.searchPath) { TVSearchView() }
+                        .tabItem { Image(systemName: "magnifyingglass") }.tag(TVTab.search)
                     NavigationStack { TVSettingsView() }
                         .tabItem { Image(systemName: "gearshape") }.tag(TVTab.settings)
                 }
+                .overlay(alignment: .topTrailing) { readyNotice }
                 .task { await startUp() }
             }
         }
+        .preferredColorScheme(.dark)
         .fullScreenCover(item: $router.player) { request in
             TVPlayerView(request: request).ignoresSafeArea()
         }
@@ -42,16 +46,49 @@ struct TVRootView: View {
                 case let .title(item): TVTitleView(item: item)
                 case let .versions(request): TVVersionsView(request: request)
                 case .myList: TVMyListView()
+                case let .person(id): TVPersonView(personID: id)
+                case let .collection(id): TVCollectionView(collectionID: id)
+                case .surprise: TVSurpriseView()
+                case .organize: TVOrganizeView()
                 }
+            }
+        }
+    }
+
+    /// A transfer finished on put.io: a quiet card in the corner with Play.
+    @ViewBuilder private var readyNotice: some View {
+        if let transfer = router.ready, transfer.playableFile != nil {
+            HStack(spacing: 22) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Ready to watch").font(.system(size: 19, weight: .semibold)).foregroundStyle(TVMetrics.secondaryText)
+                    Text(transfer.pending.title).font(.system(size: 26, weight: .semibold)).lineLimit(1)
+                }
+                Button { router.ready = nil; router.playTransfer(transfer) } label: { Label("Play", systemImage: "play.fill") }
+                    .tvPill()
+            }
+            .padding(.leading, 30).padding(.trailing, 14).padding(.vertical, 14)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(.top, 40).padding(.trailing, 60)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .task(id: transfer.id) {
+                try? await Task.sleep(for: .seconds(12))
+                withAnimation { if router.ready?.id == transfer.id { router.ready = nil } }
             }
         }
     }
 
     /// Saved library first (instant), then put.io when due — same as the iPhone app.
     private func startUp() async {
+        app.transfers.onEvent = { [router] event in
+            if case let .ready(transfer) = event { withAnimation(.snappy) { router.ready = transfer } }
+        }
         switch DemoMode.screen {
         case "title": router.homePath = [.title(DemoCatalog.movies[0])]
         case "show": router.homePath = [.title(DemoCatalog.shows[0])]
+        case "person": router.homePath = [.person(900)]
+        case "collection": router.homePath = [.collection(8945)]
+        case "surprise": router.homePath = [.surprise]
+        case "chart": router.tab = .top250
         case "library": router.tab = .library
         case "search": router.tab = .search
         case "settings": router.tab = .settings

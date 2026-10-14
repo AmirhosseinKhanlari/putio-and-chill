@@ -65,6 +65,34 @@ enum DemoMode {
 }
 
 struct DemoCatalog: CatalogService {
+    /// Real TMDB artwork (poster, backdrop, logo) so demo screens look like the real thing.
+    static let art: [String: (poster: String, backdrop: String, logo: String?)] = [
+        "Furiosa: A Mad Max Saga": ("/iADOJ8Zymht2JPMoy3R7xceZprc.jpg", "/raph7qjAGTMXaIjVxt6ZDSXRzUr.jpg", "/z1wMCU7yPf6YELf46S2ml8XFDdR.png"),
+        "Dune: Part Two": ("/6izwz7rsy95ARzTR3poZ8H6c5pp.jpg", "/eZ239CUp1d6OryZEBPnO2n87gMG.jpg", "/eYvF1LhPKuoBxOAmWjFTAK7EPWl.png"),
+        "Interstellar": ("/yQvGrMoipbRoddT0ZR8tPoR7NfX.jpg", "/8sNiAPPYU14PUepFNeSNGUTiHW.jpg", "/4Hu4w5p0mwL2Wvyk3gqu2JRDGHl.png"),
+        "Past Lives": ("/k3waqVXSnvCZWfJYNtdamTgTtTA.jpg", "/7HR38hMBl23lf38MAN63y4pKsHz.jpg", "/jzdqCuDygikoTJfYdRRTJp0xYsd.png"),
+        "Oppenheimer": ("/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg", "/neeNHeXjMF5fXoCJRsOmkNGC7q.jpg", "/b07VisHvZb0WzUpA8VB77wfMXwg.png"),
+        "Blade Runner 2049": ("/gajva2L0rPYkEWjzgFlBXCAVBE5.jpg", "/gNdLJU9TxrpGx4dkZidjys3fyy0.jpg", "/gUoDt6GggEFXVzdyDTyF8ggrEm8.png"),
+        "Arrival": ("/pEzNVQfdzYDzVK0XqxERIw2x2se.jpg", "/8MUZz7oPXQftFTslZpRP3CVMOoq.jpg", "/rcPtxYkZ2mXmKdD0NKLzjsHxL3V.png"),
+        "Heat": ("/umSVjVdbVwtx5ryCA2QXL44Durm.jpg", "/uI22JkEMediWyiRqhllNqeeGtW0.jpg", nil),
+        "Parasite": ("/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg", "/TU9NIjwzjoKPwQHoHshkFcQUCG.jpg", "/eEGZWCv0OYbMLCaNsDl1cgrvnWR.png"),
+        "Everything Everywhere All at Once": ("/u68AjlvlutfEIcpmbYpKcdi09ut.jpg", "/fIwiFha3WPu5nHkBeMQ4GzEk0Hv.jpg", "/6rpxXCCaVtj5u4dWANfdRoVgDQV.png"),
+        "Severance": ("/pPHpeI2X1qEd1CS1SeyrdhZ4qnT.jpg", "/ixgFmf1X59PUZam2qbAfskx2gQr.jpg", "/yyS1tALk7t3YdTNMOvR5gsnXINA.png"),
+        "Shōgun": ("/7O4iVfOMQmdCSxhOg1WnzG1AgYT.jpg", "/bwSmgmd90hCWwqOKQYTEraeOZhJ.jpg", "/eqWtUYYsmW7cPkXzxAF8idOPEX8.png"),
+        "The Bear": ("/eKfVzzEazSIjJMrw9ADa2x8ksLz.jpg", "/aJtG4txtmiRHwAAqENQHZvBs6kY.jpg", "/8ZTz2Wj0lE5WoSOqRG8GarhhnY4.png"),
+        "Andor": ("/khZqmwHQicTYoS7Flreb9EddFZC.jpg", "/quCeAmVQHfsdcYkicbxZWVauCVb.jpg", "/2vyPbpZVYkYAzU8QqyGi6EmawB5.png"),
+        "Slow Horses": ("/AdYr4DjOgXvDUMwu6vEhZy1Rnxk.jpg", "/gPQppUnLx9vqPDLz3WwZ2HJsNbt.jpg", "/peE0Gab2MWjXPlAYhakxjHciNPr.png"),
+        "The Last of Us": ("/dmo6TYuuJgaYinXBPjrgG9mB5od.jpg", "/lY2DhbA7Hy44fAKddr06UrXWWaQ.jpg", "/msYtgZbEo8tAOJ37T50kgqulpKf.png"),
+    ]
+    static let cast: [CastMember] = [
+        CastMember(name: "Anya Taylor-Joy", character: "Furiosa", profilePath: "/yZpghhtKM2VZHDx6JGAZqAVU4PL.jpg", id: 1397778),
+        CastMember(name: "Chris Hemsworth", character: "Dementus", profilePath: "/piQGdoIQOF3C1EI5cbYZLAW1gfj.jpg", id: 74568),
+        CastMember(name: "Tom Burke", character: "Praetorian Jack", profilePath: "/4IHlAZ9bJ82VAd6HUOWFgo81SDq.jpg", id: 52891),
+        CastMember(name: "Alyla Browne", character: "Young Furiosa", profilePath: "/h9qYvAqEZS6HTQhE8zLA0q3u52n.jpg", id: 2431565),
+        CastMember(name: "George Shevtsov", character: "The History Man", profilePath: "/cuOoCZShfvNrOvrWqH2dPyBfrZS.jpg", id: 148899),
+        CastMember(name: "Lachy Hulme", character: "Immortan Joe", profilePath: "/z6ZEqpIkh1LYQXgSNMcc8akW3ZR.jpg", id: 75122),
+    ]
+
     static let movies: [CatalogItem] = [
         ("Furiosa: A Mad Max Saga", 2024, "As the world fell, young Furiosa is snatched from the Green Place of Many Mothers."),
         ("Dune: Part Two", 2024, "Paul Atreides unites with Chani and the Fremen while on a path of revenge."),
@@ -78,14 +106,14 @@ struct DemoCatalog: CatalogService {
         ("Everything Everywhere All at Once", 2022, "A middle-aged immigrant is swept up in an insane adventure."),
     ].enumerated().map { index, entry in
         CatalogItem(tmdbID: 100 + index, mediaType: .movie, title: entry.0, overview: entry.2,
-                    backdropPath: "/demo-\(100 + index).jpg", year: entry.1, voteAverage: 7.4 + Double(index % 5) / 5)
+                    posterPath: art[entry.0]?.poster, backdropPath: art[entry.0]?.backdrop, year: entry.1, voteAverage: 7.4 + Double(index % 5) / 5)
     }
 
     static let shows: [CatalogItem] = [
         ("Severance", 2022), ("Shōgun", 2024), ("The Bear", 2022), ("Andor", 2022), ("Slow Horses", 2022), ("The Last of Us", 2023),
     ].enumerated().map { index, entry in
         CatalogItem(tmdbID: 200 + index, mediaType: .tv, title: entry.0, overview: "A prestige series everyone keeps recommending.",
-                    backdropPath: "/demo-\(200 + index).jpg", year: entry.1, voteAverage: 8.4)
+                    posterPath: art[entry.0]?.poster, backdropPath: art[entry.0]?.backdrop, year: entry.1, voteAverage: 8.4)
     }
 
     private static var everything: [CatalogItem] { movies + shows }
@@ -108,18 +136,17 @@ struct DemoCatalog: CatalogService {
     }
     func detail(_ kind: MediaKind, id: Int) async throws -> TitleDetail {
         guard let item = Self.everything.first(where: { $0.tmdbID == id }) else { throw AppError.http(service: "tmdb", status: 404) }
-        let cast = ["Anya Taylor-Joy", "Chris Hemsworth", "Tom Burke", "Alyla Browne", "George Shevtsov"].enumerated().map {
-            CastMember(name: $0.element, character: "Character", profilePath: nil, id: 900 + $0.offset)
-        }
+        let cast = Self.cast
         let seasons = kind == .tv ? (1...2).map { SeasonSummary(number: $0, name: "Season \($0)", episodeCount: 8, posterPath: nil) } : []
         // Furiosa uses its real IMDb id so demo mode exercises real IMDb trailers.
         let imdbID = item.title.hasPrefix("Furiosa") ? "tt12037194" : "tt\(id)"
         return TitleDetail(item: item, imdbID: imdbID, runtimeMinutes: kind == .tv ? 55 : 148,
                            genres: kind == .tv ? ["Drama", "Mystery"] : ["Action", "Adventure", "Science Fiction"],
-                           cast: cast, trailerYouTubeKey: "zSWdZVtXT7E",
+                           cast: cast, trailerYouTubeKey: "zSWdZVtXT7E", logoPath: Self.art[item.title]?.logo,
                            recommendations: Array(Self.movies.shuffled().prefix(8)), seasons: seasons,
                            collection: item.title.hasPrefix("Furiosa")
-                               ? CollectionRef(id: 8945, name: "Mad Max Collection", posterPath: nil, backdropPath: "/demo-c.jpg") : nil)
+                               ? CollectionRef(id: 8945, name: "Mad Max Collection", posterPath: "/tRxkZboyyXnFgCthoViWBwISZ0r.jpg",
+                                               backdropPath: "/zI0q2ENcQOLECbe0gAEGlncVh2j.jpg") : nil)
     }
     func season(tvID: Int, number: Int) async throws -> [Episode] {
         (1...8).map { Episode(number: $0, name: "Episode \($0)", overview: "Things get complicated at Lumon.", runtimeMinutes: 50 + $0) }
@@ -127,12 +154,12 @@ struct DemoCatalog: CatalogService {
     func person(id: Int) async throws -> PersonDetail {
         PersonDetail(id: id, name: "Anya Taylor-Joy",
                      biography: "An actress known for intense, transformative roles across film and television.",
-                     profilePath: nil, department: "Acting", birthday: "1996-04-16", placeOfBirth: "Miami, Florida, USA",
+                     profilePath: "/yZpghhtKM2VZHDx6JGAZqAVU4PL.jpg", department: "Acting", birthday: "1996-04-16", placeOfBirth: "Miami, Florida, USA",
                      credits: Self.movies, knownFor: Array(Self.movies.prefix(5)))
     }
     func collection(id: Int) async throws -> CollectionDetail {
         CollectionDetail(id: id, name: "Mad Max Collection", overview: "A post-apocalyptic saga of survival on the Fury Road.",
-                         posterPath: nil, backdropPath: "/demo-c.jpg", parts: Array(Self.movies.prefix(5)))
+                         posterPath: "/tRxkZboyyXnFgCthoViWBwISZ0r.jpg", backdropPath: "/zI0q2ENcQOLECbe0gAEGlncVh2j.jpg", parts: Array(Self.movies.prefix(5)))
     }
     func discover(_ kind: MediaKind, genreIDs: [Int], minRating: Double, minVotes: Int, page: Int) async throws -> CatalogPage {
         CatalogPage(items: kind == .tv ? Self.shows : Self.movies, page: page, totalPages: 1)

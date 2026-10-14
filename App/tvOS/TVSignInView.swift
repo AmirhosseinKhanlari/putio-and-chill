@@ -11,14 +11,14 @@ struct TVSignInView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 120) {
             VStack(alignment: .leading, spacing: 28) {
-                Text("AMDB").font(.system(size: 96, weight: .ultraLight)).tracking(14)
-                Text("Sign in to put.io").font(.title2.weight(.semibold))
+                Text("AMDB").font(.system(size: 96, weight: .bold))
+                Text("Sign in to put.io").font(.system(size: 40, weight: .semibold))
                 VStack(alignment: .leading, spacing: 14) {
                     Label("On your phone or computer, go to put.io/link", systemImage: "1.circle")
                     Label("Enter this code", systemImage: "2.circle")
                 }
-                .font(.headline)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 28, weight: .medium))
+                .foregroundStyle(TVMetrics.secondaryText)
                 switch signIn?.phase {
                 case let .waiting(code):
                     Text(code.code)
@@ -28,8 +28,8 @@ struct TVSignInView: View {
                     Text("This screen continues by itself once the code is entered.")
                         .font(.callout).foregroundStyle(.secondary)
                 case let .failed(message):
-                    Text(message).foregroundStyle(Theme.poor)
-                    Button("Try Again") { signIn?.start() }
+                    Text(message)
+                    Button("Try Again") { signIn?.start() }.tvPill()
                 default:
                     ProgressView()
                 }
@@ -53,8 +53,7 @@ struct TVSignInView: View {
         }
         .padding(100)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(LinearGradient(colors: [Color(red: 0.14, green: 0.06, blue: 0.24), Theme.background],
-                                   startPoint: .top, endPoint: .bottom).ignoresSafeArea())
+        .tvPageBackground()
         .task {
             let session = DeviceSignIn(appID: "9877") { [app] token in app.setToken(token, for: .putio) }
             signIn = session

@@ -13,40 +13,38 @@ struct TVVersionsView: View {
     @State private var message: String?
 
     var body: some View {
-        List {
-            Section {
-                Text(request.target.title + label).font(.title3.weight(.semibold))
-                if let message { Text(message).foregroundStyle(Theme.poor) }
-            }
-            if !request.playNow.isEmpty {
-                Section("Already in put.io") {
+        ScrollView(.vertical) {
+            LazyVStack(alignment: .leading, spacing: 14) {
+                TVPageHeader(title: request.target.title + label, subtitle: status)
+                    .padding(.bottom, 20)
+                if let message { Text(message).font(.system(size: 24, weight: .semibold)).padding(.bottom, 10) }
+                if !request.playNow.isEmpty {
+                    sectionTitle("Already in put.io")
                     ForEach(request.playNow) { entry in
                         Button { router.play(entry, from: app.library.resumeSeconds(for: entry)) } label: {
-                            Label(entry.file.name, systemImage: "play.fill").lineLimit(1)
+                            Label(entry.file.name, systemImage: "play.fill").font(.system(size: 24, weight: .medium)).lineLimit(1)
                         }
+                        .tvRow()
                     }
+                    sectionTitle("Versions").padding(.top, 20)
                 }
-            }
-            if let model {
-                Section {
-                    if model.rows.isEmpty {
-                        HStack(spacing: 16) {
-                            if model.isLoading { ProgressView() }
-                            Text(model.isLoading ? "Searching sources…" : "No versions found.").foregroundStyle(.secondary)
-                        }
+                if let model {
+                    if model.rows.isEmpty, !model.isLoading {
+                        Text("No versions found.").foregroundStyle(TVMetrics.secondaryText)
                     }
+                    if model.rows.isEmpty, model.isLoading { ProgressView().padding(.top, 30) }
                     ForEach(model.rows) { release in
                         Button { Task { await send(release) } } label: { row(release, inPutio: model.isInPutio(release)) }
+                            .tvRow()
                             .disabled(sending != nil)
                     }
-                } header: {
-                    Text(model.isLoading && !model.rows.isEmpty ? "Versions · still searching…" : "Versions")
                 }
             }
+            .padding(TVMetrics.edge)
+            .frame(maxWidth: 1500, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: 1500)
-        .frame(maxWidth: .infinity)
-        .ambientBackground()
+        .tvPageBackground()
         .task {
             guard model == nil else { return }
             let hashes = await app.completedHashes()
@@ -57,6 +55,16 @@ struct TVVersionsView: View {
             versions.start()
         }
         .onDisappear { model?.cancel() }
+    }
+
+    private var status: String {
+        guard let model else { return "Searching sources…" }
+        if model.isLoading { return model.rows.isEmpty ? "Searching sources…" : "\(model.rows.count) found · still searching…" }
+        return "\(model.rows.count) version\(model.rows.count == 1 ? "" : "s") · best first"
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text).font(.system(size: 28, weight: .semibold)).padding(.bottom, 4)
     }
 
     private var label: String {
@@ -70,16 +78,15 @@ struct TVVersionsView: View {
     private func row(_ release: Release, inPutio: Bool) -> some View {
         HStack(spacing: 24) {
             Text(release.parsed.resolution.label)
-                .font(.callout.weight(.bold)).frame(width: 110)
-                .padding(.vertical, 6).background(.white.opacity(0.12), in: Capsule())
+                .font(.system(size: 22, weight: .bold)).frame(width: 100)
+                .padding(.vertical, 6).overlay(Capsule().strokeBorder(lineWidth: 2).opacity(0.5))
             VStack(alignment: .leading, spacing: 6) {
-                Text(release.name).font(.callout).lineLimit(1)
+                Text(release.name).font(.system(size: 23, weight: .medium)).lineLimit(1)
                 Text([Format.bytes(release.sizeBytes), release.seeders.map { "\($0) seeders" },
-                      release.sources.sorted().first?.name].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary)
+                      release.sources.sorted().first?.name, inPutio ? "In put.io" : nil].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 20)).opacity(0.7)
             }
             Spacer()
-            if inPutio { Label("In put.io", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.good).font(.caption) }
             if sending == release.id { ProgressView() }
         }
     }

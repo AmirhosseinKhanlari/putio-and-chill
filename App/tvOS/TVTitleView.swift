@@ -2,48 +2,42 @@ import AMDBCore
 import AMDBKit
 import SwiftUI
 
-/// A movie or show: backdrop, logo, scores, actions (play / resume / get / versions), and episodes for shows.
+/// A movie or show: full-screen art; logo, details, scores and actions at the bottom left; then episodes,
+/// cast & crew (round photos → person pages), the collection, and more like this.
 struct TVTitleView: View {
     let item: CatalogItem
     @Environment(AppModel.self) private var app
     @Environment(TVRouter.self) private var router
-    @Environment(AmbientController.self) private var ambient
     @State private var model: TitleModel?
-    @State private var message: String?
-    @State private var working = false
-    @State private var episodeChoice: EpisodeChoice?
-    @State private var trailer: TrailerURL?
 
     var body: some View {
         ZStack {
-            backdrop
+            TVBackdrop(path: model?.detail?.item.backdropPath ?? item.backdropPath ?? item.posterPath, seed: item.title)
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 0) {
-                    // First screen: the art, with title and actions at the bottom left.
-                    header
-                        .containerRelativeFrame(.vertical, alignment: .bottomLeading)
-                    VStack(alignment: .leading, spacing: 50) {
-                        if item.mediaType == .tv, let model { episodes(model) }
-                        if let cast = model?.detail?.cast, !cast.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Cast").font(.title3.weight(.semibold))
-                                Text(cast.prefix(8).map(\.name).joined(separator: " · ")).foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, TVMetrics.edge)
-                        }
+                    header.containerRelativeFrame(.vertical, alignment: .bottomLeading)
+                    VStack(alignment: .leading, spacing: 30) {
+                        if item.mediaType == .tv, let model { TVEpisodes(model: model, item: item) }
+                        castAndCrew
                         if let recommendations = model?.detail?.recommendations, !recommendations.isEmpty {
                             TVCatalogShelf(row: CatalogRow(id: "more", title: "More Like This", items: recommendations))
                         }
                     }
-                    .padding(.top, 40)
-                    .padding(.bottom, 80)
-                    .background(Theme.background.opacity(0.92))
+                    .padding(.top, 30)
+                    .padding(.bottom, 90)
+                    .background {
+                        // Fades up into the art so there's no hard edge under the header.
+                        Color.black.overlay(alignment: .top) {
+                            LinearGradient(colors: [.black.opacity(0), .black], startPoint: .top, endPoint: .bottom)
+                                .frame(height: 220).offset(y: -220)
+                        }
+                        .ignoresSafeArea(edges: .horizontal)
+                    }
                 }
             }
             .scrollClipDisabled()
         }
         .toolbar(.hidden, for: .tabBar)
-        .onAppear { ambient.focus(item) }
         .task {
             guard model == nil, let catalog = app.catalog else { return }
             let title = TitleModel(item: item, catalog: catalog, library: app.library, transfers: app.transfers,
@@ -52,168 +46,244 @@ struct TVTitleView: View {
             model = title
             await title.load()
         }
-        .confirmationDialog(episodeChoice?.title ?? "", isPresented: Binding(get: { episodeChoice != nil },
-                                                                             set: { if !$0 { episodeChoice = nil } }),
-                            titleVisibility: .visible) {
-            if let choice = episodeChoice, let model { episodeActions(choice, model) }
-        }
-        .fullScreenCover(item: $trailer) { TVTrailerPlayer(url: $0.url).ignoresSafeArea() }
-    }
-
-    // MARK: Header
-
-    /// Full-screen art behind the page (stays put while the page scrolls).
-    private var backdrop: some View {
-        ZStack {
-            Theme.background
-            RemoteImage(path: item.backdropPath ?? item.posterPath, size: "original", seed: item.title)
-            LinearGradient(stops: [.init(color: Theme.background.opacity(0.92), location: 0),
-                                   .init(color: Theme.background.opacity(0.55), location: 0.4),
-                                   .init(color: .clear, location: 0.7)], startPoint: .leading, endPoint: .trailing)
-            LinearGradient(stops: [.init(color: .clear, location: 0.45), .init(color: Theme.background.opacity(0.85), location: 1)],
-                           startPoint: .top, endPoint: .bottom)
-        }
-        .ignoresSafeArea()
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 22) {
-            if let logo = model?.detail?.logoPath {
-                RemoteImage(path: logo, size: "w500", seed: item.title, contentMode: .fit, alignment: .leading)
-                    .frame(maxWidth: 640, maxHeight: 220, alignment: .leading)
-                    .accessibilityLabel(item.title)
-            } else {
-                Text(item.title.uppercased()).font(.system(size: 80, weight: .ultraLight)).tracking(6)
-                    .lineLimit(2).minimumScaleFactor(0.6).frame(maxWidth: 1100, alignment: .leading)
-            }
-            meta
+            TVTitleArt(item: item, logoPath: model?.detail?.logoPath)
+            TVMetaLine(item: item, detail: model?.detail,
+                       extra: app.library.matching(tmdbID: item.tmdbID).isEmpty ? [] : ["In put.io"])
+            TVRatingsLine(ratings: model?.ratings, tmdb: model?.detail?.item.voteAverage ?? item.voteAverage)
             let overview = model?.detail?.item.overview.isEmpty == false ? model!.detail!.item.overview : item.overview
             if !overview.isEmpty {
-                Text(overview).font(.callout).foregroundStyle(.white.opacity(0.88)).lineLimit(3)
-                    .frame(maxWidth: 1000, alignment: .leading)
+                Text(overview).font(.system(size: 26)).foregroundStyle(.white.opacity(0.86)).lineLimit(3)
+                    .frame(maxWidth: 940, alignment: .leading)
             }
-            Group {
-                if let model, item.mediaType == .movie { actions(model) } else { secondaryActions }
+            if let model { TVTitleActions(model: model, item: item).padding(.top, 14) }
+            if let collection = model?.detail?.collection {
+                Button { router.open(.collection(collection.id)) } label: {
+                    Label("Part of the \(collection.name) · Watch in order", systemImage: "square.stack")
+                }
+                .tvPill()
             }
-            .labelStyle(TVActionLabelStyle())
-            .padding(.top, 10)
-            if let message { Text(message).font(.callout).foregroundStyle(Theme.okay) }
         }
         .padding(.horizontal, TVMetrics.edge)
-        .padding(.bottom, 70)
+        .padding(.bottom, 80)
         .focusSection()
     }
 
-    private var meta: some View {
-        HStack(spacing: 20) {
-            if let year = item.year { Text(String(year)) }
-            if let runtime = Format.runtime(model?.detail?.runtimeMinutes) { Text(runtime) }
-            if let genres = model?.detail?.genres, !genres.isEmpty { Text(genres.prefix(3).joined(separator: " · ")) }
-            RatingsBadges(ratings: model?.ratings, tmdb: model?.detail?.item.voteAverage ?? item.voteAverage)
-            if !app.library.matching(tmdbID: item.tmdbID).isEmpty {
-                Label("In put.io", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.good)
-            }
-        }
-        .font(.callout.weight(.medium))
-        .foregroundStyle(.white.opacity(0.8))
-    }
-
-    // MARK: Movie actions
-
-    @ViewBuilder private func actions(_ model: TitleModel) -> some View {
-        HStack(alignment: .center, spacing: 24) {
-            switch model.action() {
-            case .get:
-                Button { Task { await get(model, season: nil, episode: nil) } } label: {
-                    if working { ProgressView().frame(width: 220, height: 48) } else { Label("Get & Watch", systemImage: "play.fill") }
+    @ViewBuilder private var castAndCrew: some View {
+        let cast = model?.detail?.cast ?? []
+        let crew = (model?.detail?.crew ?? []).prefix(2)
+        if !cast.isEmpty || !crew.isEmpty {
+            TVShelf(title: "Cast & Crew") {
+                ForEach(Array(cast.prefix(14).enumerated()), id: \.offset) { _, member in
+                    TVCastCircle(member: member) { if let id = member.id { router.open(.person(id)) } }
                 }
-                .tvGlass(prominent: true)
-                .disabled(working)
-                versionsButton(model, season: nil, episode: nil)
-            case let .play(entry):
-                Button { router.play(entry, from: 0) } label: { Label("Play", systemImage: "play.fill") }
-                    .tvGlass(prominent: true)
-                versionsButton(model, season: nil, episode: nil)
-            case let .resume(entry, seconds):
-                Button { router.play(entry, from: seconds) } label: { Label("Resume \(Format.clock(seconds))", systemImage: "play.fill") }
-                    .tvGlass(prominent: true)
-                Button { router.play(entry, from: 0) } label: { Label("Start Over", systemImage: "backward.end.fill") }
-                    .tvGlass()
-            case let .downloading(transfer):
-                TVTransferStatus(transfer: transfer)
-                Button("Cancel", role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } }
-                    .tvGlass()
-            case let .failed(transfer):
-                Text("Transfer failed").foregroundStyle(Theme.poor)
-                Button {
-                    app.transfers.dismiss(transfer.id)
-                    openVersions(model, season: nil, episode: nil)
-                } label: { Label("Try Another Version", systemImage: "arrow.triangle.2.circlepath") }
-                .tvGlass(prominent: true)
-            }
-            secondaryActions
-        }
-        .padding(.top, 8)
-    }
-
-    private var secondaryActions: some View {
-        HStack(spacing: 24) {
-            TVMyListButton(item: item)
-            if let imdbID = model?.detail?.imdbID {
-                Button { Task { await playTrailer(imdbID) } } label: { Label("Trailer", systemImage: "film") }
-                    .tvGlass()
+                ForEach(Array(crew.enumerated()), id: \.offset) { _, member in
+                    TVCastCircle(member: member, role: member.character ?? "Director") { if let id = member.id { router.open(.person(id)) } }
+                }
             }
         }
     }
+}
 
-    private func versionsButton(_ model: TitleModel, season: Int?, episode: Int?) -> some View {
-        Button { openVersions(model, season: season, episode: episode) } label: {
-            Label("Versions", systemImage: "square.stack.3d.up")
+/// Play / Resume / Get & Watch / progress, then Versions, My List and Trailer — shared by title pages and Home's hero.
+struct TVTitleActions: View {
+    let model: TitleModel
+    let item: CatalogItem
+    var showsDetails = false
+    @Environment(AppModel.self) private var app
+    @Environment(TVRouter.self) private var router
+    @State private var working = false
+    @State private var message: String?
+    @State private var trailer: TrailerURL?
+    /// The main button (Play / Resume / Get & Watch) takes focus first, as in Apple's TV app.
+    @FocusState private var primaryFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 22) {
+                if item.mediaType == .movie {
+                    primary
+                } else {
+                    showPrimary
+                    if showsDetails {
+                        Button { router.open(item) } label: { Label("Episodes", systemImage: "list.bullet") }.tvPill()
+                            .focused($primaryFocused)
+                    }
+                }
+                TVMyListCircle(item: item)
+                if let imdbID = model.detail?.imdbID {
+                    Button { Task { await playTrailer(imdbID) } } label: { Image(systemName: "film") }
+                        .tvCircle().accessibilityLabel("Trailer")
+                }
+                if showsDetails {
+                    Button { router.open(item) } label: { Image(systemName: "ellipsis") }
+                        .tvCircle().accessibilityLabel("More info")
+                }
+            }
+            if let message { Text(message).font(.system(size: 22)).foregroundStyle(TVMetrics.secondaryText) }
         }
-        .tvGlass()
+        .defaultFocus($primaryFocused, true)
+        .fullScreenCover(item: $trailer) { TVTrailerPlayer(url: $0.url).ignoresSafeArea() }
     }
 
-    // MARK: Episodes
+    /// Shows: resume where you left off, else the first episode you have in put.io.
+    @ViewBuilder private var showPrimary: some View {
+        if let entry = app.library.continueWatching.first(where: { $0.match?.tmdbID == item.tmdbID }) {
+            let seconds = app.library.resumeSeconds(for: entry)
+            Button { router.play(entry, from: seconds) } label: {
+                Label("Resume \(Self.episodeLabel(entry))", systemImage: "play.fill")
+            }
+            .tvPill().focused($primaryFocused)
+        } else if let first = app.library.matching(tmdbID: item.tmdbID).min(by: Self.episodeOrder) {
+            Button { router.play(first, from: 0) } label: { Label("Play \(Self.episodeLabel(first))", systemImage: "play.fill") }
+                .tvPill().focused($primaryFocused)
+        }
+    }
 
-    @ViewBuilder private func episodes(_ model: TitleModel) -> some View {
+    static func episodeLabel(_ entry: LibraryEntry) -> String {
+        guard let season = entry.match?.season else { return "" }
+        return "S\(season)" + (entry.match?.episode.map { " E\($0)" } ?? "")
+    }
+
+    static func episodeOrder(_ a: LibraryEntry, _ b: LibraryEntry) -> Bool {
+        (a.match?.season ?? 0, a.match?.episode ?? 0) < (b.match?.season ?? 0, b.match?.episode ?? 0)
+    }
+
+    @ViewBuilder private var primary: some View {
+        switch model.action() {
+        case .get:
+            Button { Task { await get() } } label: {
+                if working { Label("Finding the best version…", systemImage: "hourglass") } else { Label("Get & Watch", systemImage: "play.fill") }
+            }
+            .tvPill().disabled(working).focused($primaryFocused)
+            Button { openVersions() } label: { Label("Versions", systemImage: "square.stack.3d.up") }.tvPill()
+        case let .play(entry):
+            Button { router.play(entry, from: 0) } label: { Label("Play", systemImage: "play.fill") }.tvPill().focused($primaryFocused)
+            Button { openVersions() } label: { Label("Versions", systemImage: "square.stack.3d.up") }.tvPill()
+        case let .resume(entry, seconds):
+            Button { router.play(entry, from: seconds) } label: { Label("Resume \(Format.clock(seconds))", systemImage: "play.fill") }.tvPill()
+                .focused($primaryFocused)
+            Button { router.play(entry, from: 0) } label: { Image(systemName: "arrow.counterclockwise") }
+                .tvCircle().accessibilityLabel("Start over")
+        case let .downloading(transfer):
+            TVTransferStatus(transfer: transfer)
+            Button("Cancel") { Task { try? await app.transfers.cancel(transfer.id) } }.tvPill()
+        case let .failed(transfer):
+            Button {
+                app.transfers.dismiss(transfer.id)
+                openVersions()
+            } label: { Label("Try Another Version", systemImage: "arrow.triangle.2.circlepath") }.tvPill()
+                .focused($primaryFocused)
+        }
+    }
+
+    private func get() async {
+        guard let query = model.query() else { return }
+        guard app.settings.oneTapGet else { return openVersions() }
+        working = true
+        defer { working = false }
+        switch await app.smartGet(query, target: model.target()) {
+        case .sent: message = "Sent to put.io. It'll play here as soon as it's ready."
+        case .noMatch: openVersions()
+        case .failed:
+            message = "Couldn't send it to put.io. Pick a version instead."
+            openVersions()
+        }
+    }
+
+    private func openVersions() {
+        guard let query = model.query() else { return }
+        router.open(.versions(TVVersionsRequest(query: query, target: model.target(),
+                                                playNow: app.library.matching(tmdbID: item.tmdbID))))
+    }
+
+    private func playTrailer(_ imdbID: String) async {
+        if let video = await app.trailer(imdbID: imdbID) { trailer = TrailerURL(url: video.url) } else { message = "No trailer found." }
+    }
+}
+
+/// ＋ / ✓ My List as a round button.
+struct TVMyListCircle: View {
+    let item: CatalogItem
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        let saved = app.myList.contains(item)
+        Button { Task { await app.myList.toggle(item) } } label: { Image(systemName: saved ? "checkmark" : "plus") }
+            .tvCircle()
+            .accessibilityLabel(saved ? "Remove from My List" : "Add to My List")
+    }
+}
+
+/// Seasons and episodes: IMDb score per episode, best of season, resume points; choose to play, get or pick a version.
+struct TVEpisodes: View {
+    let model: TitleModel
+    let item: CatalogItem
+    @Environment(AppModel.self) private var app
+    @Environment(TVRouter.self) private var router
+    @State private var choice: EpisodeChoice?
+    @State private var message: String?
+
+    var body: some View {
         let seasons = model.detail?.seasons ?? []
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             if !seasons.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 20) {
+                    HStack(spacing: 18) {
                         ForEach(seasons, id: \.number) { season in
                             Button { Task { await model.selectSeason(season.number) } } label: {
-                                Text(season.name).fontWeight(model.selectedSeason == season.number ? .bold : .regular)
+                                if model.selectedSeason == season.number {
+                                    Label(season.name, systemImage: "checkmark")
+                                } else {
+                                    Text(season.name)
+                                }
                             }
-                            .tvGlass(prominent: model.selectedSeason == season.number)
+                            .tvPill()
                         }
                     }
-                    .padding(.horizontal, TVMetrics.edge)
-                    .padding(.vertical, 20)
+                    .padding(.horizontal, TVMetrics.edge).padding(.vertical, 20)
                 }
                 .focusSection()
             }
+            if let message { Text(message).font(.system(size: 22)).foregroundStyle(TVMetrics.secondaryText).padding(.horizontal, TVMetrics.edge) }
             if let season = model.selectedSeason {
                 TVShelf(title: "Episodes") {
                     ForEach(model.episodes) { episode in
-                        let resume = app.library.matching(tmdbID: item.tmdbID, season: season, episode: episode.number)
-                            .map { app.library.resumeSeconds(for: $0) }.max() ?? 0
-                        let rating = model.episodeRatings[episode.number].map { String(format: "IMDb %.1f", $0.rating) }
-                        let inPutio = !app.library.matching(tmdbID: item.tmdbID, season: season, episode: episode.number).isEmpty
-                        TVWideCard(title: "\(episode.number). \(episode.name)",
-                                   subtitle: [inPutio ? (resume >= 30 ? "Resume \(Format.clock(resume))" : "In put.io") : nil,
-                                              rating, Format.runtime(episode.runtimeMinutes)].compactMap { $0 }.joined(separator: " · "),
-                                   imagePath: episode.stillPath, progress: nil, tintItem: nil) {
-                            episodeChoice = EpisodeChoice(season: season, episode: episode.number,
-                                                          title: "S\(season) · E\(episode.number) \(episode.name)")
+                        let entries = app.library.matching(tmdbID: item.tmdbID, season: season, episode: episode.number)
+                        let resume = entries.map { app.library.resumeSeconds(for: $0) }.max() ?? 0
+                        TVWideCard(title: "\(episode.number). \(episode.name)", subtitle: subtitle(episode, inPutio: !entries.isEmpty, resume: resume),
+                                   imagePath: episode.stillPath ?? item.backdropPath) {
+                            choice = EpisodeChoice(season: season, episode: episode.number, title: "S\(season) · E\(episode.number)  \(episode.name)")
                         }
                     }
                 }
             }
         }
+        .confirmationDialog(choice?.title ?? "", isPresented: Binding(get: { choice != nil }, set: { if !$0 { choice = nil } }),
+                            titleVisibility: .visible) {
+            if let choice { actions(choice) }
+        }
     }
 
-    @ViewBuilder private func episodeActions(_ choice: EpisodeChoice, _ model: TitleModel) -> some View {
+    private func subtitle(_ episode: Episode, inPutio: Bool, resume: Int) -> String {
+        var parts: [String] = []
+        if let score = model.episodeRatings[episode.number] { parts.append(String(format: "IMDb %.1f", score.rating)) }
+        if let runtime = Format.runtime(episode.runtimeMinutes) { parts.append(runtime) }
+        if inPutio { parts.append(resume >= 30 ? "Resume \(Format.clock(resume))" : "In put.io") }
+        if isBest(episode.number) { parts.append("Best of season") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func isBest(_ number: Int) -> Bool {
+        let scores = model.episodeRatings
+        guard scores.count >= 3, let mine = scores[number]?.rating else { return false }
+        return scores.values.allSatisfy { $0.rating <= mine } && scores.values.filter { $0.rating == mine }.count == 1
+    }
+
+    @ViewBuilder private func actions(_ choice: EpisodeChoice) -> some View {
         switch model.action(season: choice.season, episode: choice.episode) {
         case let .play(entry):
             Button("Play") { router.play(entry, from: 0) }
@@ -223,44 +293,28 @@ struct TVTitleView: View {
         case .downloading:
             Button("Downloading…") {}
         case .get, .failed:
-            Button("Get & Watch") { Task { await get(model, season: choice.season, episode: choice.episode) } }
-            Button("Versions") { openVersions(model, season: choice.season, episode: choice.episode) }
-            Button("Get Whole Season") { openVersions(model, season: choice.season, episode: nil) }
+            Button("Get & Watch") { Task { await get(choice.season, choice.episode) } }
+            Button("Versions") { openVersions(choice.season, choice.episode) }
+            Button("Get Whole Season") { openVersions(choice.season, nil) }
         }
         Button("Cancel", role: .cancel) {}
     }
 
-    // MARK: Actions
-
-    private func get(_ model: TitleModel, season: Int?, episode: Int?) async {
+    private func get(_ season: Int, _ episode: Int) async {
         guard let query = model.query(season: season, episode: episode) else { return }
-        guard app.settings.oneTapGet else { return openVersions(model, season: season, episode: episode) }
-        working = true
-        defer { working = false }
         message = "Finding the best version…"
         switch await app.smartGet(query, target: model.target(season: season, episode: episode)) {
-        case .sent: message = "Sent to put.io. It plays here as soon as it's ready."
-        case .noMatch:
+        case .sent: message = "Sent to put.io. It'll play here as soon as it's ready."
+        case .noMatch, .failed:
             message = nil
-            openVersions(model, season: season, episode: episode)
-        case .failed:
-            message = "Couldn't send it to put.io. Pick a version instead."
-            openVersions(model, season: season, episode: episode)
+            openVersions(season, episode)
         }
     }
 
-    private func openVersions(_ model: TitleModel, season: Int?, episode: Int?) {
+    private func openVersions(_ season: Int, _ episode: Int?) {
         guard let query = model.query(season: season, episode: episode) else { return }
         router.open(.versions(TVVersionsRequest(query: query, target: model.target(season: season, episode: episode),
                                                 playNow: app.library.matching(tmdbID: item.tmdbID, season: season, episode: episode))))
-    }
-
-    private func playTrailer(_ imdbID: String) async {
-        if let video = await app.trailer(imdbID: imdbID) {
-            trailer = TrailerURL(url: video.url)
-        } else {
-            message = "No trailer found."
-        }
     }
 }
 
@@ -275,14 +329,14 @@ struct TrailerURL: Identifiable {
     var id: URL { url }
 }
 
-/// Ring-free transfer progress for the TV: percentage and speed.
+/// Transfer progress for the TV: bar, percentage and speed.
 struct TVTransferStatus: View {
     let transfer: TrackedTransfer
 
     var body: some View {
         HStack(spacing: 18) {
-            ProgressView(value: Double(transfer.percent), total: 100).frame(width: 260)
-            Text(label).font(.callout.monospacedDigit())
+            ProgressView(value: Double(transfer.percent), total: 100).frame(width: 260).tint(.white)
+            Text(label).font(.system(size: 24, weight: .medium).monospacedDigit())
         }
         .accessibilityElement(children: .combine)
     }

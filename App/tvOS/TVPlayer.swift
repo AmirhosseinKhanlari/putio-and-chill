@@ -9,8 +9,13 @@ import SwiftUI
 struct TVPlayerView: UIViewControllerRepresentable {
     let request: TVPlayRequest
     @Environment(AppModel.self) private var app
+    @Environment(TVRouter.self) private var router
 
-    func makeCoordinator() -> TVPlaybackCoordinator { TVPlaybackCoordinator(request: request, app: app) }
+    func makeCoordinator() -> TVPlaybackCoordinator {
+        let coordinator = TVPlaybackCoordinator(request: request, app: app)
+        coordinator.onNext = { [router] next in router.play(next, from: 0) }
+        return coordinator
+    }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         context.coordinator.makeController()
@@ -40,6 +45,11 @@ final class TVPlaybackCoordinator {
     private var timeObserver: Any?
     private var selectionObserver: NSObjectProtocol?
     private var finished = false
+    private var endObserver: NSObjectProtocol?
+    /// The next episode when it's already in put.io; offered near the end and auto-played if Settings say so.
+    private let next: LibraryEntry?
+    private var offeringNext = false
+    var onNext: ((LibraryEntry) -> Void)?
 
     init(request: TVPlayRequest, app: AppModel) {
         self.request = request
@@ -54,6 +64,13 @@ final class TVPlaybackCoordinator {
             player = AVPlayer()
         }
         finder = app.subtitleFinder(for: request.subtitleContext, fileSize: request.entry.file.size, includePutio: false)
+        next = Self.nextEpisode(after: request.entry, in: app.library)
+    }
+
+    static func nextEpisode(after entry: LibraryEntry, in library: LibraryIndex) -> LibraryEntry? {
+        guard let match = entry.match, match.mediaType == .tv, let season = match.season, let episode = match.episode else { return nil }
+        return library.matching(tmdbID: match.tmdbID, season: season, episode: episode + 1).first
+            ?? library.matching(tmdbID: match.tmdbID, season: season + 1, episode: 1).first
     }
 
     func makeController() -> AVPlayerViewController {
@@ -89,6 +106,13 @@ final class TVPlaybackCoordinator {
                                                                    object: player.currentItem, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.systemSelectionChanged() }
         }
+        endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification,
+                                                             object: player.currentItem, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.app.settings.autoPlayNextEpisode else { return }
+                self.playNext()
+            }
+        }
         rebuildMenus()
         return controller
     }
@@ -99,6 +123,7 @@ final class TVPlaybackCoordinator {
         guard seconds.isFinite else { return }
         let text = finder.text(at: seconds)
         if line.text != text { line.text = text }
+        updateNextOffer(at: seconds)
         if seconds - lastSync >= 10, let session {
             lastSync = seconds
             let duration = player.currentItem?.duration.seconds ?? 0
@@ -111,12 +136,33 @@ final class TVPlaybackCoordinator {
         finished = true
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         if let selectionObserver { NotificationCenter.default.removeObserver(selectionObserver) }
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         player.pause()
         let position = player.currentTime().seconds
         let duration = player.currentItem?.duration.seconds ?? 0
         if let session, position.isFinite, position > 0 {
             Task { await session.finish(seconds: position, duration: duration.isFinite ? duration : 0) }
         }
+    }
+
+    // MARK: Next episode
+
+    /// "Next Episode" button over the video for the last 30 seconds (like Skip Intro in Apple's apps).
+    private func updateNextOffer(at seconds: Double) {
+        guard let next, let duration = player.currentItem?.duration.seconds, duration.isFinite, duration > 0 else { return }
+        let offer = duration - seconds < 30
+        guard offer != offeringNext else { return }
+        offeringNext = offer
+        let label = next.match.flatMap { match in match.episode.map { "Next: S\(match.season ?? 0) E\($0)" } } ?? "Next Episode"
+        controller?.contextualActions = offer
+            ? [UIAction(title: label, image: UIImage(systemName: "forward.end.fill")) { [weak self] _ in self?.playNext() }]
+            : []
+    }
+
+    private func playNext() {
+        guard let next, !finished else { return }
+        finish()
+        onNext?(next)
     }
 
     // MARK: Menus (Subtitles, Timing) in the player's swipe-down bar

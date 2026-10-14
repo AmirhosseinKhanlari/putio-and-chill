@@ -3,7 +3,7 @@ import AMDBKit
 import Observation
 import SwiftUI
 
-enum TVTab: Hashable { case home, movies, tv, search, library, settings }
+enum TVTab: Hashable { case home, movies, tv, top250, search, library, settings }
 
 /// Release list for a title (movie, season or episode).
 struct TVVersionsRequest: Hashable {
@@ -16,6 +16,10 @@ enum TVRoute: Hashable {
     case title(CatalogItem)
     case versions(TVVersionsRequest)
     case myList
+    case person(Int)
+    case collection(Int)
+    case surprise
+    case organize
 }
 
 /// A video to play: the put.io file plus what it is (for progress, subtitles and the next episode).
@@ -39,7 +43,10 @@ final class TVRouter {
     var tvPath: [TVRoute] = []
     var searchPath: [TVRoute] = []
     var libraryPath: [TVRoute] = []
+    var topPath: [TVRoute] = []
     var player: TVPlayRequest?
+    /// "Ready to watch" notice for a finished transfer.
+    var ready: TrackedTransfer?
 
     func open(_ route: TVRoute) {
         switch tab {
@@ -47,6 +54,7 @@ final class TVRouter {
         case .movies: moviesPath.append(route)
         case .tv: tvPath.append(route)
         case .search: searchPath.append(route)
+        case .top250: topPath.append(route)
         case .library, .settings: libraryPath.append(route)
         }
     }
@@ -55,5 +63,15 @@ final class TVRouter {
 
     func play(_ entry: LibraryEntry, from seconds: Int) {
         player = TVPlayRequest(entry: entry, resumeFrom: seconds)
+    }
+
+    /// Plays a transfer that just finished on put.io.
+    func playTransfer(_ transfer: TrackedTransfer) {
+        guard let file = transfer.playableFile else { return }
+        let pending = transfer.pending
+        let match = pending.tmdbID > 0 ? LibraryMatch(tmdbID: pending.tmdbID, mediaType: pending.kind, season: pending.season,
+                                                      episode: pending.episode, confidence: 1, title: pending.title,
+                                                      posterPath: pending.posterPath, backdropPath: pending.backdropPath) : nil
+        play(LibraryEntry(file: file, match: match, folderName: nil), from: 0)
     }
 }

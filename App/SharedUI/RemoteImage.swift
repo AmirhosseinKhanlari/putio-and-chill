@@ -49,6 +49,10 @@ struct RemoteImage: View {
     }
 
     @ViewBuilder private var base: some View {
+        #if os(tvOS)
+        // Design A on the TV: quiet gray while art loads, never colored placeholders.
+        if contentMode == .fill { Color(white: 0.1) } else { Color.clear }
+        #else
         if neutral {
             Color.white.opacity(0.08)
         } else if contentMode == .fill {
@@ -57,5 +61,6 @@ struct RemoteImage: View {
         } else {
             Color.clear
         }
+        #endif
     }
 }
