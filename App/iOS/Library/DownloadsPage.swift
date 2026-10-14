@@ -68,7 +68,9 @@ struct DownloadsPage: View {
             }
             Spacer(minLength: 8)
             if done {
-                Button { play(record, .device) } label: { Image(systemName: "play.circle.fill").font(.system(size: 30)) }
+                Button { play(record, .device) } label: {
+                    Image(systemName: "play.circle.fill").font(.system(size: 30)).frame(width: 44, height: 44).contentShape(Rectangle())
+                }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Play \(record.title) from this device")
             } else if case let .downloading(progress) = record.state {

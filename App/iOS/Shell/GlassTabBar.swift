@@ -31,7 +31,9 @@ struct GlassTabBar: View {
             TransferPill()
             Button { router.showSettings = true } label: {
                 Image(systemName: "gearshape.fill").font(.system(size: 15, weight: .semibold))
-                    .frame(width: 36, height: 36).foregroundStyle(.white.opacity(0.75))
+                    .frame(width: 44, height: 44).foregroundStyle(.white.opacity(0.75))
+                    // The whole circle takes the touch, not just the gear glyph.
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Settings")

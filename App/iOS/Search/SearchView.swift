@@ -50,7 +50,10 @@ private struct SearchContent: View {
                         .font(.title3)
                     if model.isSearching { ProgressView() }
                     if !model.query.isEmpty {
-                        Button { model.query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.5)) }
+                        Button { model.query = "" } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.white.opacity(0.5))
+                                .frame(width: 44, height: 44).contentShape(Rectangle())
+                        }
                             .buttonStyle(.plain)
                     }
                 }

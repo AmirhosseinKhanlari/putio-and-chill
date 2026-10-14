@@ -47,4 +47,18 @@ final class TapReliabilityUITests: XCTestCase {
                 .waitForExistence(timeout: 5), "back works (attempt \(attempt))")
         }
     }
+
+    /// The Settings gear opens Settings, also when the touch lands near (not exactly on) the icon.
+    func testSettingsButton() {
+        for (index, offset) in [CGVector(dx: 0.5, dy: 0.5), CGVector(dx: 0.15, dy: 0.2), CGVector(dx: 0.85, dy: 0.8)].enumerated() {
+            let app = XCUIApplication()
+            app.launchArguments = ["-demo"]
+            app.launch()
+            let gear = app.buttons["Settings"]
+            XCTAssertTrue(gear.waitForExistence(timeout: 20))
+            sleep(1)
+            gear.coordinate(withNormalizedOffset: offset).tap()
+            XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5), "Settings opens (touch \(index))")
+        }
+    }
 }

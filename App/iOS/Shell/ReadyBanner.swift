@@ -27,7 +27,8 @@ struct ReadyBanner: View {
                     .buttonStyle(.primaryPill)
                 }
                 Button { withAnimation { router.banner = nil } } label: {
-                    Image(systemName: "xmark").font(.caption.bold()).frame(width: 28, height: 28)
+                    Image(systemName: "xmark").font(.caption.bold()).frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
