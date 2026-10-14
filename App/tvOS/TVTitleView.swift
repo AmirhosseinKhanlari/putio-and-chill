@@ -15,24 +15,34 @@ struct TVTitleView: View {
     @State private var trailer: TrailerURL?
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 50) {
-                header
-                if item.mediaType == .tv, let model { episodes(model) }
-                if let cast = model?.detail?.cast, !cast.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Cast").font(.title3.weight(.semibold))
-                        Text(cast.prefix(8).map(\.name).joined(separator: " · ")).foregroundStyle(.secondary)
+        ZStack {
+            backdrop
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 0) {
+                    // First screen: the art, with title and actions at the bottom left.
+                    header
+                        .containerRelativeFrame(.vertical, alignment: .bottomLeading)
+                    VStack(alignment: .leading, spacing: 50) {
+                        if item.mediaType == .tv, let model { episodes(model) }
+                        if let cast = model?.detail?.cast, !cast.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Cast").font(.title3.weight(.semibold))
+                                Text(cast.prefix(8).map(\.name).joined(separator: " · ")).foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, TVMetrics.edge)
+                        }
+                        if let recommendations = model?.detail?.recommendations, !recommendations.isEmpty {
+                            TVCatalogShelf(row: CatalogRow(id: "more", title: "More Like This", items: recommendations))
+                        }
                     }
-                    .padding(.horizontal, TVMetrics.edge)
-                }
-                if let recommendations = model?.detail?.recommendations, !recommendations.isEmpty {
-                    TVCatalogShelf(row: CatalogRow(id: "more", title: "More Like This", items: recommendations))
+                    .padding(.top, 40)
+                    .padding(.bottom, 80)
+                    .background(Theme.background.opacity(0.92))
                 }
             }
-            .padding(.bottom, 80)
+            .scrollClipDisabled()
         }
-        .ambientBackground()
+        .toolbar(.hidden, for: .tabBar)
         .onAppear { ambient.focus(item) }
         .task {
             guard model == nil, let catalog = app.catalog else { return }
@@ -52,36 +62,45 @@ struct TVTitleView: View {
 
     // MARK: Header
 
-    private var header: some View {
-        ZStack(alignment: .bottomLeading) {
-            RemoteImage(path: item.backdropPath, size: "original", seed: item.title)
-                .frame(height: 760)
-                .frame(maxWidth: .infinity)
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.5),
-                                             .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
-                .overlay(LinearGradient(colors: [Theme.background.opacity(0.9), .clear], startPoint: .leading, endPoint: .center))
-                .padding(.horizontal, -TVMetrics.edge)
-                .ignoresSafeArea(edges: [.horizontal, .top])
-            VStack(alignment: .leading, spacing: 18) {
-                if let logo = model?.detail?.logoPath {
-                    RemoteImage(path: logo, size: "w500", seed: item.title, contentMode: .fit, alignment: .leading)
-                        .frame(maxWidth: 620, maxHeight: 200, alignment: .leading)
-                        .accessibilityLabel(item.title)
-                } else {
-                    Text(item.title.uppercased()).font(.system(size: 76, weight: .ultraLight)).tracking(6)
-                        .lineLimit(2).minimumScaleFactor(0.6).frame(maxWidth: 1100, alignment: .leading)
-                }
-                meta
-                let overview = model?.detail?.item.overview.isEmpty == false ? model!.detail!.item.overview : item.overview
-                if !overview.isEmpty {
-                    Text(overview).font(.callout).foregroundStyle(.white.opacity(0.85)).lineLimit(4)
-                        .frame(maxWidth: 1000, alignment: .leading)
-                }
-                if let model, item.mediaType == .movie { actions(model) } else { secondaryActions }
-                if let message { Text(message).font(.callout).foregroundStyle(Theme.okay) }
-            }
-            .padding(.horizontal, TVMetrics.edge)
+    /// Full-screen art behind the page (stays put while the page scrolls).
+    private var backdrop: some View {
+        ZStack {
+            Theme.background
+            RemoteImage(path: item.backdropPath ?? item.posterPath, size: "original", seed: item.title)
+            LinearGradient(stops: [.init(color: Theme.background.opacity(0.92), location: 0),
+                                   .init(color: Theme.background.opacity(0.55), location: 0.4),
+                                   .init(color: .clear, location: 0.7)], startPoint: .leading, endPoint: .trailing)
+            LinearGradient(stops: [.init(color: .clear, location: 0.45), .init(color: Theme.background.opacity(0.85), location: 1)],
+                           startPoint: .top, endPoint: .bottom)
         }
+        .ignoresSafeArea()
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            if let logo = model?.detail?.logoPath {
+                RemoteImage(path: logo, size: "w500", seed: item.title, contentMode: .fit, alignment: .leading)
+                    .frame(maxWidth: 640, maxHeight: 220, alignment: .leading)
+                    .accessibilityLabel(item.title)
+            } else {
+                Text(item.title.uppercased()).font(.system(size: 80, weight: .ultraLight)).tracking(6)
+                    .lineLimit(2).minimumScaleFactor(0.6).frame(maxWidth: 1100, alignment: .leading)
+            }
+            meta
+            let overview = model?.detail?.item.overview.isEmpty == false ? model!.detail!.item.overview : item.overview
+            if !overview.isEmpty {
+                Text(overview).font(.callout).foregroundStyle(.white.opacity(0.88)).lineLimit(3)
+                    .frame(maxWidth: 1000, alignment: .leading)
+            }
+            Group {
+                if let model, item.mediaType == .movie { actions(model) } else { secondaryActions }
+            }
+            .labelStyle(TVActionLabelStyle())
+            .padding(.top, 10)
+            if let message { Text(message).font(.callout).foregroundStyle(Theme.okay) }
+        }
+        .padding(.horizontal, TVMetrics.edge)
+        .padding(.bottom, 70)
         .focusSection()
     }
 
@@ -102,29 +121,35 @@ struct TVTitleView: View {
     // MARK: Movie actions
 
     @ViewBuilder private func actions(_ model: TitleModel) -> some View {
-        HStack(spacing: 24) {
+        HStack(alignment: .center, spacing: 24) {
             switch model.action() {
             case .get:
                 Button { Task { await get(model, season: nil, episode: nil) } } label: {
-                    if working { ProgressView() } else { Label("Get & Watch", systemImage: "play.fill") }
+                    if working { ProgressView().frame(width: 220, height: 48) } else { Label("Get & Watch", systemImage: "play.fill") }
                 }
+                .tvGlass(prominent: true)
                 .disabled(working)
                 versionsButton(model, season: nil, episode: nil)
             case let .play(entry):
                 Button { router.play(entry, from: 0) } label: { Label("Play", systemImage: "play.fill") }
+                    .tvGlass(prominent: true)
                 versionsButton(model, season: nil, episode: nil)
             case let .resume(entry, seconds):
                 Button { router.play(entry, from: seconds) } label: { Label("Resume \(Format.clock(seconds))", systemImage: "play.fill") }
+                    .tvGlass(prominent: true)
                 Button { router.play(entry, from: 0) } label: { Label("Start Over", systemImage: "backward.end.fill") }
+                    .tvGlass()
             case let .downloading(transfer):
                 TVTransferStatus(transfer: transfer)
                 Button("Cancel", role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } }
+                    .tvGlass()
             case let .failed(transfer):
                 Text("Transfer failed").foregroundStyle(Theme.poor)
                 Button {
                     app.transfers.dismiss(transfer.id)
                     openVersions(model, season: nil, episode: nil)
                 } label: { Label("Try Another Version", systemImage: "arrow.triangle.2.circlepath") }
+                .tvGlass(prominent: true)
             }
             secondaryActions
         }
@@ -136,6 +161,7 @@ struct TVTitleView: View {
             TVMyListButton(item: item)
             if let imdbID = model?.detail?.imdbID {
                 Button { Task { await playTrailer(imdbID) } } label: { Label("Trailer", systemImage: "film") }
+                    .tvGlass()
             }
         }
     }
@@ -144,6 +170,7 @@ struct TVTitleView: View {
         Button { openVersions(model, season: season, episode: episode) } label: {
             Label("Versions", systemImage: "square.stack.3d.up")
         }
+        .tvGlass()
     }
 
     // MARK: Episodes
@@ -158,7 +185,7 @@ struct TVTitleView: View {
                             Button { Task { await model.selectSeason(season.number) } } label: {
                                 Text(season.name).fontWeight(model.selectedSeason == season.number ? .bold : .regular)
                             }
-                            .tint(model.selectedSeason == season.number ? .white : nil)
+                            .tvGlass(prominent: model.selectedSeason == season.number)
                         }
                     }
                     .padding(.horizontal, TVMetrics.edge)

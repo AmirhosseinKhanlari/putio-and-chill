@@ -84,6 +84,7 @@ final class PlayerCoordinator {
         chrome = PlayerChrome(title: request.played?.title ?? request.title, subtitle: episode,
                               subtitles: app.subtitleFinder(for: request.subtitleContext, fileSize: request.file.size))
         chrome.nextLabel = request.next?.label
+        chrome.playingFromDevice = localURL != nil
         chrome.subtitleStyle = app.settings.subtitleStyle
         chrome.failureLink = URL(string: "https://app.put.io/files/\(request.file.id)")
         controller = PlayerViewController(engine: engine, chrome: chrome)

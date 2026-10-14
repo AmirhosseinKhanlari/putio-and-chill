@@ -26,15 +26,17 @@ struct PrimaryActions: View {
                 .disabled(finding)
                 if app.settings.oneTapGet { versionsButton }
             case let .play(entry):
-                Button { router.play(entry, resumeFrom: 0) } label: { Label("Play", systemImage: "play.fill") }
+                Button { router.play(entry, resumeFrom: 0) } label: { playLabel("Play", entry: entry) }
                     .buttonStyle(.primaryPill)
+                    .playSourceMenu(entry: entry, resumeFrom: 0)
                 DownloadButton(entry: entry)
                 versionsButton
             case let .resume(entry, seconds):
                 Button { router.play(entry, resumeFrom: seconds) } label: {
-                    Label("Resume \(Format.clock(seconds))", systemImage: "play.fill")
+                    playLabel("Resume \(Format.clock(seconds))", entry: entry)
                 }
                 .buttonStyle(.primaryPill)
+                .playSourceMenu(entry: entry, resumeFrom: seconds)
                 DownloadButton(entry: entry)
                 versionsButton
             case let .downloading(transfer):
@@ -49,6 +51,15 @@ struct PrimaryActions: View {
                     .buttonStyle(.primaryPill)
                 }
             }
+        }
+    }
+
+    /// "Play" plus a small device icon when it will play the downloaded copy.
+    @ViewBuilder private func playLabel(_ title: String, entry: LibraryEntry) -> some View {
+        if app.settings.preferDownloads, app.downloads.finished.contains(where: { $0.fileID == entry.id }) {
+            Label { Text(title) + Text("  ·  Downloaded").font(.caption.weight(.semibold)) } icon: { Image(systemName: "play.fill") }
+        } else {
+            Label(title, systemImage: "play.fill")
         }
     }
 
@@ -155,11 +166,13 @@ struct EpisodeActionButton: View {
             HStack(spacing: 10) {
                 DownloadButton(entry: entry, plain: true)
                 iconButton("play.circle.fill", label: "Play episode") { router.play(entry, resumeFrom: 0, next: next) }
+                    .playSourceMenu(entry: entry, resumeFrom: 0, next: next)
             }
         case let .resume(entry, seconds):
             HStack(spacing: 10) {
                 DownloadButton(entry: entry, plain: true)
                 iconButton("play.circle.fill", label: "Resume episode") { router.play(entry, resumeFrom: seconds, next: next) }
+                    .playSourceMenu(entry: entry, resumeFrom: seconds, next: next)
             }
         case let .downloading(transfer):
             DownloadStatus(transfer: transfer, ringOnly: true)
@@ -191,5 +204,37 @@ struct EpisodeActionButton: View {
         guard let query = model.query(season: season, episode: episode) else { return }
         router.versions = VersionsRequest(query: query, target: model.target(season: season, episode: episode),
                                           playNow: app.library.matching(tmdbID: model.item.tmdbID, season: season, episode: episode))
+    }
+}
+
+/// Long-press on Play: choose the downloaded copy or streaming, whatever the default is.
+private struct PlaySourceMenu: ViewModifier {
+    let entry: LibraryEntry
+    let resumeFrom: Int
+    let next: NextEpisode?
+    @Environment(AppModel.self) private var app
+    @Environment(Router.self) private var router
+
+    func body(content: Content) -> some View {
+        let downloaded = app.downloads.finished.contains { $0.fileID == entry.id }
+        content.contextMenu {
+            if downloaded {
+                Button { router.play(entry, resumeFrom: resumeFrom, next: next, source: .device) } label: {
+                    Label("Play from This Device", systemImage: "arrow.down.circle")
+                }
+            }
+            Button { router.play(entry, resumeFrom: resumeFrom, next: next, source: .stream) } label: {
+                Label("Stream from put.io", systemImage: "icloud")
+            }
+            if resumeFrom > 0 {
+                Button { router.play(entry, resumeFrom: 0, next: next) } label: { Label("Start Over", systemImage: "backward.end") }
+            }
+        }
+    }
+}
+
+extension View {
+    func playSourceMenu(entry: LibraryEntry, resumeFrom: Int, next: NextEpisode? = nil) -> some View {
+        modifier(PlaySourceMenu(entry: entry, resumeFrom: resumeFrom, next: next))
     }
 }

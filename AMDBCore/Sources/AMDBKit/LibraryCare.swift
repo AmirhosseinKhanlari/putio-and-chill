@@ -35,6 +35,20 @@ public final class DownloadsIndex {
         await persist()
     }
 
+    /// Download progress. Delegate callbacks can arrive out of order, so a late progress report never turns a
+    /// finished download back into a running one.
+    public func progress(fileID: Int64, _ value: Double) async {
+        guard let index = records.firstIndex(where: { $0.fileID == fileID }) else { return }
+        if case .done = records[index].state { return }
+        records[index].state = .downloading(progress: value)
+        await persist()
+    }
+
+    /// Finished downloads, newest first.
+    public var finished: [DownloadRecord] {
+        records.filter { if case .done = $0.state { true } else { false } }
+    }
+
     public func remove(fileID: Int64) async {
         records.removeAll { $0.fileID == fileID }
         await persist()

@@ -34,12 +34,19 @@ enum Route: Hashable {
     case person(Int)
     case collection(Int)
     case myList
+    case downloads
 }
 
 struct NextEpisode: Hashable {
     let query: MediaQuery?
     let target: TransferTarget
     let label: String
+}
+
+/// Where a video plays from when it has been downloaded.
+enum PlaybackSource {
+    /// The download if there is one and Settings prefers downloads, else stream.
+    case automatic, device, stream
 }
 
 struct PlayerRequest: Identifiable {
@@ -50,6 +57,7 @@ struct PlayerRequest: Identifiable {
     let next: NextEpisode?
     var season: Int? = nil
     var episode: Int? = nil
+    var source: PlaybackSource = .automatic
     var id: Int64 { file.id }
 
     var subtitleContext: SubtitleContext {
@@ -104,6 +112,7 @@ final class Router {
     func openPerson(_ id: Int) { push(.person(id)) }
     func openCollection(_ id: Int) { push(.collection(id)) }
     func openMyList() { push(.myList) }
+    func openDownloads() { push(.downloads) }
 
     private func push(_ route: Route) {
         switch tab {
@@ -125,10 +134,10 @@ final class Router {
         }
     }
 
-    func play(_ entry: LibraryEntry, resumeFrom: Int, next: NextEpisode? = nil) {
+    func play(_ entry: LibraryEntry, resumeFrom: Int, next: NextEpisode? = nil, source: PlaybackSource = .automatic) {
         let played = entry.match.map { PlayedTitle(tmdbID: $0.tmdbID, kind: $0.mediaType, title: $0.title) }
         player = PlayerRequest(file: entry.file, title: entry.displayTitle, resumeFrom: resumeFrom, played: played, next: next,
-                               season: entry.match?.season, episode: entry.match?.episode)
+                               season: entry.match?.season, episode: entry.match?.episode, source: source)
     }
 
     func play(_ transfer: TrackedTransfer) {

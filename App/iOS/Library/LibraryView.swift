@@ -30,7 +30,14 @@ struct LibraryView: View {
                 }
                 StorageMeter()
                 if !app.downloads.records.isEmpty {
-                    Text("On this device").font(.title3.weight(.semibold))
+                    HStack {
+                        Text("On this device").font(.title3.weight(.semibold))
+                        Spacer()
+                        Button("Manage") { router.openDownloads() }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.75))
+                            .accessibilityLabel("Manage downloads")
+                    }
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) { ForEach(app.downloads.records) { DownloadCard(record: $0) } }
                     }
@@ -194,24 +201,45 @@ private struct DownloadCard: View {
     @Environment(Router.self) private var router
     @Environment(OfflineDownloader.self) private var downloader
 
+    private var isDone: Bool { if case .done = record.state { true } else { false } }
+
     var body: some View {
         HStack(spacing: 12) {
-            RemoteImage(path: record.posterPath, size: "w185", seed: record.title)
-                .frame(width: 44, height: 66).clipShape(RoundedRectangle(cornerRadius: 6))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(record.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text(status).font(.caption).foregroundStyle(.white.opacity(0.65)).lineLimit(2)
-            }
-            Spacer(minLength: 0)
-            Menu {
-                Button(role: .destructive) { Task { await downloader.cancel(fileID: record.fileID) } } label: {
-                    Label("Remove download", systemImage: "trash")
+            Button { play(.device) } label: {
+                HStack(spacing: 12) {
+                    RemoteImage(path: record.posterPath, size: "w185", seed: record.title)
+                        .frame(width: 44, height: 66).clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay { if isDone { Image(systemName: "play.fill").font(.caption).padding(6).background(.black.opacity(0.55), in: Circle()) } }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(record.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text(status).font(.caption).foregroundStyle(.white.opacity(0.65)).lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
                 }
-            } label: { Image(systemName: "ellipsis").frame(width: 28, height: 28) }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!isDone)
+            .accessibilityLabel(isDone ? "Play \(record.title) from this device" : record.title)
+            Menu {
+                if isDone {
+                    Button { play(.device) } label: { Label("Play from This Device", systemImage: "play.fill") }
+                    Button { play(.stream) } label: { Label("Stream from put.io", systemImage: "icloud") }
+                }
+                Button(role: .destructive) { Task { await downloader.cancel(fileID: record.fileID) } } label: {
+                    Label(isDone ? "Remove Download" : "Cancel Download", systemImage: "trash")
+                }
+            } label: { Image(systemName: "ellipsis").frame(width: 32, height: 32) }
+            .accessibilityLabel("More for \(record.title)")
         }
         .padding(12)
         .frame(width: 300)
         .glassRounded(16)
+    }
+
+    private func play(_ source: PlaybackSource) {
+        let entry = downloader.entry(for: record)
+        router.play(entry, resumeFrom: app.library.resumeSeconds(for: entry), source: source)
     }
 
     private var status: String {

@@ -239,7 +239,8 @@ public final class AppModel {
     }
 
     /// Subtitle search for one video, wired to the signed-in OpenSubtitles account and the file's hash.
-    public func subtitleFinder(for context: SubtitleContext, fileSize: Int64?) -> SubtitleFinder {
+    /// `includePutio` false: put.io's tracks are left to the player (Apple TV shows them in its own menu).
+    public func subtitleFinder(for context: SubtitleContext, fileSize: Int64?, includePutio: Bool = true) -> SubtitleFinder {
         let language = settings.subtitleLanguage ?? Locale.current.language.languageCode?.identifier ?? "en"
         let putio = putio
         let hasher: (@Sendable () async -> String?)? = putio.flatMap { putio in
@@ -249,7 +250,7 @@ public final class AppModel {
                 return try? await OpenSubtitlesHash.compute(url: url, size: size, transport: URLSessionTransport())
             }
         }
-        let source = putio.map { putio in
+        let source = putio.flatMap { putio in includePutio ? putio : nil }.map { putio in
             PutioSubtitleSource(list: { try await putio.subtitles(fileID: context.fileID) },
                                 text: { try await putio.subtitleText(fileID: context.fileID, key: $0) })
         }

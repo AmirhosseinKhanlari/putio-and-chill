@@ -82,6 +82,27 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         await app.downloads.remove(fileID: fileID)
     }
 
+    /// A playable library entry for a download, even when put.io isn't reachable (offline) or the file left put.io.
+    func entry(for record: DownloadRecord) -> LibraryEntry {
+        if let known = app.library.entries.first(where: { $0.id == record.fileID }) { return known }
+        let match = record.tmdbID.map {
+            LibraryMatch(tmdbID: $0, mediaType: record.kind ?? .movie, season: record.season, episode: record.episode,
+                         confidence: 1, title: record.title, posterPath: record.posterPath)
+        }
+        return LibraryEntry(file: PutioFile(id: record.fileID, name: record.title, fileType: "VIDEO"), match: match, folderName: nil)
+    }
+
+    /// Space the offline copy takes on this device.
+    func size(fileID: Int64) -> Int64? {
+        guard let url = localURL(fileID: fileID),
+              let files = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.totalFileAllocatedSizeKey]) else { return nil }
+        var total: Int64 = 0
+        for case let file as URL in files {
+            total += Int64((try? file.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize ?? 0)
+        }
+        return total
+    }
+
     func localURL(fileID: Int64) -> URL? {
         guard case let .done(relativePath)? = app.downloads.record(fileID: fileID)?.state else { return nil }
         let url = URL(fileURLWithPath: NSHomeDirectory()).appending(path: relativePath)
@@ -97,7 +118,7 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         let loaded = loadedTimeRanges.map { $0.timeRangeValue.duration.seconds }.reduce(0, +)
         let progress = expected > 0 ? min(1, loaded / expected) : 0
         MainActor.assumeIsolated {
-            _ = Task { await self.app.downloads.update(fileID: id) { $0.state = .downloading(progress: progress) } }
+            _ = Task { await self.app.downloads.progress(fileID: id, progress) }
         }
     }
 

@@ -88,6 +88,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var tvFolder: PutioFolderRef?
     /// Episodes go into "Season N" folders inside the show's folder.
     public var seasonFolders = true
+    /// Play the copy on this device when there is one (otherwise always stream).
+    public var preferDownloads = true
 
     public init(sources: [SourceConfig], defaultResolution: Int?, autoPlayCountdown: Bool) {
         self.sources = sources; self.defaultResolution = defaultResolution; self.autoPlayCountdown = autoPlayCountdown
@@ -96,7 +98,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case sources, defaultResolution, autoPlayCountdown, autoPlayNextEpisode, oneTapGet, smartGet, audioLanguage, subtitleLanguage
         case autoCleanDays, autoCleanConfirmed, downloadDataSaver, subtitleStyle, libraryAutoUpdate, libraryUpdateMinutes
-        case moviesFolder, tvFolder, seasonFolders
+        case moviesFolder, tvFolder, seasonFolders, preferDownloads
     }
 
     /// Settings saved by older versions keep their values and pick up defaults for new options.
@@ -119,6 +121,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         moviesFolder = try? c.decodeIfPresent(PutioFolderRef.self, forKey: .moviesFolder)
         tvFolder = try? c.decodeIfPresent(PutioFolderRef.self, forKey: .tvFolder)
         seasonFolders = try c.decodeIfPresent(Bool.self, forKey: .seasonFolders) ?? true
+        preferDownloads = try c.decodeIfPresent(Bool.self, forKey: .preferDownloads) ?? true
     }
 
     public static let defaults = AppSettings(sources: [

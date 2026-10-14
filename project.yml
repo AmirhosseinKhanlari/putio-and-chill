@@ -109,6 +109,9 @@ targets:
   AMDBTV:
     type: application
     platform: tvOS
+    scheme:
+      testTargets:
+        - AMDBTVUITests
     sources:
       - path: App/tvOS
       - path: App/SharedUI
@@ -139,3 +142,14 @@ targets:
         TARGETED_DEVICE_FAMILY: "3"
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
+  AMDBTVUITests:
+    type: bundle.ui-testing
+    platform: tvOS
+    sources:
+      - path: App/TVUITests
+    dependencies:
+      - target: AMDBTV
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "3"

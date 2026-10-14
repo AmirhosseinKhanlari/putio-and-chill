@@ -22,10 +22,18 @@ enum DemoMode {
             makeCharts: { _ in DemoCharts() },
             episodeRatings: DemoEpisodeRatings(),
             makeSubtitles: { _ in DemoSubtitles() })
-        return AppModel(tokens: InMemoryTokenStore([.putio: "demo", .tmdb: "demo", .chill: "demo"]),
-                        defaults: UserDefaults(suiteName: "amdb.demo") ?? .standard,
-                        store: LocalStore(fileURL: nil), factory: factory, bundledTraktClientID: "demo",
-                        bundledOpenSubtitlesKey: "demo")
+        let model = AppModel(tokens: InMemoryTokenStore([.putio: "demo", .tmdb: "demo", .chill: "demo"]),
+                             defaults: UserDefaults(suiteName: "amdb.demo") ?? .standard,
+                             store: LocalStore(fileURL: nil), factory: factory, bundledTraktClientID: "demo",
+                             bundledOpenSubtitlesKey: "demo")
+        // One finished and one running download, so the Downloads screens have something to show.
+        Task {
+            await model.downloads.upsert(DownloadRecord(fileID: 2, title: "Severance", posterPath: nil, tmdbID: 95396, kind: .tv,
+                                                        season: 2, episode: 4, state: .done(relativePath: "Library/demo.movpkg")))
+            await model.downloads.upsert(DownloadRecord(fileID: 3, title: "Heat", posterPath: nil, tmdbID: 949, kind: .movie,
+                                                        season: nil, episode: nil, state: .downloading(progress: 0.42)))
+        }
+        return model
     }
 
     #if os(iOS)
@@ -214,7 +222,10 @@ final class DemoPutio: PutioService, @unchecked Sendable {
     func startFrom(fileID: Int64) async throws -> Int { 0 }
     func setStartFrom(fileID: Int64, seconds: Int) async throws {}
     func hlsURL(fileID: Int64, subtitles: Bool) -> URL {
-        URL(string: "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8")!
+        // Like put.io: subtitle tracks only when asked for (the app streams without them and draws its own).
+        subtitles
+            ? URL(string: "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8")!
+            : URL(string: "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8")!
     }
     func originalURL(fileID: Int64) async throws -> URL { hlsURL(fileID: fileID) }
     func subtitles(fileID: Int64) async throws -> [PutioSubtitle] {

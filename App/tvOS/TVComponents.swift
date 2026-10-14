@@ -135,3 +135,28 @@ struct TVEntryShelf: View {
                     backdropPath: match.backdropPath, year: match.year)
     }
 }
+
+/// Liquid Glass buttons on tvOS 26+ (keeps the system focus effect); the standard style on older systems.
+extension View {
+    @ViewBuilder func tvGlass(prominent: Bool = false) -> some View {
+        if #available(tvOS 26.0, *) {
+            // The main action is tinted glass (the icon's violet) so it stands out from the clear ones.
+            if prominent { buttonStyle(.glassProminent).tint(Color(red: 0.49, green: 0.23, blue: 0.93)) } else { buttonStyle(.glass) }
+        } else {
+            buttonStyle(.bordered)
+        }
+    }
+}
+
+/// Same height and icon width for every action button, so a row of them lines up.
+struct TVActionLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 14) {
+            configuration.icon.frame(width: 30, height: 30)
+            configuration.title
+        }
+        .font(.headline)
+        .frame(height: 48)
+        .padding(.horizontal, 6)
+    }
+}

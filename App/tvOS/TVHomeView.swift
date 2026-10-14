@@ -49,6 +49,8 @@ struct TVHomeView: View {
             }
             .padding(.bottom, 80)
         }
+        // The featured art runs up behind the floating tab bar.
+        .ignoresSafeArea(edges: .top)
         .ambientBackground()
         .task {
             guard model == nil, let catalog = app.catalog else { return }
@@ -66,34 +68,41 @@ struct TVFeatured: View {
     @Environment(TVRouter.self) private var router
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            RemoteImage(path: item.backdropPath, size: "original", seed: item.title)
-                .frame(height: 620)
-                .frame(maxWidth: .infinity)
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.55),
-                                             .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
-                .overlay(LinearGradient(colors: [Theme.background.opacity(0.85), .clear], startPoint: .leading, endPoint: .center))
-                .padding(.horizontal, -TVMetrics.edge)
-                .ignoresSafeArea(edges: [.horizontal, .top])
-            VStack(alignment: .leading, spacing: 18) {
-                Text("FEATURED · \(item.mediaType == .tv ? "SERIES" : "FILM")")
-                    .font(.caption.weight(.semibold)).tracking(3).foregroundStyle(.white.opacity(0.7))
-                Text(item.title.uppercased())
-                    .font(.system(size: 76, weight: .ultraLight)).tracking(6)
-                    .lineLimit(2).minimumScaleFactor(0.6)
-                    .frame(maxWidth: 1100, alignment: .leading)
-                if !item.overview.isEmpty {
-                    Text(item.overview).font(.callout).foregroundStyle(.white.opacity(0.85)).lineLimit(3)
-                        .frame(maxWidth: 900, alignment: .leading)
-                }
-                HStack(spacing: 24) {
-                    Button { router.open(item) } label: { Label("More Info", systemImage: "info.circle") }
-                    TVMyListButton(item: item)
-                }
-                .padding(.top, 8)
+        VStack(alignment: .leading, spacing: 18) {
+            Text("FEATURED · \(item.mediaType == .tv ? "SERIES" : "FILM")")
+                .font(.caption.weight(.semibold)).tracking(3).foregroundStyle(.white.opacity(0.75))
+            Text(item.title.uppercased())
+                .font(.system(size: 80, weight: .ultraLight)).tracking(6)
+                .lineLimit(2).minimumScaleFactor(0.6)
+                .frame(maxWidth: 1100, alignment: .leading)
+            if !item.overview.isEmpty {
+                Text(item.overview).font(.callout).foregroundStyle(.white.opacity(0.88)).lineLimit(3)
+                    .frame(maxWidth: 900, alignment: .leading)
             }
-            .padding(.horizontal, TVMetrics.edge)
-            .padding(.bottom, 20)
+            HStack(spacing: 24) {
+                Button { router.open(item) } label: { Label("More Info", systemImage: "info.circle") }
+                    .tvGlass(prominent: true)
+                TVMyListButton(item: item)
+            }
+            .labelStyle(TVActionLabelStyle())
+            .padding(.top, 8)
+        }
+        .padding(.horizontal, TVMetrics.edge)
+        .padding(.bottom, 40)
+        // Most of the first screen, art running up behind the tab bar to the screen edges.
+        .containerRelativeFrame(.vertical, alignment: .bottomLeading) { height, _ in height * 0.82 }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(alignment: .bottom) {
+            ZStack {
+                RemoteImage(path: item.backdropPath, size: "original", seed: item.title)
+                LinearGradient(stops: [.init(color: Theme.background.opacity(0.9), location: 0),
+                                       .init(color: Theme.background.opacity(0.45), location: 0.4),
+                                       .init(color: .clear, location: 0.7)], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(stops: [.init(color: .clear, location: 0.5), .init(color: Theme.background, location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+            .padding(.horizontal, -TVMetrics.edge)
+            .ignoresSafeArea(edges: [.top, .horizontal])
         }
         .focusSection()
     }
@@ -109,6 +118,7 @@ struct TVMyListButton: View {
         Button { Task { await app.myList.toggle(item) } } label: {
             Label(saved ? "In My List" : "My List", systemImage: saved ? "checkmark" : "plus")
         }
+        .tvGlass()
     }
 }
 

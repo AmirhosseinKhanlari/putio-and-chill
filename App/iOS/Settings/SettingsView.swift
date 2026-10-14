@@ -174,6 +174,7 @@ struct SettingsView: View {
                         Text("After 90 days").tag(Int?.some(90))
                     }
                     Toggle("Data saver downloads", isOn: $draft.downloadDataSaver)
+                    Toggle("Play downloads when available", isOn: $draft.preferDownloads)
                 } header: {
                     Text("Storage")
                 } footer: {

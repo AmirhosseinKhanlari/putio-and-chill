@@ -139,8 +139,13 @@ struct MainView: View {
 
     private func launch(_ request: PlayerRequest, from seconds: Int) {
         if let played = request.played { Task { await app.notePlayed(played) } }
+        let useDownload = switch request.source {
+        case .device: true
+        case .stream: false
+        case .automatic: app.settings.preferDownloads
+        }
         PlayerPresenter.present(request, from: seconds, app: app, router: router,
-                                localURL: downloader.localURL(fileID: request.file.id))
+                                localURL: useDownload ? downloader.localURL(fileID: request.file.id) : nil)
     }
 
     private func wireEvents() {
@@ -191,6 +196,7 @@ private struct TabStack: View {
                     case let .person(id): PersonPage(personID: id)
                     case let .collection(id): CollectionPage(collectionID: id)
                     case .myList: MyListPage()
+                    case .downloads: DownloadsPage()
                     }
                 }
         }

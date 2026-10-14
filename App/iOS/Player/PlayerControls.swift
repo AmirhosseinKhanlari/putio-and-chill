@@ -19,6 +19,8 @@ final class PlayerChrome {
     var pipSupported = false
     var pipActive = false
     var fillsScreen = false
+    /// Playing the downloaded copy rather than streaming.
+    var playingFromDevice = false
     var subtitleStyle = SubtitleStyle.standard
 
     @ObservationIgnored var onClose: () -> Void = {}
@@ -129,6 +131,12 @@ struct PlayerControlsView: View {
                 }
             }
             Spacer(minLength: 12)
+            if chrome.playingFromDevice {
+                Label("On this device", systemImage: "arrow.down.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 12).frame(height: 32)
+                    .glassCapsule()
+            }
             RoutePicker()
                 .frame(width: 44, height: 44)
                 .glassCapsule()

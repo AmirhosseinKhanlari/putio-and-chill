@@ -63,4 +63,16 @@ import Testing
         await reloaded.remove(fileID: 3)
         #expect(reloaded.records.isEmpty)
     }
+
+    @Test func lateProgressNeverUndoesAFinishedDownload() async {
+        let downloads = DownloadsIndex(store: LocalStore(fileURL: nil))
+        await downloads.upsert(DownloadRecord(fileID: 7, title: "Dune", posterPath: nil, tmdbID: 1, kind: .movie,
+                                              season: nil, episode: nil, state: .queued))
+        await downloads.progress(fileID: 7, 0.5)
+        #expect(downloads.record(fileID: 7)?.state == .downloading(progress: 0.5))
+        await downloads.update(fileID: 7) { $0.state = .done(relativePath: "Library/x.movpkg") }
+        await downloads.progress(fileID: 7, 0.99)
+        #expect(downloads.record(fileID: 7)?.state == .done(relativePath: "Library/x.movpkg"))
+        #expect(downloads.finished.map(\.fileID) == [7])
+    }
 }
