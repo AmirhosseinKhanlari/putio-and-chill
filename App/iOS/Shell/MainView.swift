@@ -86,7 +86,6 @@ struct MainView: View {
         // Siri and Spotlight know your put.io and My List titles.
         .onChange(of: app.library.entries.count + app.myList.items.count) { _, _ in
             SpotlightIndexer.index(app)
-            AMDBShortcuts.updateAppShortcutParameters()
         }
         .onOpenURL { url in open(DeepLink(url: url)) }
         // Controls (Control Center, Action button) leave the screen to open in the App Group.

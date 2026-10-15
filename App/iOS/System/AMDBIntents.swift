@@ -69,8 +69,7 @@ struct AMDBShortcuts: AppShortcutsProvider {
             "Watch \(\.$target) in \(.applicationName)",
         ], shortTitle: "Play", systemImageName: "play.circle")
         AppShortcut(intent: OpenTitleIntent(), phrases: [
-            "Open \(\.$target) in \(.applicationName)",
-            "Show \(\.$target) in \(.applicationName)",
+            "Open a title in \(.applicationName)",
         ], shortTitle: "Open Title", systemImageName: "film")
         AppShortcut(intent: OpenSurpriseIntent(), phrases: [
             "Surprise me in \(.applicationName)",
