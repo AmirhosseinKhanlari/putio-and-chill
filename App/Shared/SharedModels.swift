@@ -1,4 +1,6 @@
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 import ActivityKit
+#endif
 import Foundation
 
 /// App Group shared by the app and the widget extension.
@@ -40,6 +42,7 @@ struct WidgetSnapshot: Codable {
     static func imageURL(_ file: String) -> URL? { AppGroup.container?.appending(path: file) }
 }
 
+#if !targetEnvironment(macCatalyst)
 /// Live Activity for a put.io transfer (Lock Screen + Dynamic Island).
 struct TransferActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
@@ -53,3 +56,4 @@ struct TransferActivityAttributes: ActivityAttributes {
     let title: String
     let transferID: Int64
 }
+#endif

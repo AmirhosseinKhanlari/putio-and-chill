@@ -48,6 +48,10 @@ struct AMDBApp: App {
                 .tint(.white)
                 #if DEBUG
                 .overlay { if WidgetGallery.isEnabled { WidgetGallery() } }
+                .task { await DemoSnapshot.takeIfAsked() }
+                #endif
+                #if targetEnvironment(macCatalyst)
+                .onAppear { MacWindow.configure() }
                 #endif
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
@@ -64,5 +68,6 @@ struct AMDBApp: App {
                     }
                 }
         }
+        .commands { MacCommands(router: router) }
     }
 }

@@ -86,6 +86,14 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
+        # The Mac app: the same app through Mac Catalyst, one universal binary for Apple silicon and Intel Macs,
+        # with the iPhone app's bundle id (one App Store listing).
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/iOS/AMDB-Mac.entitlements
+        "ARCHS[sdk=macosx*]": "arm64 x86_64"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
   AMDBUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -121,6 +129,11 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_STYLE: Automatic
+        # Desktop widgets in the Mac app (Continue Watching).
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/Widgets/AMDBWidgets-Mac.entitlements
+        "ARCHS[sdk=macosx*]": "arm64 x86_64"
   AMDBTV:
     type: application
     platform: tvOS

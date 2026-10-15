@@ -1,4 +1,6 @@
+#if !targetEnvironment(macCatalyst)
 import ActivityKit
+#endif
 import SwiftUI
 import WidgetKit
 
@@ -6,11 +8,15 @@ import WidgetKit
 struct AMDBWidgets: WidgetBundle {
     var body: some Widget {
         ContinueWatchingWidget()
+        #if !targetEnvironment(macCatalyst)
+        // iPhone and iPad only: Live Activities and Control Center controls don't exist on the Mac.
         TransferLiveActivity()
         if #available(iOS 18.0, *) { SurpriseControl() }
+        #endif
     }
 }
 
+#if !targetEnvironment(macCatalyst)
 // MARK: Control Center
 
 /// A Control Center / Lock Screen / Action button control that opens Surprise Me.
@@ -26,6 +32,8 @@ struct SurpriseControl: ControlWidget {
         .description("Pick a mood and get a great movie or series.")
     }
 }
+
+#endif
 
 // MARK: Continue Watching
 
@@ -75,6 +83,7 @@ private struct ContinueWatchingEntryView: View {
     }
 }
 
+#if !targetEnvironment(macCatalyst)
 // MARK: Transfer Live Activity
 
 struct TransferLiveActivity: Widget {
@@ -132,3 +141,4 @@ struct TransferLiveActivity: Widget {
         .frame(width: size, height: size)
     }
 }
+#endif

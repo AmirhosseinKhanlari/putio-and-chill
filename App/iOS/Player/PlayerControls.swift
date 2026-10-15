@@ -141,7 +141,7 @@ struct PlayerControlsView: View {
 
     private var topBar: some View {
         HStack(alignment: .center, spacing: 14) {
-            circleButton("xmark", label: "Close", size: 44) { chrome.onClose() }
+            circleButton("xmark", label: "Close", size: 44, key: .escape) { chrome.onClose() }
             VStack(alignment: .leading, spacing: 2) {
                 Text(chrome.title).font(.headline).lineLimit(1)
                 if let subtitle = chrome.subtitle {
@@ -172,7 +172,7 @@ struct PlayerControlsView: View {
 
     private var centerTransport: some View {
         HStack(spacing: regular ? 72 : 48) {
-            circleButton("gobackward.10", label: "Skip back 10 seconds", size: regular ? 64 : 52) { skip(-10) }
+            circleButton("gobackward.10", label: "Skip back 10 seconds", size: regular ? 64 : 52, key: .leftArrow) { skip(-10) }
             Button { engine.togglePlay(); poke() } label: {
                 ZStack {
                     if engine.isBuffering, engine.isPlaying {
@@ -189,7 +189,9 @@ struct PlayerControlsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(engine.isPlaying ? "Pause" : "Play")
-            circleButton("goforward.10", label: "Skip forward 10 seconds", size: regular ? 64 : 52) { skip(10) }
+            // Space plays and pauses (Mac, or an iPad with a keyboard).
+            .keyboardShortcut(.space, modifiers: [])
+            circleButton("goforward.10", label: "Skip forward 10 seconds", size: regular ? 64 : 52, key: .rightArrow) { skip(10) }
         }
         .foregroundStyle(.white)
     }
@@ -359,7 +361,9 @@ struct PlayerControlsView: View {
 
     // MARK: Pieces
 
-    private func circleButton(_ symbol: String, label: String, size: CGFloat, action: @escaping () -> Void) -> some View {
+    /// `key`: the keyboard key for it (Mac, or an iPad with a keyboard): Esc closes, ← → skip.
+    private func circleButton(_ symbol: String, label: String, size: CGFloat, key: KeyEquivalent? = nil,
+                              action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size * 0.38, weight: .semibold))
@@ -370,6 +374,7 @@ struct PlayerControlsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+        .modifier(OptionalShortcut(key: key))
     }
 
     private func pillButton(_ symbol: String, title: String?, label: String, action: @escaping () -> Void) -> some View {
@@ -663,5 +668,14 @@ private struct ConversionCard: View {
     private var label: String {
         if case let .converting(percent) = state { return "Converting for Apple devices, \(percent) percent" }
         return "Waiting for put.io to convert it"
+    }
+}
+
+/// A key (without ⌘) for a button, when there is one.
+private struct OptionalShortcut: ViewModifier {
+    let key: KeyEquivalent?
+
+    func body(content: Content) -> some View {
+        if let key { content.keyboardShortcut(key, modifiers: []) } else { content }
     }
 }

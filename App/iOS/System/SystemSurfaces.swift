@@ -1,4 +1,6 @@
+#if !targetEnvironment(macCatalyst)
 import ActivityKit
+#endif
 import AMDBCore
 import AMDBKit
 import UIKit
@@ -52,6 +54,13 @@ enum WidgetPublisher {
     }
 }
 
+#if targetEnvironment(macCatalyst)
+/// macOS has no Live Activities: transfers show in the app (and in notifications) instead.
+@MainActor
+final class LiveActivityManager {
+    func sync(_ tracked: [TrackedTransfer]) {}
+}
+#else
 /// One Live Activity per active put.io transfer, updated from TransferMonitor.
 /// Stores activity ids and looks activities up inside each task (Activity isn't Sendable).
 @MainActor
@@ -110,3 +119,4 @@ final class LiveActivityManager {
                      link: transfer.playableFile.map { DeepLink.play(fileID: $0.id).url })
     }
 }
+#endif
