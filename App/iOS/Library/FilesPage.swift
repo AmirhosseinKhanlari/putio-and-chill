@@ -630,6 +630,7 @@ struct TrashPage: View {
                     }
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) { forever = [file.id] } label: { Label("Delete Forever", systemImage: "trash") }
+                            .tint(Theme.poor)
                     }
                 }
             }

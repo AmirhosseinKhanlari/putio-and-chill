@@ -56,6 +56,9 @@ enum DemoMode {
         case "files":
             router.tab = .library
             router.libraryPath = [.files(.root)]
+        case "trash":
+            router.tab = .library
+            router.libraryPath = [.files(.root), .trash]
         case "downloads":
             router.tab = .library
             router.libraryPath = [.downloads]
