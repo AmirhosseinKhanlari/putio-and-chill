@@ -5,7 +5,7 @@ import CoreSpotlight
 
 /// A movie or show from your put.io or My List, for Siri ("Play Severance in Putio & Chill") and Spotlight.
 struct TitleEntity: AppEntity, IndexedEntity {
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Title"
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Movie or Show"
     static let defaultQuery = TitleEntityQuery()
 
     /// "movie-693134" / "tv-95396"
@@ -16,10 +16,27 @@ struct TitleEntity: AppEntity, IndexedEntity {
     let tmdbID: Int
     let posterPath: String?
     let backdropPath: String?
+    /// The poster itself, for Spotlight (it shows no artwork from a web address).
+    var thumbnail: Data?
 
     init(_ item: CatalogItem) {
         id = item.id; title = item.title; year = item.year; kind = item.mediaType; tmdbID = item.tmdbID
         posterPath = item.posterPath; backdropPath = item.backdropPath
+    }
+
+    private var subtitle: String {
+        [kind == .tv ? "Series" : "Movie", year.map(String.init)].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// Spotlight's entry: the poster, "Series · 2022", and words it should match.
+    @available(iOS 18.0, *)
+    var attributeSet: CSSearchableItemAttributeSet {
+        let set = defaultAttributeSet
+        set.displayName = title
+        set.contentDescription = subtitle
+        set.thumbnailData = thumbnail
+        set.keywords = [title, kind == .tv ? "series" : "movie", "putio"]
+        return set
     }
 
     var item: CatalogItem {
@@ -27,9 +44,9 @@ struct TitleEntity: AppEntity, IndexedEntity {
     }
 
     var displayRepresentation: DisplayRepresentation {
-        let subtitle = [kind == .tv ? "Series" : "Movie", year.map(String.init)].compactMap { $0 }.joined(separator: " · ")
-        return DisplayRepresentation(title: "\(title)", subtitle: "\(subtitle)",
-                                     image: CatalogClient.imageURL(posterPath, size: "w185").map { .init(url: $0) })
+        let image: DisplayRepresentation.Image? = if let thumbnail { .init(data: thumbnail) }
+            else { CatalogClient.imageURL(posterPath, size: "w185").map { .init(url: $0) } }
+        return DisplayRepresentation(title: "\(title)", subtitle: "\(subtitle)", image: image)
     }
 }
 
@@ -128,15 +145,47 @@ struct OpenComingUpIntent: AppIntent {
     }
 }
 
-/// Puts your put.io and My List titles into Spotlight.
+/// Puts your put.io and My List titles into Spotlight, with their posters.
 @MainActor
 enum SpotlightIndexer {
+    /// Older builds' entries (indexed under the AMDB name, without posters) are cleared once.
+    nonisolated private static let cleanedKey = "spotlight.cleaned.v2"
+
     static func index(_ app: AppModel) {
         guard #available(iOS 18.0, *) else { return }
         let entities = TitleEntityQuery.known(app)
         Task.detached {
+            if !UserDefaults.standard.bool(forKey: cleanedKey) {
+                try? await CSSearchableIndex.default().deleteAllSearchableItems()
+                UserDefaults.standard.set(true, forKey: cleanedKey)
+            }
+            let withPosters = await posters(for: entities)
             try? await CSSearchableIndex.default().deleteAppEntities(ofType: TitleEntity.self)
-            try? await CSSearchableIndex.default().indexAppEntities(entities)
+            try? await CSSearchableIndex.default().indexAppEntities(withPosters)
+        }
+    }
+
+    /// Small posters (TMDB w154, usually already in the image cache), six at a time.
+    nonisolated private static func posters(for entities: [TitleEntity]) async -> [TitleEntity] {
+        await withTaskGroup(of: (Int, Data?).self) { group in
+            var result = entities
+            var next = 0
+            func add() {
+                let index = next
+                let url = CatalogClient.imageURL(entities[index].posterPath, size: "w154")
+                group.addTask {
+                    guard let url, let (data, response) = try? await URLSession.shared.data(from: url),
+                          (response as? HTTPURLResponse)?.statusCode == 200 else { return (index, nil) }
+                    return (index, data)
+                }
+                next += 1
+            }
+            while next < min(6, entities.count) { add() }
+            while let (index, data) = await group.next() {
+                result[index].thumbnail = data
+                if next < entities.count { add() }
+            }
+            return result
         }
     }
 }

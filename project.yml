@@ -46,6 +46,14 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Putio & Chill
+        # Spotlight and Siri use the bundle name too (it was still the old AMDB).
+        CFBundleName: Putio & Chill
+        # What Siri also accepts as the app's name ("Play Severance in Chill").
+        INAlternativeAppNames:
+          - INAlternativeAppName: Putio and Chill
+            INAlternativeAppNamePronunciationHint: put io and chill
+          - INAlternativeAppName: Chill
+          - INAlternativeAppName: Putio
         UILaunchScreen:
           UIColorName: ""
         UIApplicationSceneManifest:
