@@ -104,6 +104,8 @@ public final class AppModel {
     public let storage = PutioStorage()
     /// The user's public IMDb watchlist, matched to TMDB.
     public let imdbWatchlist: IMDbWatchlistModel
+    /// Shows that notify about new episodes.
+    public let episodeAlerts: EpisodeAlerts
     /// put.io MP4 conversions of videos Apple devices can't play as they are.
     public let conversions = VideoConversions()
     @ObservationIgnored private var filesChangedRefresh: Task<Void, Never>?
@@ -150,6 +152,7 @@ public final class AppModel {
         downloads = DownloadsIndex(store: store)
         chillFeed = ChillFeed(fileURL: chillFeedURL)
         imdbWatchlist = IMDbWatchlistModel(store: store)
+        episodeAlerts = EpisodeAlerts(store: store)
         rebuild()
     }
 
@@ -410,6 +413,7 @@ public final class AppModel {
         library.configure(putio: putio, catalog: catalog)
         storage.configure(putio: putio)
         conversions.configure(putio: putio)
+        episodeAlerts.configure(catalog: catalog)
         imdbWatchlist.configure(link: tokens.read(.imdb), service: factory.imdbLists, catalog: catalog)
         transfers.configure(putio: putio, library: library)
         transfers.layout = FolderLayout(settings: settings)

@@ -22,36 +22,173 @@ struct TVSettingsView: View {
     @State private var signingIn = false
     @State private var libraryStatus: String?
 
-    var body: some View {
-        Form {
-            Section("put.io") {
-                LabeledContent("Signed in as", value: username ?? "…")
-                Button("Sign Out", role: .destructive) { app.setToken(nil, for: .putio) }
-            }
+    @State private var confirmSignOut = false
+    /// Focus starts on the first page (Playback), never on Sign Out.
+    @FocusState private var focusedRow: String?
 
+    var body: some View {
+        HStack(alignment: .top, spacing: 70) {
+            accountPanel
+                .frame(width: 520)
+                .focusSection()
+            List {
+                Section {
+                    link("Playback", "play.rectangle.fill", .blue, value: draft.autoPlayNextEpisode ? "Auto-play on" : "Auto-play off") { playbackPage }
+                    link("Subtitles", "captions.bubble.fill", .orange, value: subtitlesSummary) { subtitlesPage }
+                }
+                Section {
+                    link("Smart Get", "bolt.fill", .yellow, value: draft.oneTapGet ? smartGetSummary : "Off") { smartGetPage }
+                    link("Sources", "antenna.radiowaves.left.and.right", .purple, value: "\(draft.sources.filter(\.enabled).count) on") { sourcesPage }
+                }
+                Section {
+                    link("Library", "square.stack.fill", .teal, value: draft.libraryAutoUpdate ? "Updates automatically" : "Manual") { libraryPage }
+                    link("put.io Folders", "folder.fill", .cyan, value: draft.moviesFolder == nil && draft.tvFolder == nil ? "Default" : "Custom") { foldersPage }
+                }
+                Section {
+                    link("Connected Services", "link", .green, value: servicesSummary) { servicesPage }
+                } footer: {
+                    Text(versionLine)
+                }
+            }
+            .frame(maxWidth: 1000)
+            .focusSection()
+        }
+        .padding(.horizontal, 80)
+        .padding(.top, 30)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .defaultFocus($focusedRow, "Playback", priority: .userInitiated)
+        .tvPageBackground()
+        .task {
+            if !loaded { draft = app.settings; loaded = true }
+            username = try? await app.putio?.accountInfo().username
+            await app.storage.refresh()
+        }
+        .onChange(of: draft) { _, newValue in if loaded, newValue != app.settings { app.updateSettings(newValue) } }
+        .alert("Sign out of put.io?", isPresented: $confirmSignOut) {
+            Button("Cancel", role: .cancel) {}
+            Button("Sign Out", role: .destructive) { app.setToken(nil, for: .putio) }
+        } message: {
+            Text("Sign in again with a code from put.io/link to keep using Putio & Chill on this Apple TV.")
+        }
+    }
+
+    // MARK: Hub
+
+    private var accountPanel: some View {
+        let name = username ?? "put.io"
+        return VStack(alignment: .leading, spacing: 26) {
+            Text(String(name.prefix(1)).uppercased())
+                .font(.system(size: 64, weight: .bold))
+                .frame(width: 150, height: 150)
+                .background(LinearGradient(colors: [Color(red: 0.42, green: 0.36, blue: 0.95), Color(red: 1, green: 0.45, blue: 0.3)],
+                                           startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
+            VStack(alignment: .leading, spacing: 6) {
+                Text(name).font(.system(size: 44, weight: .bold)).lineLimit(1)
+                Text("put.io account").font(.system(size: 24)).foregroundStyle(TVMetrics.secondaryText)
+            }
+            if let disk = app.storage.disk {
+                VStack(alignment: .leading, spacing: 10) {
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(.white.opacity(0.12))
+                            Capsule().fill(disk.fractionUsed > 0.9 ? Theme.poor : Theme.good)
+                                .frame(width: proxy.size.width * min(1, disk.fractionUsed))
+                        }
+                    }
+                    .frame(height: 10)
+                    Text("\(Format.bytes(disk.used)) of \(Format.bytes(disk.size)) used").font(.system(size: 24, weight: .semibold))
+                    Text("\(Format.bytes(disk.avail)) free" + (app.storage.trashSize > 0 ? " · \(Format.bytes(app.storage.trashSize)) in Trash" : ""))
+                        .font(.system(size: 22)).foregroundStyle(TVMetrics.secondaryText)
+                }
+            }
+            Button { confirmSignOut = true } label: { Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right") }
+                .tvPill()
+        }
+        .padding(40)
+        .background(RoundedRectangle(cornerRadius: 36, style: .continuous).fill(.white.opacity(0.06)))
+    }
+
+    private func link<Destination: View>(_ title: String, _ symbol: String, _ color: Color, value: String?,
+                                         @ViewBuilder destination: @escaping () -> Destination) -> some View {
+        NavigationLink {
+            destination()
+                .frame(maxWidth: 1300)
+                .frame(maxWidth: .infinity)
+                .tvPageBackground()
+                .navigationTitle(title)
+        } label: {
+            HStack(spacing: 24) {
+                Image(systemName: symbol)
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 54, height: 54)
+                    .background(color.gradient, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                Text(title)
+                Spacer(minLength: 12)
+                if let value { Text(value).foregroundStyle(.secondary).lineLimit(1) }
+            }
+        }
+        .focused($focusedRow, equals: title)
+    }
+
+    private var subtitlesSummary: String {
+        guard let code = draft.subtitleLanguage else { return "Off" }
+        return Self.languages.first { $0.code == code }?.name.components(separatedBy: " (").first ?? code
+    }
+
+    private var smartGetSummary: String {
+        let quality = switch draft.smartGet.resolution { case 4320?: "8K"; case 2160?: "4K"; case 720?: "720p"; default: "1080p" }
+        return draft.smartGet.maxSizeGB.map { "\(quality) · ≤ \(Int($0)) GB" } ?? quality
+    }
+
+    private var servicesSummary: String {
+        let count = [app.catalog != nil, app.hasRatings, app.hasChill, app.hasSubtitleSearch, app.imdbWatchlist.isConnected].filter { $0 }.count
+        return "\(count) connected"
+    }
+
+    private var versionLine: String {
+        let info = Bundle.main.infoDictionary
+        return "Putio & Chill \(info?["CFBundleShortVersionString"] as? String ?? "1.0") (\(info?["CFBundleVersion"] as? String ?? ""))"
+    }
+
+    // MARK: Pages
+
+    private var playbackPage: some View {
+        Form {
             Section {
                 Toggle("Auto-play when ready", isOn: $draft.autoPlayCountdown)
                 Toggle("Auto-play next episode", isOn: $draft.autoPlayNextEpisode)
-                Picker("Subtitles", selection: $draft.subtitleLanguage) {
-                    Text("Off").tag(String?.none)
-                    ForEach(Self.languages, id: \.code) { Text($0.name).tag(String?.some($0.code)) }
-                }
                 Picker("Audio language", selection: $draft.audioLanguage) {
                     Text("Original").tag(String?.none)
                     ForEach(Self.languages, id: \.code) { Text($0.name).tag(String?.some($0.code)) }
                 }
-                NavigationLink("Subtitle Style") { SubtitleStyleEditor(style: $draft.subtitleStyle) }
-            } header: {
-                Text("Playback")
+            } footer: {
+                Text("When ready: a video you asked for starts as soon as put.io has it. Next episode: a countdown at the end credits.")
+            }
+        }
+    }
+
+    private var subtitlesPage: some View {
+        Form {
+            Section {
+                Picker("Language", selection: $draft.subtitleLanguage) {
+                    Text("Off").tag(String?.none)
+                    ForEach(Self.languages, id: \.code) { Text($0.name).tag(String?.some($0.code)) }
+                }
+                NavigationLink("Style") { SubtitleStyleEditor(style: $draft.subtitleStyle) }
             } footer: {
                 Text("While watching, swipe down on the remote for Subtitles: put.io's tracks and OpenSubtitles, with timing.")
             }
-
             openSubtitles
+        }
+    }
 
+    private var smartGetPage: some View {
+        Form {
             Section {
                 Toggle("One-click Get", isOn: $draft.oneTapGet)
                 Picker("Quality", selection: $draft.smartGet.resolution) {
+                    Text("8K").tag(Int?.some(4320))
                     Text("4K").tag(Int?.some(2160))
                     Text("1080p").tag(Int?.some(1080))
                     Text("720p").tag(Int?.some(720))
@@ -67,36 +204,29 @@ struct TVSettingsView: View {
                 .disabled(!draft.oneTapGet)
                 Picker("Versions list shows", selection: $draft.defaultResolution) {
                     Text("All").tag(Int?.none)
+                    Text("8K").tag(Int?.some(4320))
                     Text("4K").tag(Int?.some(2160))
                     Text("1080p").tag(Int?.some(1080))
                     Text("720p").tag(Int?.some(720))
                 }
-            } header: {
-                Text("Smart Get")
             } footer: {
                 Text("Get & Watch sends the release with the most seeders that matches. Versions is always one click away.")
             }
+        }
+    }
 
+    private var sourcesPage: some View {
+        Form {
             Section {
-                NavigationLink {
-                    TVFolderPicker(title: "Movies Folder", defaultPath: "AMDB/Movies", selection: $draft.moviesFolder)
-                } label: {
-                    LabeledContent("Movies", value: draft.moviesFolder?.path ?? "AMDB/Movies")
-                }
-                NavigationLink {
-                    TVFolderPicker(title: "TV Folder", defaultPath: "AMDB/TV", selection: $draft.tvFolder)
-                } label: {
-                    LabeledContent("TV shows", value: draft.tvFolder?.path ?? "AMDB/TV")
-                }
-                Toggle("Season folders", isOn: $draft.seasonFolders)
-                NavigationLink("Organize Library…") { TVOrganizeView() }
-                    .disabled(app.library.entries.isEmpty)
-            } header: {
-                Text("put.io Folders")
+                ForEach($draft.sources) { $source in Toggle(source.name, isOn: $source.enabled) }
             } footer: {
-                Text("New downloads go to \(FolderLayout(settings: draft).displayPath(kind: .movie, title: "", season: nil)) and \(FolderLayout(settings: draft).displayPath(kind: .tv, title: "Show", season: draft.seasonFolders ? 1 : nil)). Organize moves files you added elsewhere into these folders; you'll see the list first.")
+                Text("Addresses can be changed on your iPhone or iPad.")
             }
+        }
+    }
 
+    private var libraryPage: some View {
+        Form {
             Section {
                 Toggle("Update automatically", isOn: $draft.libraryAutoUpdate)
                 if draft.libraryAutoUpdate {
@@ -123,20 +253,57 @@ struct TVSettingsView: View {
                     } ?? "Never")
                 }
                 .disabled(app.library.isRefreshing)
+            }
+            Section {
                 Picker("Delete finished movies", selection: $draft.autoCleanDays) {
                     Text("Never").tag(Int?.none)
                     Text("After 7 days").tag(Int?.some(7))
                     Text("After 30 days").tag(Int?.some(30))
                     Text("After 90 days").tag(Int?.some(90))
                 }
-            } header: {
-                Text("Library")
             } footer: {
-                Text("Your put.io library is saved on this Apple TV so the app opens instantly. Only movies you watched to the end in Putio & Chill are offered for deletion, never shows or unwatched files; Library → Clean Up asks first.")
+                Text("Only movies you watched to the end in Putio & Chill are offered for deletion, never shows or unwatched files; Library → Clean Up asks first.")
             }
+        }
+    }
 
+    private var foldersPage: some View {
+        Form {
             Section {
-                LabeledContent("Ratings (MDBList)", value: app.hasRatings ? "Connected" : "Not connected")
+                NavigationLink {
+                    TVFolderPicker(title: "Movies Folder", defaultPath: "AMDB/Movies", selection: $draft.moviesFolder)
+                } label: {
+                    LabeledContent("Movies", value: draft.moviesFolder?.path ?? "AMDB/Movies")
+                }
+                NavigationLink {
+                    TVFolderPicker(title: "TV Folder", defaultPath: "AMDB/TV", selection: $draft.tvFolder)
+                } label: {
+                    LabeledContent("TV shows", value: draft.tvFolder?.path ?? "AMDB/TV")
+                }
+                Toggle("Season folders", isOn: $draft.seasonFolders)
+                NavigationLink("Organize Library…") { TVOrganizeView() }
+                    .disabled(app.library.entries.isEmpty)
+            } footer: {
+                Text("New downloads go to \(FolderLayout(settings: draft).displayPath(kind: .movie, title: "", season: nil)) and \(FolderLayout(settings: draft).displayPath(kind: .tv, title: "Show", season: draft.seasonFolders ? 1 : nil)).")
+            }
+        }
+    }
+
+    private var servicesPage: some View {
+        Form {
+            Section {
+                LabeledContent("IMDb Watchlist", value: app.imdbWatchlist.isConnected
+                    ? "\(app.imdbWatchlist.items.count) title\(app.imdbWatchlist.items.count == 1 ? "" : "s")" : "Not connected")
+                if app.imdbWatchlist.isConnected {
+                    Button("Disconnect IMDb", role: .destructive) { app.disconnectIMDb() }
+                }
+            } header: {
+                Text("IMDb")
+            } footer: {
+                Text("Connect your IMDb watchlist on your iPhone or iPad (Settings → Connected Services → IMDb); it shows up here by itself.")
+            }
+            Section {
+                LabeledContent("MDBList", value: app.hasRatings ? "Connected" : "Not connected")
                 if app.hasRatings {
                     Button("Remove MDBList Key", role: .destructive) { app.setToken(nil, for: .mdblist) }
                 } else {
@@ -151,19 +318,11 @@ struct TVSettingsView: View {
             } footer: {
                 Text("Keys you added on your iPhone appear here by themselves when both devices use the same Apple Account with iCloud Keychain on.")
             }
-
-            Section("Sources") {
-                ForEach($draft.sources) { $source in Toggle(source.name, isOn: $source.enabled) }
+            Section("Catalog & Releases") {
+                LabeledContent("TMDB", value: app.catalog == nil ? "Not connected" : (app.usesBundledTMDB ? "Built in" : "Connected"))
+                LabeledContent("chill.institute", value: app.hasChill ? "Connected" : "Not connected")
             }
         }
-        .frame(maxWidth: 1300)
-        .frame(maxWidth: .infinity)
-        .tvPageBackground()
-        .task {
-            if !loaded { draft = app.settings; loaded = true }
-            username = try? await app.putio?.accountInfo().username
-        }
-        .onChange(of: draft) { _, newValue in if loaded, newValue != app.settings { app.updateSettings(newValue) } }
     }
 
     private var openSubtitles: some View {

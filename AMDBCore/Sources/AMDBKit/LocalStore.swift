@@ -102,11 +102,13 @@ public struct LocalState: Codable, Sendable, Equatable {
     public var imdbWatchlist: [SavedTitle] = []
     /// IMDb id → TMDB title, so each watchlist title is looked up once.
     public var imdbMatches: [String: SavedTitle] = [:]
+    /// Shows whose new episodes send a notification.
+    public var followedShows: [SavedTitle] = []
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case matches, unmatched, unmatchedAt, pending, recentSearches, lastPlayed, folderIDs, myList, finished, downloads, subtitleChoices
-        case imdbWatchlist, imdbMatches
+        case imdbWatchlist, imdbMatches, followedShows
     }
 
     /// Every field is optional on disk, so files written by older versions keep loading.
@@ -125,6 +127,7 @@ public struct LocalState: Codable, Sendable, Equatable {
         subtitleChoices = try c.decodeIfPresent([Int64: SubtitleChoice].self, forKey: .subtitleChoices) ?? [:]
         imdbWatchlist = try c.decodeIfPresent([SavedTitle].self, forKey: .imdbWatchlist) ?? []
         imdbMatches = try c.decodeIfPresent([String: SavedTitle].self, forKey: .imdbMatches) ?? [:]
+        followedShows = try c.decodeIfPresent([SavedTitle].self, forKey: .followedShows) ?? []
     }
 }
 

@@ -23,8 +23,11 @@ public enum ReleaseNameParser {
         }
 
         // Resolution
-        if let m = name.firstMatch(of: /(?i)\b(2160|1080|720|480)[pi]\b/.simple) {
+        if let m = name.firstMatch(of: /(?i)\b(4320|2160|1080|720|480)[pi]\b/.simple) {
             r.resolution = Resolution(rawValue: Int(m.1) ?? 0) ?? .unknown
+            mark(m.range.lowerBound)
+        } else if let m = name.firstMatch(of: /(?i)\b(?:8K|FUHD)\b/.simple) {
+            r.resolution = .uhd4320
             mark(m.range.lowerBound)
         } else if let m = name.firstMatch(of: /(?i)\b(?:4K|UHD)\b/.simple) {
             r.resolution = .uhd2160

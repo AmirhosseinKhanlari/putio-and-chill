@@ -90,6 +90,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var seasonFolders = true
     /// Play the copy on this device when there is one (otherwise always stream).
     public var preferDownloads = true
+    /// Notify about new episodes of followed shows, on release day at `episodeAlertHour` (0–23, local time).
+    public var episodeAlerts = true
+    public var episodeAlertHour = 9
 
     public init(sources: [SourceConfig], defaultResolution: Int?, autoPlayCountdown: Bool) {
         self.sources = sources; self.defaultResolution = defaultResolution; self.autoPlayCountdown = autoPlayCountdown
@@ -98,7 +101,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case sources, defaultResolution, autoPlayCountdown, autoPlayNextEpisode, oneTapGet, smartGet, audioLanguage, subtitleLanguage
         case autoCleanDays, autoCleanConfirmed, downloadDataSaver, subtitleStyle, libraryAutoUpdate, libraryUpdateMinutes
-        case moviesFolder, tvFolder, seasonFolders, preferDownloads
+        case moviesFolder, tvFolder, seasonFolders, preferDownloads, episodeAlerts, episodeAlertHour
     }
 
     /// Settings saved by older versions keep their values and pick up defaults for new options.
@@ -122,6 +125,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
         tvFolder = try? c.decodeIfPresent(PutioFolderRef.self, forKey: .tvFolder)
         seasonFolders = try c.decodeIfPresent(Bool.self, forKey: .seasonFolders) ?? true
         preferDownloads = try c.decodeIfPresent(Bool.self, forKey: .preferDownloads) ?? true
+        episodeAlerts = try c.decodeIfPresent(Bool.self, forKey: .episodeAlerts) ?? true
+        episodeAlertHour = min(max(try c.decodeIfPresent(Int.self, forKey: .episodeAlertHour) ?? 9, 0), 23)
     }
 
     public static let defaults = AppSettings(sources: [

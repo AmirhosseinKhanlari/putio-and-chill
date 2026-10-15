@@ -7,7 +7,7 @@
 <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white">
 <img alt="SwiftUI" src="https://img.shields.io/badge/SwiftUI-Liquid%20Glass-0A84FF?logo=apple&logoColor=white">
 <img alt="iOS 17+" src="https://img.shields.io/badge/iOS%20%26%20iPadOS-17%2B-111111?logo=apple">
-<img alt="tvOS 17+" src="https://img.shields.io/badge/tvOS-17%2B-111111?logo=apple">
+<img alt="tvOS 18+" src="https://img.shields.io/badge/tvOS-18%2B-111111?logo=apple">
 <img alt="Tests" src="https://img.shields.io/badge/tests-260%2B%20passing-34C759">
 
 **A native put.io client for iPhone, iPad and Apple TV.**<br>

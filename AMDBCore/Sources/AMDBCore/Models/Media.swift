@@ -35,11 +35,12 @@ public struct SourceTag: Hashable, Sendable, Comparable {
 }
 
 public enum Resolution: Int, Sendable, Comparable, CaseIterable {
-    case unknown = 0, sd480 = 480, hd720 = 720, fhd1080 = 1080, uhd2160 = 2160
+    case unknown = 0, sd480 = 480, hd720 = 720, fhd1080 = 1080, uhd2160 = 2160, uhd4320 = 4320
 
     public init(label: String) {
         let digits = label.prefix { $0.isNumber }
-        self = Int(digits).flatMap(Resolution.init(rawValue:)) ?? (label.uppercased() == "4K" ? .uhd2160 : .unknown)
+        self = Int(digits).flatMap(Resolution.init(rawValue:))
+            ?? (label.uppercased() == "4K" ? .uhd2160 : label.uppercased() == "8K" ? .uhd4320 : .unknown)
     }
 
     public var label: String {
@@ -49,6 +50,7 @@ public enum Resolution: Int, Sendable, Comparable, CaseIterable {
         case .hd720: "720p"
         case .fhd1080: "1080p"
         case .uhd2160: "2160p"
+        case .uhd4320: "4320p"
         }
     }
 

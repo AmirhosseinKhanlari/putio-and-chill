@@ -4,9 +4,16 @@ import SwiftUI
 
 /// Signed out: the put.io code screen. Signed in: tabs across the top, each with its own navigation.
 struct TVRootView: View {
+    /// Height of the collapsed sidebar (the pill at the top left).
+    static let sidebarInset: CGFloat = 90
+
     @Environment(AppModel.self) private var app
     @Environment(TVRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
+
+    @State private var username: String?
+    /// The put.io account name for the top of the sidebar ("Account" until it's known).
+    private var accountName: String { username ?? "Account" }
 
     var body: some View {
         @Bindable var router = router
@@ -14,26 +21,17 @@ struct TVRootView: View {
             if app.putio == nil {
                 TVSignInView()
             } else {
-                TabView(selection: $router.tab) {
-                    stack($router.homePath) { TVHomeView() }
-                        .tabItem { Text("Home") }.tag(TVTab.home)
-                    stack($router.moviesPath) { TVBrowseView(kind: .movie) }
-                        .tabItem { Text("Movies") }.tag(TVTab.movies)
-                    stack($router.tvPath) { TVBrowseView(kind: .tv) }
-                        .tabItem { Text("TV Shows") }.tag(TVTab.tv)
-                    stack($router.upcomingPath) { TVComingUpView() }
-                        .tabItem { Text("Coming Up") }.tag(TVTab.upcoming)
-                    stack($router.topPath) { TVChartView() }
-                        .tabItem { Text("Top 250") }.tag(TVTab.top250)
-                    stack($router.libraryPath) { TVLibraryView() }
-                        .tabItem { Text("Library") }.tag(TVTab.library)
-                    stack($router.searchPath) { TVSearchView() }
-                        .tabItem { Image(systemName: "magnifyingglass") }.tag(TVTab.search)
-                    NavigationStack { TVSettingsView() }
-                        .tabItem { Image(systemName: "gearshape") }.tag(TVTab.settings)
+                // A sidebar on the left, as in Apple's TV app: it slides away while you browse.
+                TabView(selection: Binding(get: { router.tab }, set: { router.select($0) })) {
+                    mainTabs
+                    listsSection
+                    browseSection
                 }
+                .tabViewStyle(.sidebarAdaptable)
+                .modifier(TVSidebarAccountHeader(name: accountName))
                 .overlay(alignment: .topTrailing) { readyNotice }
                 .task { await startUp() }
+                .task(id: app.putio == nil) { username = try? await app.putio?.accountInfo().username }
                 .onChange(of: app.library.entries) { _, _ in TVTopShelfPublisher.publish(app.library) }
                 .onChange(of: app.library.continueWatching.map(\.id)) { _, _ in TVTopShelfPublisher.publish(app.library) }
             }
@@ -60,9 +58,94 @@ struct TVRootView: View {
         }
     }
 
+    // MARK: Sidebar
+
+    @TabContentBuilder<TVTab> private var mainTabs: some TabContent<TVTab> {
+        @Bindable var router = router
+        // Your put.io account (opens Settings), like the profile at the top of Apple's TV app.
+        Tab(Self.hasSidebarHeader ? "Settings" : accountName, systemImage: Self.hasSidebarHeader ? "gearshape" : "person.crop.circle.fill",
+            value: TVTab.settings) {
+            NavigationStack { TVSettingsView().safeAreaPadding(.top, Self.sidebarInset) }
+        }
+        Tab("Search", systemImage: "magnifyingglass", value: TVTab.search) {
+            stack($router.searchPath) { TVSearchView() }
+        }
+        Tab("Home", systemImage: "house", value: TVTab.home) {
+            stack($router.homePath) { TVHomeView() }
+        }
+        Tab("Movies", systemImage: "film", value: TVTab.movies) {
+            stack($router.moviesPath) { TVBrowseView(kind: .movie) }
+        }
+        Tab("TV Shows", systemImage: "tv", value: TVTab.tv) {
+            stack($router.tvPath) { TVBrowseView(kind: .tv) }
+        }
+        Tab("Coming Up", systemImage: "calendar", value: TVTab.upcoming) {
+            stack($router.upcomingPath) { TVComingUpView() }
+        }
+        Tab("Top 250", systemImage: "star", value: TVTab.top250) {
+            stack($router.topPath) { TVChartView() }
+        }
+        Tab("Library", systemImage: "square.stack.fill", value: TVTab.library) {
+            stack($router.libraryPath) { TVLibraryView() }
+        }
+    }
+
+    @TabContentBuilder<TVTab> private var listsSection: some TabContent<TVTab> {
+        @Bindable var router = router
+        TabSection("Your Lists") {
+            Tab("My List", systemImage: "plus.circle", value: TVTab.myList) {
+                stack($router.listsPath) { TVMyListView() }
+            }
+            Tab("IMDb Watchlist", systemImage: "bookmark", value: TVTab.imdb) {
+                stack($router.listsPath) { TVIMDbWatchlistView() }
+            }
+            Tab("Files", systemImage: "folder", value: TVTab.files) {
+                stack($router.listsPath) { TVFilesView(folder: .root) }
+            }
+            // How many are on their way, in the title (tvOS sidebars have no badges).
+            Tab(activeTransfers > 0 ? "Downloading · \(activeTransfers)" : "Downloading", systemImage: "arrow.down.circle",
+                value: TVTab.transfers) {
+                stack($router.listsPath) { TVTransfersView() }
+            }
+        }
+    }
+
+    @TabContentBuilder<TVTab> private var browseSection: some TabContent<TVTab> {
+        @Bindable var router = router
+        TabSection("Browse") {
+            ForEach(TVGenre.all) { genre in
+                Tab(genre.name, systemImage: genre.symbol, value: TVTab.genre(genre.id)) {
+                    stack($router.listsPath) { TVGenreView(genre: genre) }
+                }
+            }
+            Tab("Surprise Me", systemImage: "dice", value: TVTab.surprise) {
+                stack($router.listsPath) { TVSurpriseView() }
+            }
+        }
+    }
+
+    /// tvOS 27 shows the account above the sidebar's tabs; earlier versions show it as the first tab instead.
+    static var hasSidebarHeader: Bool {
+        if #available(tvOS 27.0, *) { return true }
+        return false
+    }
+
+    private var activeTransfers: Int { app.transfers.tracked.filter { $0.playableFile == nil }.count }
+
     private func stack<Content: View>(_ path: Binding<[TVRoute]>, @ViewBuilder root: () -> Content) -> some View {
         NavigationStack(path: path) {
-            root().navigationDestination(for: TVRoute.self) { route in
+            // Room for the sidebar's pill at the top left; pages with full-screen art ignore it and run under it.
+            root().safeAreaPadding(.top, Self.sidebarInset).navigationDestination(for: TVRoute.self) { route in
+                Group { destination(route) }
+                    .safeAreaPadding(.top, Self.sidebarInset)
+                    // Back goes back exactly one page, wherever focus is on it (e.g. while a list is still loading).
+                    // Only on pushed pages: on a tab's first page Back must stay the system's (it opens the sidebar).
+                    .onExitCommand { router.goBack() }
+            }
+        }
+    }
+
+    @ViewBuilder private func destination(_ route: TVRoute) -> some View {
                 switch route {
                 case let .title(item): TVTitleView(item: item)
                 case let .versions(request): TVVersionsView(request: request)
@@ -74,8 +157,6 @@ struct TVRootView: View {
                 case let .files(folder): TVFilesView(folder: folder)
                 case .trash: TVTrashView()
                 }
-            }
-        }
     }
 
     /// A transfer finished on put.io: a quiet card in the corner with Play.

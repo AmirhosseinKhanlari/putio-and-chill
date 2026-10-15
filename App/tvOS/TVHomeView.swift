@@ -139,7 +139,7 @@ struct TVBrowseView: View {
     @State private var model: BrowseModel?
 
     var body: some View {
-        let featured = Array((model?.rows.first?.items ?? []).filter { $0.backdropPath != nil }.prefix(6))
+        let featured = model?.featured ?? []
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 30) {
                 if featured.isEmpty {

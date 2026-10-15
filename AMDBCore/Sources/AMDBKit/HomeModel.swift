@@ -72,6 +72,14 @@ public final class BrowseModel {
         self.now = now
     }
 
+    /// The titles for the slider at the top: New Series for TV (fresh shows rather than long-running ones), Popular
+    /// for movies; whichever row loaded first when that one is missing. Only titles with artwork.
+    public var featured: [CatalogItem] {
+        let preferred = kind == .tv ? rows.first { $0.id == "c-\(CuratedList.newSeries.rawValue)" } : nil
+        let source = (preferred?.items.isEmpty == false ? preferred : nil) ?? rows.first
+        return Array((source?.items ?? []).filter { $0.backdropPath != nil }.prefix(6))
+    }
+
     public static func genres(for kind: MediaKind) -> [Genre] {
         switch kind {
         case .tv:

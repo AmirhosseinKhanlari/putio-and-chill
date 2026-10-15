@@ -118,21 +118,61 @@ private struct EpisodeRow: View {
     @Environment(Router.self) private var router
 
     var body: some View {
-        Button { router.open(episode.show) } label: {
-            HStack(spacing: 12) {
-                RemoteImage(path: episode.stillPath ?? episode.show.backdropPath, size: "w300", seed: episode.show.title)
-                    .frame(width: 112, height: 63).clipShape(RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(episode.show.title).font(.headline).lineLimit(1)
-                    Text("S\(episode.season) E\(episode.episode) · \(episode.name)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        HStack(spacing: 4) {
+            Button { router.open(episode.show) } label: {
+                HStack(spacing: 12) {
+                    RemoteImage(path: episode.stillPath ?? episode.show.backdropPath, size: "w300", seed: episode.show.title)
+                        .frame(width: 112, height: 63).clipShape(RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(episode.show.title).font(.headline).lineLimit(1)
+                        Text("S\(episode.season) E\(episode.episode) · \(episode.name)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
                 }
-                Spacer()
+                .contentShape(Rectangle())
             }
-            .padding(8)
-            .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            EpisodeBell(show: episode.show)
+        }
+        .padding(8)
+        .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// Bell: notify me when this show has a new episode.
+struct EpisodeBell: View {
+    let show: CatalogItem
+    @Environment(AppModel.self) private var app
+    @State private var denied = false
+
+    var body: some View {
+        let on = app.episodeAlerts.isFollowing(show.tmdbID)
+        Button {
+            Task {
+                if !on, !(await EpisodeAlertScheduler.requestPermission()) { denied = true; return }
+                await app.episodeAlerts.setFollowing(show, !on)
+                if !on, !app.settings.episodeAlerts {
+                    var settings = app.settings
+                    settings.episodeAlerts = true
+                    app.updateSettings(settings)
+                }
+                await EpisodeAlertScheduler.reschedule(app)
+            }
+        } label: {
+            Image(systemName: on ? "bell.fill" : "bell")
+                .font(.title3)
+                .foregroundStyle(on ? Theme.okay : .white.opacity(0.7))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .symbolEffect(.bounce, value: on)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(on ? "Stop new-episode alerts for \(show.title)" : "Notify me about new episodes of \(show.title)")
+        .alert("Notifications are off", isPresented: $denied) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Turn on notifications for Putio & Chill in the Settings app to get new-episode alerts.")
+        }
     }
 }
 

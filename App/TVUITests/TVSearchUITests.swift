@@ -23,8 +23,7 @@ final class TVSearchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Popular Searches"].exists)
 
         let remote = XCUIRemote.shared
-        remote.press(.down)
-        sleep(1)
+        // Focus starts on the keyboard's "A".
         shot("search-focus")
         remote.press(.select)   // types the focused key ("a")
         remote.press(.right)

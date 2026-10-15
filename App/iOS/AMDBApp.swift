@@ -1,3 +1,4 @@
+import UserNotifications
 import AMDBKit
 import AppIntents
 import AVFoundation
@@ -14,6 +15,7 @@ struct AMDBApp: App {
 
     init() {
         URLCache.shared = URLCache(memoryCapacity: 64 << 20, diskCapacity: 512 << 20)
+        UNUserNotificationCenter.current().delegate = NotificationLinks.shared
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         let model = DemoMode.isEnabled
             ? DemoMode.makeModel()

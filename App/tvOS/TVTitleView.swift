@@ -15,7 +15,10 @@ struct TVTitleView: View {
             TVBackdrop(path: model?.detail?.item.backdropPath ?? item.backdropPath ?? item.posterPath, seed: item.title)
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 0) {
-                    header.containerRelativeFrame(.vertical, alignment: .bottomLeading)
+                    // Shows: the header takes a little over half the screen so the seasons and episodes are in view.
+                    header.containerRelativeFrame(.vertical, alignment: .bottomLeading) { height, _ in
+                        item.mediaType == .tv ? height * 0.6 : height
+                    }
                     VStack(alignment: .leading, spacing: 30) {
                         if item.mediaType == .tv, let model { TVEpisodes(model: model, item: item) }
                         castAndCrew
@@ -224,8 +227,10 @@ struct TVEpisodes: View {
     let item: CatalogItem
     @Environment(AppModel.self) private var app
     @Environment(TVRouter.self) private var router
-    @State private var choice: EpisodeChoice?
     @State private var message: String?
+    /// Episodes being looked up (Get & Watch) before put.io starts downloading them.
+    @State private var searching: Set<Int> = []
+    @State private var deleting: [LibraryEntry] = []
 
     var body: some View {
         let seasons = model.detail?.seasons ?? []
@@ -250,29 +255,47 @@ struct TVEpisodes: View {
             }
             if let message { Text(message).font(.system(size: 22)).foregroundStyle(TVMetrics.secondaryText).padding(.horizontal, TVMetrics.edge) }
             if let season = model.selectedSeason {
-                TVShelf(title: "Episodes") {
+                TVShelf(title: "Episodes", trailing: AnyView(Text("Hold Select for more").font(.system(size: 20)).foregroundStyle(TVMetrics.secondaryText))) {
                     ForEach(model.episodes) { episode in
                         let entries = app.library.matching(tmdbID: item.tmdbID, season: season, episode: episode.number)
                         let resume = entries.map { app.library.resumeSeconds(for: $0) }.max() ?? 0
-                        TVWideCard(title: "\(episode.number). \(episode.name)", subtitle: subtitle(episode, inPutio: !entries.isEmpty, resume: resume),
-                                   imagePath: episode.stillPath ?? item.backdropPath) {
-                            choice = EpisodeChoice(season: season, episode: episode.number, title: "S\(season) · E\(episode.number)  \(episode.name)")
+                        let action = model.action(season: season, episode: episode.number)
+                        TVEpisodeCard(title: "\(episode.number). \(episode.name)",
+                                      subtitle: subtitle(episode, action: action, resume: resume),
+                                      imagePath: episode.stillPath ?? item.backdropPath,
+                                      state: cardState(action, searching: searching.contains(episode.number)),
+                                      watched: episode.runtimeMinutes.map { Double(resume) / Double($0 * 60) }) {
+                            tap(action, season: season, episode: episode.number)
+                        } menu: {
+                            menu(action, season: season, episode: episode.number, entries: entries)
                         }
                     }
                 }
             }
         }
-        .confirmationDialog(choice?.title ?? "", isPresented: Binding(get: { choice != nil }, set: { if !$0 { choice = nil } }),
-                            titleVisibility: .visible) {
-            if let choice { actions(choice) }
+        .alert(deleting.count == 1 ? "Delete this episode from put.io?" : "Delete \(deleting.count) files from put.io?",
+               isPresented: Binding(get: { !deleting.isEmpty }, set: { if !$0 { deleting = [] } })) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                let doomed = deleting
+                Task { try? await app.library.delete(doomed); await app.storage.refresh() }
+            }
+        } message: {
+            Text("It goes to put.io's Trash.")
         }
     }
 
-    private func subtitle(_ episode: Episode, inPutio: Bool, resume: Int) -> String {
+    private func subtitle(_ episode: Episode, action: TitleAction, resume: Int) -> String {
         var parts: [String] = []
+        switch action {
+        case .resume: parts.append("Resume \(Format.clock(resume))")
+        case .play: parts.append("In put.io")
+        case let .downloading(transfer): parts.append("Getting · \(transfer.percent)%")
+        case .failed: parts.append("Didn't download · choose another version")
+        case .get: break
+        }
         if let score = model.episodeRatings[episode.number] { parts.append(String(format: "IMDb %.1f", score.rating)) }
         if let runtime = Format.runtime(episode.runtimeMinutes) { parts.append(runtime) }
-        if inPutio { parts.append(resume >= 30 ? "Resume \(Format.clock(resume))" : "In put.io") }
         if isBest(episode.number) { parts.append("Best of season") }
         return parts.joined(separator: " · ")
     }
@@ -283,31 +306,58 @@ struct TVEpisodes: View {
         return scores.values.allSatisfy { $0.rating <= mine } && scores.values.filter { $0.rating == mine }.count == 1
     }
 
-    @ViewBuilder private func actions(_ choice: EpisodeChoice) -> some View {
-        switch model.action(season: choice.season, episode: choice.episode) {
+    private func cardState(_ action: TitleAction, searching: Bool) -> TVEpisodeState {
+        if searching { return .searching }
+        switch action {
+        case .play, .resume: return .ready
+        case let .downloading(transfer): return .downloading(Double(transfer.percent) / 100)
+        case .failed: return .failed
+        case .get: return .notInPutio
+        }
+    }
+
+    /// Select: plays what's in put.io; gets what isn't (progress shows on the card, then select plays it).
+    private func tap(_ action: TitleAction, season: Int, episode: Int) {
+        switch action {
+        case let .play(entry): router.play(entry, from: 0)
+        case let .resume(entry, seconds): router.play(entry, from: seconds)
+        case .downloading: message = "Still downloading to put.io. It plays as soon as it's ready."
+        case .failed: openVersions(season, episode)
+        case .get:
+            if app.settings.oneTapGet { Task { await get(season, episode) } } else { openVersions(season, episode) }
+        }
+    }
+
+    /// Hold Select: everything else for the episode.
+    @ViewBuilder private func menu(_ action: TitleAction, season: Int, episode: Int, entries: [LibraryEntry]) -> some View {
+        switch action {
         case let .play(entry):
             Button("Play") { router.play(entry, from: 0) }
         case let .resume(entry, seconds):
             Button("Resume \(Format.clock(seconds))") { router.play(entry, from: seconds) }
             Button("Start Over") { router.play(entry, from: 0) }
-        case .downloading:
-            Button("Downloading…") {}
+        case let .downloading(transfer):
+            Button("Cancel Download", role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } }
         case .get, .failed:
-            Button("Get & Watch") { Task { await get(choice.season, choice.episode) } }
-            Button("Versions") { openVersions(choice.season, choice.episode) }
-            Button("Get Whole Season") { openVersions(choice.season, nil) }
+            Button("Get & Watch") { Task { await get(season, episode) } }
         }
-        Button("Cancel", role: .cancel) {}
+        Button(entries.isEmpty ? "Choose Version" : "Other Versions") { openVersions(season, episode) }
+        Button("Get Whole Season") { openVersions(season, nil) }
+        if !entries.isEmpty {
+            Button(entries.count == 1 ? "Delete from put.io" : "Delete \(entries.count) Versions from put.io", role: .destructive) {
+                deleting = entries
+            }
+        }
     }
 
     private func get(_ season: Int, _ episode: Int) async {
-        guard let query = model.query(season: season, episode: episode) else { return }
-        message = "Finding the best version…"
+        guard let query = model.query(season: season, episode: episode), !searching.contains(episode) else { return }
+        searching.insert(episode)
+        defer { searching.remove(episode) }
+        message = nil
         switch await app.smartGet(query, target: model.target(season: season, episode: episode)) {
-        case .sent: message = "Sent to put.io. It'll play here as soon as it's ready."
-        case .noMatch, .failed:
-            message = nil
-            openVersions(season, episode)
+        case .sent: break
+        case .noMatch, .failed: openVersions(season, episode)
         }
     }
 
@@ -318,10 +368,85 @@ struct TVEpisodes: View {
     }
 }
 
-private struct EpisodeChoice: Equatable {
-    let season: Int
-    let episode: Int
+/// An episode: its still with what state it's in (a ring while it downloads to put.io, a check once it's there,
+/// how much was watched); select does the obvious thing, hold Select shows the rest.
+enum TVEpisodeState: Equatable {
+    case notInPutio, searching, downloading(Double), ready, failed
+}
+
+struct TVEpisodeCard<Menu: View>: View {
     let title: String
+    let subtitle: String
+    let imagePath: String?
+    let state: TVEpisodeState
+    /// Fraction watched, for the bar along the bottom.
+    let watched: Double?
+    let action: () -> Void
+    @ViewBuilder let menu: () -> Menu
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Button(action: action) {
+                RemoteImage(path: imagePath, size: "w780", seed: title)
+                    .frame(width: TVMetrics.wide.width, height: TVMetrics.wide.height)
+                    .overlay { overlay }
+                    .overlay(alignment: .bottom) {
+                        if let watched, watched > 0.02, state == .ready {
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(.white.opacity(0.3))
+                                Capsule().fill(.white).frame(width: (TVMetrics.wide.width - 40) * min(watched, 1))
+                            }
+                            .frame(height: 6)
+                            .padding(.horizontal, 20).padding(.bottom, 16)
+                        }
+                    }
+            }
+            .buttonStyle(.card)
+            .contextMenu { menu() }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.system(size: 23, weight: .semibold)).lineLimit(1)
+                Text(subtitle).font(.system(size: 20)).foregroundStyle(TVMetrics.secondaryText).lineLimit(1)
+            }
+            .frame(width: TVMetrics.wide.width, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var overlay: some View {
+        switch state {
+        case .searching:
+            ZStack {
+                Color.black.opacity(0.55)
+                ProgressView().scaleEffect(1.4)
+            }
+        case let .downloading(progress):
+            ZStack {
+                Color.black.opacity(0.55)
+                ProgressRing(progress: progress, lineWidth: 8)
+                    .frame(width: 96, height: 96)
+                    .overlay { Text("\(Int(progress * 100))%").font(.system(size: 26, weight: .bold).monospacedDigit()) }
+            }
+        case .ready:
+            Image(systemName: "play.circle.fill")
+                .font(.system(size: 34))
+                .foregroundStyle(.white, .black.opacity(0.45))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(14)
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 30))
+                .foregroundStyle(.yellow)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(14)
+        case .notInPutio:
+            Image(systemName: "icloud.and.arrow.down")
+                .font(.system(size: 26, weight: .semibold))
+                .padding(10)
+                .background(.black.opacity(0.45), in: Circle())
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(14)
+        }
+    }
 }
 
 struct TrailerURL: Identifiable {

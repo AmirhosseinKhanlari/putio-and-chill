@@ -38,12 +38,15 @@ private struct TVSearchContent: View {
         HStack(alignment: .top, spacing: 60) {
             sidebar
                 .frame(width: 500, alignment: .topLeading)
+                .frame(maxHeight: .infinity, alignment: .top)
                 .focusSection()
             results
                 .focusSection()
         }
         .padding(.horizontal, TVMetrics.edge)
         .padding(.top, 30)
+        // Pinned to the top: a long suggestions list must never push the page up under the tab bar.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .defaultFocus($focusedKey, "a", priority: .userInitiated)
     }
 
@@ -75,7 +78,7 @@ private struct TVSearchContent: View {
             if model.query.isEmpty {
                 if !model.recent.isEmpty {
                     sideList("Recent") {
-                        ForEach(model.recent.prefix(6), id: \.self) { recent in
+                        ForEach(model.recent.prefix(4), id: \.self) { recent in
                             Button { model.query = recent } label: {
                                 Label(recent, systemImage: "clock.arrow.circlepath").font(.system(size: 24)).lineLimit(1)
                             }
@@ -85,7 +88,8 @@ private struct TVSearchContent: View {
                 }
             } else if !model.suggestions.isEmpty {
                 sideList("Top Suggestions") {
-                    ForEach(model.suggestions) { item in
+                    // As many as fit under the keyboard; the grid on the right has the rest.
+                    ForEach(model.suggestions.prefix(4)) { item in
                         Button { open(item) } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.title).font(.system(size: 24, weight: .medium)).lineLimit(1)

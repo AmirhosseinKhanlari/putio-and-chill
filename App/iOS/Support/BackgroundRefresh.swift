@@ -14,6 +14,8 @@ enum BackgroundRefresh {
                     // Keeps the cached library fresh, so the next launch shows new files right away.
                     await model.library.loadCached()
                     await model.refreshLibraryIfDue()
+                    await model.episodeAlerts.load()
+                    await EpisodeAlertScheduler.reschedule(model)
                 }
                 task.expirationHandler = { work.cancel() }
                 Task {

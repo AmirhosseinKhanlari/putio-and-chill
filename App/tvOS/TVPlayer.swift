@@ -534,13 +534,19 @@ private struct TVConversionOverlay: View {
             VStack(spacing: 18) {
                 switch state {
                 case .queued:
-                    ProgressView()
+                    ProgressView().scaleEffect(2).frame(width: 170, height: 170)
                     Text("Waiting for put.io to convert it").font(.system(size: 34, weight: .semibold))
                     Text("This video's format doesn't play on Apple TV as it is. It plays by itself once put.io has converted it.")
                         .font(.system(size: 24)).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
                 case let .converting(percent):
-                    ProgressView(value: Double(percent), total: 100).frame(width: 420)
-                    Text("Converting for Apple TV · \(percent)%").font(.system(size: 34, weight: .semibold))
+                    ProgressRing(progress: Double(percent) / 100, lineWidth: 12)
+                        .frame(width: 170, height: 170)
+                        .overlay {
+                            Text("\(percent)%").font(.system(size: 44, weight: .bold).monospacedDigit())
+                                .contentTransition(.numericText())
+                        }
+                        .animation(.easeInOut, value: percent)
+                    Text("Converting for Apple TV").font(.system(size: 36, weight: .semibold))
                     Text("This video's format doesn't play on Apple TV as it is, so put.io is converting it. It starts by itself when it's ready.")
                         .font(.system(size: 24)).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
                 case .failed:
@@ -548,9 +554,9 @@ private struct TVConversionOverlay: View {
                     Text("Try another version of it.").font(.system(size: 24)).foregroundStyle(.white.opacity(0.75))
                 }
             }
-            .padding(40)
+            .padding(50)
             .frame(maxWidth: 820)
-            .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 28))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 40, style: .continuous))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }

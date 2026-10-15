@@ -130,7 +130,7 @@ private struct FilterBar: View {
             HStack(spacing: 8) {
                 chip("All", selected: model.resolution == nil) { model.resolution = nil }
                 ForEach(model.availableResolutions, id: \.self) { resolution in
-                    chip(resolution == .uhd2160 ? "4K" : resolution.label, selected: model.resolution == resolution) {
+                    chip(resolution == .uhd4320 ? "8K" : resolution == .uhd2160 ? "4K" : resolution.label, selected: model.resolution == resolution) {
                         model.resolution = resolution
                     }
                 }
@@ -170,7 +170,7 @@ struct ReleaseRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(release.parsed.resolution == .unknown ? "?" : (release.parsed.resolution == .uhd2160 ? "4K" : release.parsed.resolution.label))
+            Text(release.parsed.resolution == .unknown ? "?" : (release.parsed.resolution == .uhd4320 ? "8K" : release.parsed.resolution == .uhd2160 ? "4K" : release.parsed.resolution.label))
                 .font(.caption.monospaced().weight(.bold))
                 .padding(.horizontal, 6).padding(.vertical, 4)
                 .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.white.opacity(0.45)))

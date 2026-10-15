@@ -24,7 +24,8 @@ struct TVLibraryView: View {
                 .padding(.horizontal, TVMetrics.edge)
                 .focusSection()
 
-                if !app.transfers.tracked.isEmpty { transfers }
+                // Only what's still on its way: finished ones are in the library below (and Continue Watching).
+                if app.transfers.tracked.contains(where: { $0.playableFile == nil }) { transfers }
 
                 VStack(alignment: .leading, spacing: 30) {
                     HStack(spacing: 16) {
@@ -123,7 +124,7 @@ struct TVLibraryView: View {
 
     private var transfers: some View {
         TVShelf(title: "Downloading to put.io") {
-            ForEach(app.transfers.tracked) { transfer in
+            ForEach(app.transfers.tracked.filter { $0.playableFile == nil }) { transfer in
                 let ready = transfer.playableFile != nil
                 let failed = if case .failed = transfer.phase { true } else { false }
                 TVWideCard(title: transfer.pending.title, subtitle: subtitle(transfer, ready: ready, failed: failed),
@@ -179,7 +180,9 @@ struct TVLibraryView: View {
             let item = CatalogItem(tmdbID: tmdbID, mediaType: .tv, title: title, posterPath: posterPath)
             TVPosterButton(item: item, badge: "\(episodes.count) ep") { router.open(item) }
                 .contextMenu {
-                    Button("Delete All \(episodes.count) Episodes", role: .destructive) { doomed = episodes }
+                    Button(episodes.count == 1 ? "Delete Episode" : "Delete All \(episodes.count) Episodes", role: .destructive) {
+                        doomed = episodes
+                    }
                 }
         case let .file(entry):
             Button { router.play(entry, from: app.library.resumeSeconds(for: entry)) } label: {

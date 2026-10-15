@@ -13,23 +13,28 @@ struct EpisodeList: View {
     var body: some View {
         let seasons = model.detail?.seasons ?? []
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Menu {
-                    ForEach(seasons, id: \.number) { season in
-                        Button(season.name) { Task { await model.selectSeason(season.number) } }
+            // iPhone: the season name on its own line, the buttons under it (they'd wrap beside it).
+            if sizeClass == .compact {
+                VStack(alignment: .leading, spacing: 12) {
+                    seasonMenu(seasons)
+                    if let season = model.selectedSeason {
+                        HStack(spacing: 10) {
+                            downloadSeasonButton(season)
+                            seasonButton(season)
+                        }
+                        .lineLimit(1)
                     }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(seasons.first { $0.number == model.selectedSeason }?.name ?? "Season").font(.title3.weight(.semibold))
-                        Image(systemName: "chevron.down").font(.caption.bold())
+                }
+            } else {
+                HStack {
+                    seasonMenu(seasons)
+                    Spacer()
+                    if let season = model.selectedSeason {
+                        downloadSeasonButton(season)
+                        seasonButton(season)
                     }
-                    .foregroundStyle(.white)
                 }
-                Spacer()
-                if let season = model.selectedSeason {
-                    downloadSeasonButton(season)
-                    seasonButton(season)
-                }
+                .lineLimit(1)
             }
             onDeviceRow
             ForEach(model.episodes) { episode in
@@ -39,6 +44,20 @@ struct EpisodeList: View {
             }
         }
         .padding(.horizontal, Metrics.gutter(sizeClass))
+    }
+
+    private func seasonMenu(_ seasons: [SeasonSummary]) -> some View {
+        Menu {
+            ForEach(seasons, id: \.number) { season in
+                Button(season.name) { Task { await model.selectSeason(season.number) } }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(seasons.first { $0.number == model.selectedSeason }?.name ?? "Season").font(.title3.weight(.semibold))
+                Image(systemName: "chevron.down").font(.caption.bold())
+            }
+            .foregroundStyle(.white)
+        }
     }
 
     /// Every episode of this show saved on this device (any season), finished or still downloading.
@@ -61,9 +80,11 @@ struct EpisodeList: View {
                     .font(.footnote).foregroundStyle(.white.opacity(0.7))
                 Spacer(minLength: 8)
                 Button(role: .destructive) { confirmRemove = true } label: {
-                    Label("Remove Downloads", systemImage: "trash")
+                    Label(sizeClass == .compact ? "Remove" : "Remove Downloads", systemImage: "trash")
                 }
                 .buttonStyle(.glassPill)
+                .lineLimit(1)
+                .fixedSize()
                 .accessibilityLabel("Remove all downloads of \(model.item.title) from this device")
             }
             .alert("Remove \(records.count) downloaded episode\(records.count == 1 ? "" : "s") of \(model.item.title)?",

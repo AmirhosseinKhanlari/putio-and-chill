@@ -90,6 +90,11 @@ Everything Putio & Chill does, by area. Unless noted, a feature works on iPhone,
 - **put.io folders**: downloads go to Movies / TV folders you choose (with optional season folders); **Organize
   library** previews and moves existing files into them.
 
+## New episode alerts
+
+- Tap the bell next to a show in Coming Up → TV (or on the show's page) to get a notification on the day each new
+  episode comes out. Settings → Notifications: turn alerts on or off, pick the time, and manage the list of shows.
+
 ## IMDb Watchlist
 
 - Settings → Connected Services → IMDb: paste your IMDb profile or watchlist link (the watchlist must be public).

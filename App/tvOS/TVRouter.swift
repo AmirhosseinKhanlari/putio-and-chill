@@ -3,7 +3,19 @@ import AMDBKit
 import Observation
 import SwiftUI
 
-enum TVTab: Hashable { case home, movies, tv, upcoming, top250, search, library, settings }
+enum TVTab: Hashable {
+    case home, movies, tv, upcoming, top250, search, library, settings
+    /// The sidebar's lower sections: Your Lists, Browse (genres), Surprise Me.
+    case myList, imdb, files, transfers, surprise, genre(Int)
+
+    /// The lower sections share one page history (only one is on screen at a time).
+    var isExtra: Bool {
+        switch self {
+        case .myList, .imdb, .files, .transfers, .surprise, .genre: true
+        default: false
+        }
+    }
+}
 
 /// Release list for a title (movie, season or episode).
 struct TVVersionsRequest: Hashable {
@@ -52,29 +64,56 @@ final class TVRouter {
     /// "Ready to watch" notice for a finished transfer.
     var ready: TrackedTransfer?
 
-    func open(_ route: TVRoute) {
-        switch tab {
-        case .home: homePath.append(route)
-        case .movies: moviesPath.append(route)
-        case .tv: tvPath.append(route)
-        case .search: searchPath.append(route)
-        case .top250: topPath.append(route)
-        case .upcoming: upcomingPath.append(route)
-        case .library, .settings: libraryPath.append(route)
-        }
-    }
+    /// Pages opened from the sidebar's lower sections (Your Lists, Browse, Surprise Me).
+    var listsPath: [TVRoute] = []
+
+    func open(_ route: TVRoute) { updatePath(of: tab) { $0.append(route) } }
 
     func open(_ item: CatalogItem) { open(.title(item)) }
 
+    /// Whether the tab on screen has pages pushed on it (Back then goes back a page instead of leaving the app).
+    var canGoBack: Bool { tab != .settings && !currentPath.isEmpty }
+
+    /// Back one page in the tab on screen.
+    func goBack() { updatePath(of: tab) { _ = $0.popLast() } }
+
+    /// Choosing the tab you're already on goes back to its first page; moving between the lower sections starts
+    /// each one at its first page.
+    func select(_ newTab: TVTab) {
+        if newTab == tab, tab != .settings {
+            updatePath(of: tab) { $0 = [] }
+        } else if newTab.isExtra, newTab != tab {
+            listsPath = []
+        }
+        tab = newTab
+    }
+
     private var currentPath: [TVRoute] {
+        var path: [TVRoute] = []
+        // Reads only: updatePath hands back a copy.
         switch tab {
-        case .home: homePath
-        case .movies: moviesPath
-        case .tv: tvPath
-        case .search: searchPath
-        case .top250: topPath
-        case .upcoming: upcomingPath
-        case .library, .settings: libraryPath
+        case .home: path = homePath
+        case .movies: path = moviesPath
+        case .tv: path = tvPath
+        case .search: path = searchPath
+        case .top250: path = topPath
+        case .upcoming: path = upcomingPath
+        case .library, .settings: path = libraryPath
+        default: path = listsPath
+        }
+        return path
+    }
+
+    private func updatePath(of tab: TVTab, _ change: (inout [TVRoute]) -> Void) {
+        switch tab {
+        case .home: change(&homePath)
+        case .movies: change(&moviesPath)
+        case .tv: change(&tvPath)
+        case .search: change(&searchPath)
+        case .top250: change(&topPath)
+        case .upcoming: change(&upcomingPath)
+        case .library, .settings: change(&libraryPath)
+        default: change(&listsPath)
         }
     }
 

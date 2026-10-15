@@ -117,6 +117,10 @@ private struct TitleHeader: View {
     @ViewBuilder private var secondaryActions: some View {
         let detail = model?.detail
         if detail != nil { MyListButton(item: item) }
+        // Shows: new-episode alerts.
+        if detail != nil, item.mediaType == .tv {
+            EpisodeBell(show: item).glassCapsule()
+        }
         if detail?.imdbID != nil || detail?.trailerYouTubeKey != nil {
             Button { Task { await playTrailer() } } label: {
                 if loadingTrailer {

@@ -9,6 +9,8 @@ struct TVPersonView: View {
     @Environment(TVRouter.self) private var router
     @State private var person: PersonDetail?
     @State private var failed = false
+    /// The first title (Known For, else Movies) is selected when the page opens.
+    @FocusState private var focusedItem: String?
 
     var body: some View {
         ScrollView(.vertical) {
@@ -25,29 +27,31 @@ struct TVPersonView: View {
                             Text(person.name).font(.system(size: 72, weight: .bold)).lineLimit(2)
                             Text(details(person)).font(.system(size: 24, weight: .medium)).foregroundStyle(TVMetrics.secondaryText)
                             if !person.biography.isEmpty {
-                                // A focusable block so the page can scroll from the top, and the full text is one click away.
-                                Button {} label: {
-                                    Text(person.biography).font(.system(size: 24)).lineLimit(7).multilineTextAlignment(.leading)
-                                }
-                                .tvRow()
-                                .frame(maxWidth: 1200, alignment: .leading)
+                                // Just text: focus goes from the header straight to the titles.
+                                Text(person.biography).font(.system(size: 24)).lineLimit(7).multilineTextAlignment(.leading)
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .frame(maxWidth: 1200, alignment: .leading)
                             }
                         }
                     }
                     .padding(.horizontal, TVMetrics.edge)
                     .padding(.top, 40)
-                    .focusSection()
 
                     if !person.knownFor.isEmpty {
                         TVShelf(title: "Known For") {
-                            ForEach(person.knownFor) { item in TVPosterButton(item: item) { router.open(item) } }
+                            ForEach(person.knownFor) { item in
+                                TVPosterButton(item: item) { router.open(item) }.focused($focusedItem, equals: item.id)
+                            }
                         }
                     }
                     let movies = person.credits.filter { $0.mediaType == .movie }
                     let shows = person.credits.filter { $0.mediaType == .tv }
                     if !movies.isEmpty {
                         TVShelf(title: "Movies", trailing: AnyView(count(movies.count))) {
-                            ForEach(movies) { item in TVPosterButton(item: item, badge: item.year.map(String.init)) { router.open(item) } }
+                            ForEach(movies) { item in
+                                TVPosterButton(item: item, badge: item.year.map(String.init)) { router.open(item) }
+                                    .focused($focusedItem, equals: "movies-" + item.id)
+                            }
                         }
                     }
                     if !shows.isEmpty {
@@ -63,12 +67,23 @@ struct TVPersonView: View {
                 ProgressView().frame(maxWidth: .infinity).padding(.top, 200)
             }
         }
+        .defaultFocus($focusedItem, firstTitle, priority: .userInitiated)
+        .onChange(of: person?.id) { _, _ in
+            // When the page has loaded, put focus on the first title (not up on the tab bar).
+            if let firstTitle { Task { try? await Task.sleep(for: .milliseconds(150)); focusedItem = firstTitle } }
+        }
         .tvPageBackground()
         .task {
             guard person == nil, let catalog = app.catalog else { return }
             do { person = try await catalog.person(id: personID) } catch { failed = true }
         }
         .toolbar(.hidden, for: .tabBar)
+    }
+
+    private var firstTitle: String? {
+        guard let person else { return nil }
+        if let first = person.knownFor.first { return first.id }
+        return person.credits.first { $0.mediaType == .movie }.map { "movies-" + $0.id }
     }
 
     private func details(_ person: PersonDetail) -> String {

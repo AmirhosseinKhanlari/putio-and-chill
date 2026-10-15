@@ -67,6 +67,8 @@ struct MainView: View {
             await app.transfers.restore()
             await app.refreshLibraryIfDue()
             await runAutoClean()
+            await app.episodeAlerts.load()
+            await EpisodeAlertScheduler.reschedule(app)
             await WidgetPublisher.publish(app.library)
         }
         .task {
@@ -92,6 +94,8 @@ struct MainView: View {
             openPendingLink()
             // Latest Movies / Shows (chill, MyMoviz) are fetched every time the app opens.
             Task { await app.refreshChillFeed(force: true) }
+            // New-episode alerts follow TMDB's schedule, which changes: plan them again.
+            Task { await EpisodeAlertScheduler.reschedule(app) }
         }
         .sheet(item: Binding(get: { cleanupReview.map(CleanupList.init) }, set: { if $0 == nil { cleanupReview = nil } })) { list in
             AutoCleanReview(entries: list.entries) {

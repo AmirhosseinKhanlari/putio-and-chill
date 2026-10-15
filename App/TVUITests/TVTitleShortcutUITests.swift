@@ -19,9 +19,11 @@ final class TVTitleShortcutUITests: XCTestCase {
         app.launchArguments = ["-demo"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Continue Watching"].waitForExistence(timeout: 20))
+        sleep(3)
+        app.enterContent()
         let remote = XCUIRemote.shared
         // From the hero's buttons down to the first Continue Watching card (Severance in demo mode).
-        let focused = app.descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true")).firstMatch
+        let focused = app.descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true AND label != ''")).firstMatch
         for _ in 0..<4 where !focused.label.contains("Severance") {
             remote.press(.down)
             sleep(1)
@@ -37,5 +39,16 @@ final class TVTitleShortcutUITests: XCTestCase {
         remote.press(.down)
         remote.press(.select)
         XCTAssertTrue(app.staticTexts["Continue Watching"].waitForNonExistence(timeout: 5), "title page replaced Home")
+    }
+}
+
+extension XCUIApplication {
+    /// When the app opens with focus in the sidebar (as Apple's TV app does), move it into the page.
+    func enterContent() {
+        let named = descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true AND label != ''")).firstMatch
+        for _ in 0..<2 where !named.exists {
+            XCUIRemote.shared.press(.right)
+            sleep(1)
+        }
     }
 }

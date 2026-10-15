@@ -97,6 +97,8 @@ struct SettingsView: View {
                 Section {
                     link("Playback", "play.rectangle.fill", .blue, value: draft.autoPlayNextEpisode ? "Auto-play on" : nil) { playbackPage }
                     link("Subtitles", "captions.bubble.fill", .orange, value: subtitlesSummary) { subtitlesPage }
+                    link("Notifications", "bell.badge.fill", .red,
+                         value: draft.episodeAlerts ? "\(app.episodeAlerts.followed.count) shows" : "Off") { notificationsPage }
                 }
                 Section {
                     link("Smart Get", "bolt.fill", .yellow, value: draft.oneTapGet ? smartGetSummary : "Off") { smartGetPage }
@@ -222,7 +224,7 @@ struct SettingsView: View {
     }
 
     private var smartGetSummary: String {
-        let quality = switch draft.smartGet.resolution { case 2160?: "4K"; case 720?: "720p"; default: "1080p" }
+        let quality = switch draft.smartGet.resolution { case 4320?: "8K"; case 2160?: "4K"; case 720?: "720p"; default: "1080p" }
         return draft.smartGet.maxSizeGB.map { "\(quality) · ≤ \(Int($0)) GB" } ?? quality
     }
 
@@ -274,11 +276,48 @@ struct SettingsView: View {
         }
     }
 
+    private var notificationsPage: some View {
+        Form {
+            Section {
+                Toggle("New episode alerts", isOn: $draft.episodeAlerts)
+                Picker("Alert me at", selection: $draft.episodeAlertHour) {
+                    Text("8:00 AM").tag(8)
+                    Text("9:00 AM").tag(9)
+                    Text("12:00 PM").tag(12)
+                    Text("6:00 PM").tag(18)
+                    Text("9:00 PM").tag(21)
+                }
+                .disabled(!draft.episodeAlerts)
+            } footer: {
+                Text("On the day a new episode comes out. Turn alerts on for a show with the bell in Coming Up → TV, or on the show's page.")
+            }
+            Section("Shows") {
+                if app.episodeAlerts.followed.isEmpty {
+                    Text("No shows yet. Tap the bell next to a show in Coming Up.").foregroundStyle(.secondary)
+                }
+                ForEach(app.episodeAlerts.followed) { saved in
+                    Toggle(saved.title, isOn: Binding(get: { app.episodeAlerts.isFollowing(saved.tmdbID) }, set: { on in
+                        Task {
+                            await app.episodeAlerts.setFollowing(saved.catalogItem, on)
+                            await EpisodeAlertScheduler.reschedule(app)
+                        }
+                    }))
+                }
+            }
+        }
+        .onDisappear {
+            // Applies the time / on-off right away (Done applies everything else).
+            app.updateSettings(draft)
+            Task { await EpisodeAlertScheduler.reschedule(app) }
+        }
+    }
+
     private var smartGetPage: some View {
         Form {
             Section {
                 Toggle("One-tap Get", isOn: $draft.oneTapGet)
                 Picker("Quality", selection: $draft.smartGet.resolution) {
+                    Text("8K").tag(Int?.some(4320))
                     Text("4K").tag(Int?.some(2160))
                     Text("1080p").tag(Int?.some(1080))
                     Text("720p").tag(Int?.some(720))
@@ -298,6 +337,7 @@ struct SettingsView: View {
             Section {
                 Picker("Versions list shows", selection: $draft.defaultResolution) {
                     Text("All").tag(Int?.none)
+                    Text("8K").tag(Int?.some(4320))
                     Text("4K").tag(Int?.some(2160))
                     Text("1080p").tag(Int?.some(1080))
                     Text("720p").tag(Int?.some(720))

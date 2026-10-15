@@ -21,8 +21,13 @@ final class TVComingUpUITests: XCTestCase {
         shot("tv-comingup-movies")
         XCTAssertTrue(app.staticTexts["Box Office This Weekend"].exists)
         let remote = XCUIRemote.shared
-        remote.press(.down)    // tab bar → Movies chip
-        remote.press(.right)   // TV Shows chip
+        app.enterContent()
+        // Over to the TV Shows chip, and choose it.
+        let focused = app.descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true AND label != ''")).firstMatch
+        for _ in 0..<4 where !(focused.exists && focused.label == "TV Shows") {
+            remote.press(focused.exists && focused.label == "Movies" ? .right : .down)
+            sleep(1)
+        }
         remote.press(.select)
         sleep(4)
         shot("tv-comingup-tv")
