@@ -208,7 +208,7 @@ struct FilesPage: View {
             .glassRounded(14)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.row)
         .frame(maxWidth: 420)
         .accessibilityLabel(app.storage.trashSize > 0 ? "Trash, \(Format.bytes(app.storage.trashSize))" : "Trash")
     }
@@ -451,7 +451,7 @@ private struct FileRow: View {
             .frame(minHeight: 52)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.row)
         .accessibilityLabel(file.name)
         .accessibilityValue(selected == true ? "Selected" : "")
         .accessibilityHint(file.isFolder ? "Opens the folder" : file.isVideo ? "Plays the video" : "Opens the file")

@@ -152,6 +152,19 @@ final class Router {
         }
     }
 
+    /// Back one page in the current tab (Esc / ⌘[ on a keyboard). False when already at the tab's first page.
+    @discardableResult
+    func goBack() -> Bool {
+        switch tab {
+        case .home: homePath.popLast() != nil
+        case .movies: moviesPath.popLast() != nil
+        case .tv: tvPath.popLast() != nil
+        case .search: searchPath.popLast() != nil
+        case .upcoming: upcomingPath.popLast() != nil
+        case .library: libraryPath.popLast() != nil
+        }
+    }
+
     func popToRoot(_ tab: AppTab) {
         switch tab {
         case .home: homePath = []

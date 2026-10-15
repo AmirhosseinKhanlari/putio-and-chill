@@ -55,9 +55,12 @@ struct LiftStyle: ButtonStyle {
     }
 }
 
+#if !os(iOS)
 extension ButtonStyle where Self == PrimaryPillStyle { static var primaryPill: PrimaryPillStyle { PrimaryPillStyle() } }
 extension ButtonStyle where Self == GlassPillStyle { static var glassPill: GlassPillStyle { GlassPillStyle() } }
 extension ButtonStyle where Self == LiftStyle { static var lift: LiftStyle { LiftStyle() } }
+#endif
+// iOS: the same styles, also reachable with the keyboard's arrow keys (KeyNav.swift).
 
 extension View {
     @ViewBuilder func glassCapsule() -> some View {

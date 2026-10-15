@@ -19,6 +19,22 @@ struct MacCommands: Commands {
             Divider()
             Button("Search") { router.tab = .search }.keyboardShortcut("f", modifiers: .command)
             Button("Surprise Me") { router.showSurprise = true }.keyboardShortcut("r", modifiers: [.command, .shift])
+            Divider()
+            Button("Back") { KeyNav.shared.back() }.keyboardShortcut("[", modifiers: .command)
+        }
+        // Arrow keys move between buttons and posters; off while typing or watching (the field or player has them).
+        CommandMenu("Navigate") {
+            let keys = KeyNav.shared
+            Group {
+                Button("Select Up") { keys.move(.up) }.keyboardShortcut(.upArrow, modifiers: [])
+                Button("Select Down") { keys.move(.down) }.keyboardShortcut(.downArrow, modifiers: [])
+                Button("Select Left") { keys.move(.left) }.keyboardShortcut(.leftArrow, modifiers: [])
+                Button("Select Right") { keys.move(.right) }.keyboardShortcut(.rightArrow, modifiers: [])
+                Divider()
+                Button("Open Selected") { keys.activate() }.keyboardShortcut(.return, modifiers: [])
+                Button("Back") { keys.back() }.keyboardShortcut(.escape, modifiers: [])
+            }
+            .disabled(!keys.isAvailable)
         }
     }
 }

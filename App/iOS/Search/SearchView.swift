@@ -47,6 +47,12 @@ private struct SearchContent: View {
                         .submitLabel(.search)
                         .autocorrectionDisabled()
                         .onSubmit { Task { await model.commit() } }
+                        // Keyboard: ↓ leaves the field for the results below.
+                        .onKeyPress(.downArrow) {
+                            focused = false
+                            KeyNav.shared.move(.down)
+                            return .handled
+                        }
                         .font(.title3)
                     if model.isSearching { ProgressView() }
                     if !model.query.isEmpty {

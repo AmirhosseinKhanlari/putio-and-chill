@@ -22,7 +22,7 @@ struct CatalogRowView: View {
                 }
             }
             .padding(.horizontal, Metrics.gutter(sizeClass))
-            ScrollView(.horizontal, showsIndicators: false) {
+            Shelf {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(row.items) { item in
                         Button { router.open(item) } label: { PosterCard(item: item, width: Metrics.poster(sizeClass)) }
@@ -45,7 +45,7 @@ struct EntryRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.title3.weight(.semibold)).padding(.horizontal, Metrics.gutter(sizeClass))
-            ScrollView(.horizontal, showsIndicators: false) {
+            Shelf {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(entries) { entry in EntryCard(entry: entry, width: Metrics.poster(sizeClass)) }
                 }

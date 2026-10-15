@@ -186,7 +186,7 @@ private struct DatedRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.title3.weight(.semibold)).padding(.horizontal, Metrics.gutter(sizeClass))
-            ScrollView(.horizontal, showsIndicators: false) {
+            Shelf {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(items) { dated in
                         Button { router.open(dated.item) } label: {

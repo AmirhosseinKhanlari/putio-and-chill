@@ -13,7 +13,7 @@ struct CastAndCrewRow: View {
         let diameter: CGFloat = compact ? 104 : 140
         VStack(alignment: .leading, spacing: 14) {
             Text("Cast & Crew").font(.title3.weight(.semibold)).padding(.horizontal, Metrics.gutter(sizeClass))
-            ScrollView(.horizontal, showsIndicators: false) {
+            Shelf {
                 LazyHStack(alignment: .top, spacing: compact ? 14 : 22) {
                     ForEach(Array((cast + crew).enumerated()), id: \.offset) { _, person in
                         if let id = person.id {

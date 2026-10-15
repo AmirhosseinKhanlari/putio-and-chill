@@ -229,7 +229,7 @@ struct SurprisePage: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Not feeling it?").font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
                     .padding(.horizontal, Metrics.gutter(sizeClass))
-                ScrollView(.horizontal, showsIndicators: false) {
+                Shelf {
                     HStack(spacing: 12) {
                         ForEach(model.alternatives) { item in
                             Button { withAnimation(.smooth(duration: 0.45)) { model.choose(item) } } label: {

@@ -44,7 +44,7 @@ struct LibraryView: View {
                             .foregroundStyle(.white.opacity(0.75))
                             .accessibilityLabel("Manage downloads")
                     }
-                    ScrollView(.horizontal, showsIndicators: false) {
+                    Shelf {
                         HStack(spacing: 12) { ForEach(app.downloads.records) { DownloadCard(record: $0) } }
                     }
                 }
@@ -57,7 +57,7 @@ struct LibraryView: View {
                             .foregroundStyle(.white.opacity(0.75))
                             .accessibilityLabel("See all My List")
                     }
-                    ScrollView(.horizontal, showsIndicators: false) {
+                    Shelf {
                         HStack(alignment: .top, spacing: 12) {
                             ForEach(app.myList.items.map(\.catalogItem)) { item in
                                 Button { router.open(item) } label: { PosterCard(item: item, width: width * 0.8) }
@@ -68,7 +68,7 @@ struct LibraryView: View {
                 }
                 if !app.transfers.tracked.isEmpty {
                     Text("Transfers").font(.title3.weight(.semibold))
-                    ScrollView(.horizontal, showsIndicators: false) {
+                    Shelf {
                         HStack(spacing: 12) { ForEach(app.transfers.tracked) { TransferCard(transfer: $0) } }
                     }
                 }
@@ -233,7 +233,7 @@ private struct DownloadCard: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.row)
             .disabled(!isDone)
             .accessibilityLabel(isDone ? "Play \(record.title) from this device" : record.title)
             Menu {

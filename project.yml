@@ -94,6 +94,9 @@ targets:
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/iOS/AMDB-Mac.entitlements
         "ARCHS[sdk=macosx*]": "arm64 x86_64"
+        # The Mac shows the file name (Dock, Finder, menu bar): "Putio & Chill", not the target name.
+        "PRODUCT_NAME[sdk=macosx*]": "Putio & Chill"
+        PRODUCT_MODULE_NAME: AMDB
         MACOSX_DEPLOYMENT_TARGET: "14.0"
   AMDBUITests:
     type: bundle.ui-testing

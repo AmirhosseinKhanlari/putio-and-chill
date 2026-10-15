@@ -28,7 +28,7 @@ struct ChartRowView: View {
                 Text("Couldn't load the chart.").font(.footnote).foregroundStyle(.secondary)
                     .padding(.horizontal, Metrics.gutter(sizeClass))
             }
-            ScrollView(.horizontal, showsIndicators: false) {
+            Shelf {
                 LazyHStack(alignment: .top, spacing: 4) {
                     ForEach(model.entries.prefix(20)) { entry in
                         RankedPoster(model: model, entry: entry, width: width)

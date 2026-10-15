@@ -56,6 +56,7 @@ struct MainView: View {
         .sheet(isPresented: $router.showSettings) { SettingsView() }
         .fullScreenCover(isPresented: $router.showSurprise) { SurprisePage() }
         .task {
+            KeyNav.shared.router = router
             wireEvents()
             // The saved library first, so Home and Library fill instantly; put.io is checked afterwards.
             await app.library.loadCached()
@@ -246,6 +247,7 @@ private struct TabStack: View {
                     }
                 }
         }
+        .environment(\.keyNavTab, tab)
     }
 
     @ViewBuilder private var root: some View {
