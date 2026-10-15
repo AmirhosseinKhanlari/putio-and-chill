@@ -296,11 +296,11 @@ struct TVSettingsView: View {
                     ? "\(app.imdbWatchlist.items.count) title\(app.imdbWatchlist.items.count == 1 ? "" : "s")" : "Not connected")
                 if app.imdbWatchlist.isConnected {
                     Button("Disconnect IMDb", role: .destructive) { app.disconnectIMDb() }
+                } else {
+                    TVIMDbConnect()
                 }
             } header: {
                 Text("IMDb")
-            } footer: {
-                Text("Connect your IMDb watchlist on your iPhone or iPad (Settings → Connected Services → IMDb); it shows up here by itself.")
             }
             Section {
                 LabeledContent("MDBList", value: app.hasRatings ? "Connected" : "Not connected")

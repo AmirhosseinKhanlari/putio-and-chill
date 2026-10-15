@@ -43,6 +43,8 @@ struct TVRootView: View {
             // Back in the app: Latest Movies / Shows are fetched every time it opens, and the library is checked.
             if phase == .active, app.putio != nil {
                 Task {
+                    // Connections made on the iPhone (IMDb, ratings) reach the TV through iCloud Keychain.
+                    if app.reloadSyncedTokens() { await app.imdbWatchlist.load(force: true) }
                     await app.refreshChillFeed(force: true)
                     await app.refreshLibraryIfDue()
                 }
@@ -220,6 +222,7 @@ struct TVRootView: View {
         case "files":
             router.tab = .library
             router.open(.files(.root))
+        case "imdb": router.tab = .imdb
         case "search": router.tab = .search
         case "settings": router.tab = .settings
         case "movies": router.tab = .movies

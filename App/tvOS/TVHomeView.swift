@@ -187,6 +187,8 @@ struct TVMyListView: View {
                 Text("My List").font(.system(size: 64, weight: .bold))
                 if app.myList.items.isEmpty {
                     Text("Nothing saved yet. Choose ＋ on any movie or show.").foregroundStyle(TVMetrics.secondaryText)
+                    // Something to select on an empty page (otherwise the remote has nowhere to go).
+                    Button { router.select(.home) } label: { Label("Find Something to Watch", systemImage: "house") }.tvPill()
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(TVMetrics.poster.width), spacing: 40), count: 6), spacing: 50) {
                     ForEach(app.myList.items.map(\.catalogItem)) { item in TVPosterButton(item: item) { router.open(item) } }

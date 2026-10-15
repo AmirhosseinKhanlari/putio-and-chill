@@ -109,6 +109,7 @@ public final class AppModel {
     /// put.io MP4 conversions of videos Apple devices can't play as they are.
     public let conversions = VideoConversions()
     @ObservationIgnored private var filesChangedRefresh: Task<Void, Never>?
+    @ObservationIgnored private var lastTokens: [TokenKey: String] = [:]
 
     @ObservationIgnored private let tokens: any TokenStore
     @ObservationIgnored private let userDefaults: UserDefaults
@@ -396,7 +397,23 @@ public final class AppModel {
         })
     }
 
+    /// Keys and links that arrived through iCloud Keychain since launch (e.g. IMDb connected on the iPhone, read on
+    /// the Apple TV): rebuilds the services when any changed. Returns whether something changed.
+    @discardableResult
+    public func reloadSyncedTokens() -> Bool {
+        guard currentTokens() != lastTokens else { return false }
+        rebuild()
+        return true
+    }
+
+    private func currentTokens() -> [TokenKey: String] {
+        var values: [TokenKey: String] = [:]
+        for key in TokenKey.allCases { values[key] = tokens.read(key) }
+        return values
+    }
+
     private func rebuild() {
+        lastTokens = currentTokens()
         putio = tokens.read(.putio).map(factory.makePutio)
         catalog = (tokens.read(.tmdb) ?? bundledTMDBToken).map(factory.makeCatalog)
         ratingsService = tokens.read(.mdblist).map(factory.makeRatings)

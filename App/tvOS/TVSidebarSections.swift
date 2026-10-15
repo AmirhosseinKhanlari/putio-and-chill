@@ -103,8 +103,13 @@ struct TVIMDbWatchlistView: View {
             VStack(alignment: .leading, spacing: 34) {
                 TVPageHeader(title: "IMDb Watchlist", subtitle: subtitle)
                 if !watchlist.isConnected {
-                    Text("Connect your IMDb watchlist on your iPhone or iPad: Settings → Connected Services → IMDb. It shows up here by itself.")
-                        .font(.system(size: 26)).foregroundStyle(TVMetrics.secondaryText).frame(maxWidth: 1100, alignment: .leading)
+                    TVIMDbConnect()
+                } else {
+                    Button { Task { await app.imdbWatchlist.load(force: true) } } label: {
+                        Label(watchlist.isLoading ? "Refreshing…" : "Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .tvPill()
+                    .disabled(watchlist.isLoading)
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(TVMetrics.poster.width), spacing: 40), count: 6),
                           alignment: .leading, spacing: 50) {
@@ -137,6 +142,10 @@ struct TVTransfersView: View {
             VStack(alignment: .leading, spacing: 34) {
                 TVPageHeader(title: "Downloading to put.io",
                              subtitle: transfers.isEmpty ? "Nothing on its way. Get & Watch on any title sends it here." : "Hold Select to cancel")
+                // Something to select on an empty page (otherwise the remote has nowhere to go).
+                if transfers.isEmpty {
+                    Button { router.select(.home) } label: { Label("Find Something to Watch", systemImage: "house") }.tvPill()
+                }
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(TVMetrics.wide.width), spacing: 40), count: 3),
                           alignment: .leading, spacing: 50) {
                     ForEach(transfers) { transfer in card(transfer) }
@@ -170,6 +179,44 @@ struct TVTransfersView: View {
             } else {
                 Button("Cancel Download", role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } }
             }
+        }
+    }
+}
+
+/// Connect an IMDb watchlist on the TV: the link can be typed with the iPhone's keyboard (tvOS offers it when a text
+/// field is selected), or the watchlist connected on the iPhone shows up here by itself.
+struct TVIMDbConnect: View {
+    @Environment(AppModel.self) private var app
+    @State private var link = ""
+    @State private var problem: String?
+    @State private var connecting = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            Text("Paste your IMDb watchlist link. Select the field and your iPhone offers its keyboard, or connect it on your iPhone or iPad (Settings → Connected Services → IMDb) and it appears here.")
+                .font(.system(size: 26)).foregroundStyle(TVMetrics.secondaryText).frame(maxWidth: 1200, alignment: .leading)
+            HStack(spacing: 24) {
+                TextField("imdb.com/user/…/watchlist", text: $link)
+                    .textContentType(.URL)
+                    .frame(width: 900)
+                    .onSubmit { connect() }
+                Button { connect() } label: {
+                    Label(connecting ? "Connecting…" : "Connect", systemImage: "link")
+                }
+                .tvPill()
+                .disabled(connecting || link.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            if let problem { Text(problem).font(.system(size: 24)).foregroundStyle(Theme.okay) }
+        }
+    }
+
+    private func connect() {
+        guard !connecting else { return }
+        connecting = true
+        Task {
+            problem = await app.connectIMDb(link)
+            connecting = false
+            if problem == nil { link = "" }
         }
     }
 }

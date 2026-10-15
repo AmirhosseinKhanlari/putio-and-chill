@@ -92,6 +92,7 @@ struct MainView: View {
         .onReceive(NotificationCenter.default.publisher(for: PendingLink.notification)) { _ in openPendingLink() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             openPendingLink()
+            if app.reloadSyncedTokens() { Task { await app.imdbWatchlist.load(force: true) } }
             // Latest Movies / Shows (chill, MyMoviz) are fetched every time the app opens.
             Task { await app.refreshChillFeed(force: true) }
             // New-episode alerts follow TMDB's schedule, which changes: plan them again.
