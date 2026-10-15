@@ -184,19 +184,31 @@ private struct EpisodeRow: View {
 
     var body: some View {
         let regular = sizeClass != .compact
-        let resume = app.library.matching(tmdbID: model.item.tmdbID, season: season, episode: episode.number)
-            .map { app.library.resumeSeconds(for: $0) }.max() ?? 0
+        let library = app.library
+        let watched = library.matching(tmdbID: model.item.tmdbID, season: season, episode: episode.number)
+            .max { library.resumeSeconds(for: $0) < library.resumeSeconds(for: $1) }
+        let resume = watched.map { library.resumeSeconds(for: $0) } ?? 0
+        let estimate = episode.runtimeMinutes.map { $0 * 60 }
+        let fraction = watched.flatMap { library.watchedFraction(for: $0, estimatedLength: estimate) }
+        let left = watched.flatMap { library.remainingSeconds(for: $0, estimatedLength: estimate) }
         HStack(alignment: .center, spacing: regular ? 14 : 10) {
-            RemoteImage(path: episode.stillPath, size: "w300", seed: "\(model.item.title) \(episode.number)")
-                .frame(width: regular ? 220 : 104, height: regular ? 124 : 58)
-                .overlay(alignment: .bottomLeading) {
-                    if resume >= 30 {
-                        Label(Format.clock(resume), systemImage: "play.fill").font(.caption2.weight(.bold))
-                            .padding(.horizontal, 6).padding(.vertical, 3).background(.black.opacity(0.6), in: Capsule()).padding(6)
+            // Started episodes: time left on the picture and a bar under it showing how much is watched.
+            VStack(spacing: 5) {
+                RemoteImage(path: episode.stillPath, size: "w300", seed: "\(model.item.title) \(episode.number)")
+                    .frame(width: regular ? 220 : 104, height: regular ? 124 : 58)
+                    .overlay(alignment: .bottomLeading) {
+                        if resume >= 30, regular || left != nil {
+                            Label(left.map(Format.left) ?? "Resume \(Format.clock(resume))", systemImage: "play.fill")
+                                .font(.caption2.weight(.bold)).lineLimit(1)
+                                .padding(.horizontal, 6).padding(.vertical, 3).background(.black.opacity(0.6), in: Capsule()).padding(6)
+                        }
                     }
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(alignment: .topTrailing) { if !regular { downloadBadge } }
+                if let fraction {
+                    WatchedBar(fraction: fraction, height: regular ? 4 : 3).frame(width: regular ? 220 : 104)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(alignment: .topTrailing) { if !regular { downloadBadge } }
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(episode.number). \(episode.name)").font(regular ? .headline : .subheadline.weight(.semibold))
                     .lineLimit(regular ? 1 : 2)

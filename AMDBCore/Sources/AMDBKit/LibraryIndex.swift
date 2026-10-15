@@ -30,9 +30,13 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
     public var progress: [Int64: Int]?
     /// Every folder seen in that fetch (for organizing without re-listing put.io).
     public var folders: [PutioFile]?
+    /// Video lengths in seconds, learned while playing (put.io only keeps the position). Absent in older caches.
+    public var durations: [Int64: Int]?
 
-    public init(entries: [LibraryEntry], updatedAt: Date, progress: [Int64: Int]? = nil, folders: [PutioFile]? = nil) {
+    public init(entries: [LibraryEntry], updatedAt: Date, progress: [Int64: Int]? = nil, folders: [PutioFile]? = nil,
+                durations: [Int64: Int]? = nil) {
         self.entries = entries; self.updatedAt = updatedAt; self.progress = progress; self.folders = folders
+        self.durations = durations
     }
 }
 
@@ -100,6 +104,8 @@ public final class LibraryIndex {
     private let matchParallelism = 4
     @ObservationIgnored private var currentRefresh: Task<Void, Never>?
     private var progressOverrides: [Int64: Int] = [:]
+    /// Video lengths (seconds) seen by the player, so cards can show how much is left.
+    private var durations: [Int64: Int] = [:]
     /// Order in which files were watched this session (higher = more recent); a counter, so ties can't happen.
     private var touchedOrder: [Int64: Int] = [:]
     private var touchCount = 0
@@ -134,6 +140,7 @@ public final class LibraryIndex {
         lastUpdated = snapshot.updatedAt
         folderTree = FolderTree(folders: snapshot.folders ?? [])
         for (id, seconds) in snapshot.progress ?? [:] where progressOverrides[id] == nil { progressOverrides[id] = seconds }
+        for (id, seconds) in snapshot.durations ?? [:] where durations[id] == nil { durations[id] = seconds }
     }
 
     /// Whether the library is older than `maxAge` (or was never fetched).
@@ -291,6 +298,27 @@ public final class LibraryIndex {
 
     public func resumeSeconds(for entry: LibraryEntry) -> Int { progressOverrides[entry.id] ?? entry.startFrom }
 
+    /// The video's length, as the player found it (saved with the next position).
+    public func noteDuration(fileID: Int64, seconds: Int) {
+        guard seconds > 0, durations[fileID] != seconds else { return }
+        durations[fileID] = seconds
+    }
+
+    /// How far into the video (0…1), shown as a bar on its card. Uses the length the player saw, else
+    /// `estimatedLength` (TMDB's runtime). nil when it hasn't been started, or the length isn't known.
+    public func watchedFraction(for entry: LibraryEntry, estimatedLength: Int? = nil) -> Double? {
+        let position = resumeSeconds(for: entry)
+        guard position >= 30, let length = durations[entry.id] ?? estimatedLength, length > 0 else { return nil }
+        return min(1, Double(position) / Double(length))
+    }
+
+    /// Seconds left to watch, when the length is known (see `watchedFraction`).
+    public func remainingSeconds(for entry: LibraryEntry, estimatedLength: Int? = nil) -> Int? {
+        let position = resumeSeconds(for: entry)
+        guard position >= 30, let length = durations[entry.id] ?? estimatedLength, length > position else { return nil }
+        return length - position
+    }
+
     public func noteProgress(fileID: Int64, seconds: Int) {
         progressOverrides[fileID] = seconds
         touchCount += 1
@@ -379,7 +407,7 @@ public final class LibraryIndex {
     private func persist() async {
         guard let lastUpdated else { return }
         await cache.save(LibrarySnapshot(entries: entries, updatedAt: lastUpdated, progress: progressOverrides,
-                                         folders: Array(folderTree.folders.values)))
+                                         folders: Array(folderTree.folders.values), durations: durations))
     }
 
     /// Folders that only hold subtitles, samples or artwork: not read (a season pack's "Subs" folder alone can hold

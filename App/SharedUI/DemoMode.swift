@@ -39,6 +39,8 @@ enum DemoMode {
             await model.downloads.upsert(DownloadRecord(fileID: 3, title: "Heat", posterPath: nil, tmdbID: 949, kind: .movie,
                                                         season: nil, episode: nil, state: .downloading(progress: 0.42)))
         }
+        // Lengths the player would have learned, so watched bars show (Interstellar, Severance S2 E4, Heat).
+        for (fileID, seconds) in [(Int64(1), 10_140), (2, 3_300), (4, 10_200)] { model.library.noteDuration(fileID: fileID, seconds: seconds) }
         return model
     }
 
@@ -46,7 +48,12 @@ enum DemoMode {
     @MainActor static func apply(to router: Router) {
         switch screen {
         case "title": router.homePath = [.title(DemoCatalog.movies[0])]
-        case "show": router.homePath = [.title(DemoCatalog.shows[0])]
+        case "show":
+            // After the demo library has loaded, so the page opens on the season being watched (Season 2).
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                router.homePath = [.title(DemoCatalog.shows[0])]
+            }
         case "versions":
             router.homePath = [.title(DemoCatalog.movies[0])]
             router.versions = VersionsRequest(query: .movie(imdbID: "tt0", title: DemoCatalog.movies[0].title, year: 2024),

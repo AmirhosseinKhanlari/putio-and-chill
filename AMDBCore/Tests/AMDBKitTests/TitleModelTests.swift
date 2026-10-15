@@ -64,6 +64,18 @@ import Testing
         #expect(FolderLayout.standard.displayPath(kind: tv.kind, title: tv.title, season: tv.season) == "AMDB/TV/Severance/Season 2")
     }
 
+    @Test func showOpensOnTheSeasonBeingWatched() async {
+        let store = LocalStore(fileURL: nil)
+        let library = LibraryIndex(store: store)
+        library.configure(putio: FakePutio(), catalog: Self.catalog)
+        await library.record(file: PutioFile(id: 21, name: "Severance.S02E04.mkv", fileType: "VIDEO", startFrom: 1250),
+                             match: LibraryMatch(tmdbID: 95396, mediaType: .tv, season: 2, episode: 4, confidence: 1))
+        let model = TitleModel(item: Self.severance, catalog: Self.catalog, library: library, transfers: TransferMonitor(store: store))
+        await model.load()
+        #expect(model.selectedSeason == 2)
+        #expect(model.episodes.map(\.number) == [4])
+    }
+
     @Test func missingDetailReportsError() async {
         let store = LocalStore(fileURL: nil)
         let model = TitleModel(item: movie(1, "Unknown"), catalog: Self.catalog, library: LibraryIndex(store: store),

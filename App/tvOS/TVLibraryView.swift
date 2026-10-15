@@ -168,7 +168,7 @@ struct TVLibraryView: View {
         case let .movie(entry):
             if let match = entry.match {
                 let resume = app.library.resumeSeconds(for: entry)
-                TVPosterButton(item: TVEntryShelf.item(match), badge: resume >= 30 ? Format.clock(resume) : nil) {
+                TVPosterButton(item: TVEntryShelf.item(match), badge: resume >= 30 ? app.library.remainingSeconds(for: entry).map(Format.left) ?? "Resume \(Format.clock(resume))" : nil) {
                     router.open(TVEntryShelf.item(match))
                 }
                 .contextMenu {

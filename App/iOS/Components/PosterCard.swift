@@ -27,6 +27,9 @@ struct LibraryPoster: View {
     let entry: LibraryEntry
     let width: CGFloat
     var resumeSeconds: Int = 0
+    /// How much is watched and how long is left, when the video's length is known.
+    var watched: Double?
+    var left: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -38,8 +41,9 @@ struct LibraryPoster: View {
                             Text(entry.displayTitle).font(.caption.weight(.bold)).lineLimit(3)
                         }
                         if resumeSeconds >= 30 {
-                            Label(Format.clock(resumeSeconds), systemImage: "play.fill")
-                                .font(.caption2.weight(.bold)).padding(.horizontal, 7).padding(.vertical, 4)
+                            Label(left.map(Format.left) ?? "Resume \(Format.clock(resumeSeconds))", systemImage: "play.fill")
+                                .font(.caption2.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8)
+                                .padding(.horizontal, 7).padding(.vertical, 4)
                                 .background(.black.opacity(0.6), in: Capsule())
                         }
                     }
@@ -47,6 +51,7 @@ struct LibraryPoster: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
+            if let watched, resumeSeconds >= 30 { WatchedBar(fraction: watched, height: 3).frame(width: width) }
             Text(subtitle).font(.caption).foregroundStyle(.white.opacity(0.75)).lineLimit(1).frame(width: width, alignment: .leading)
         }
         .hoverEffect(.lift)

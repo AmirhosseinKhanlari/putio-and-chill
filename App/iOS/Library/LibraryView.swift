@@ -150,7 +150,8 @@ private struct LibraryCardView: View {
         case let .movie(entry), let .file(entry):
             let resume = app.library.resumeSeconds(for: entry)
             Button { router.play(entry, resumeFrom: resume) } label: {
-                LibraryPoster(entry: entry, width: width, resumeSeconds: resume)
+                LibraryPoster(entry: entry, width: width, resumeSeconds: resume,
+                          watched: app.library.watchedFraction(for: entry), left: app.library.remainingSeconds(for: entry))
             }
             .buttonStyle(.lift)
         case let .show(tmdbID, title, posterPath, episodes):

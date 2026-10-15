@@ -47,7 +47,13 @@ public final class TitleModel {
                 ratings = await ratingsProvider(imdbID, item.mediaType)
             }
             if item.mediaType == .tv, let first = loaded.seasons.first?.number {
-                await selectSeason(first)
+                // The season of the episode being watched (the latest started one), else the first.
+                let watching = library.matching(tmdbID: item.tmdbID)
+                    .filter { library.resumeSeconds(for: $0) >= 30 }
+                    .compactMap { entry in entry.match?.season.map { ($0, entry.match?.episode ?? 0) } }
+                    .max { $0 < $1 }?.0
+                let start = watching.flatMap { season in loaded.seasons.contains { $0.number == season } ? season : nil } ?? first
+                await selectSeason(start)
             }
         } catch let failure as AppError {
             error = failure

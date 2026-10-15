@@ -9,10 +9,8 @@ final class EpisodeDownloadUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-demoScreen", "show"]
         app.launch()
-        let seasonMenu = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Season 1'")).firstMatch
-        XCTAssertTrue(seasonMenu.waitForExistence(timeout: 20))
-        seasonMenu.tap()
-        app.buttons["Season 2"].tap()
+        // Opens on the season being watched: Season 2 (S2 E4 is started).
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Season 2'")).firstMatch.waitForExistence(timeout: 20))
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Download season' OR label == 'Season downloaded' OR label ENDSWITH ' downloaded' OR label BEGINSWITH 'Download '")).firstMatch.waitForExistence(timeout: 10))
         let play = app.buttons.matching(NSPredicate(format: "label == 'Play episode' OR label == 'Resume episode'")).firstMatch
         for _ in 0..<4 where !(play.exists && play.isHittable) { app.swipeUp() }

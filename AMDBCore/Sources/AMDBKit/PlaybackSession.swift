@@ -42,6 +42,7 @@ public final class PlaybackSession {
         lastSaved = position
         let watchedToEnd = duration > 0 && Double(position) >= duration * 0.95
         let value = watchedToEnd ? 0 : position
+        if duration.isFinite, duration > 0 { library?.noteDuration(fileID: fileID, seconds: Int(duration)) }
         library?.noteProgress(fileID: fileID, seconds: value)
         if watchedToEnd, let store {
             let id = fileID

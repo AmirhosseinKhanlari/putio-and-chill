@@ -360,8 +360,10 @@ struct TVEntryShelf: View {
         TVShelf(title: title) {
             ForEach(entries) { entry in
                 let resume = app.library.resumeSeconds(for: entry)
-                TVWideCard(title: entry.match?.title ?? entry.displayTitle, subtitle: Self.caption(entry, resume: resume),
+                TVWideCard(title: entry.match?.title ?? entry.displayTitle,
+                           subtitle: Self.caption(entry, resume: resume, left: app.library.remainingSeconds(for: entry)),
                            imagePath: entry.match?.backdropPath ?? entry.match?.posterPath,
+                           progress: app.library.watchedFraction(for: entry),
                            details: entry.titleItem.map { item in
                                (item.mediaType == .tv ? "Go to Show" : "Go to Movie", { router.showTitle(item) })
                            }) {
@@ -371,9 +373,9 @@ struct TVEntryShelf: View {
         }
     }
 
-    static func caption(_ entry: LibraryEntry, resume: Int) -> String? {
+    static func caption(_ entry: LibraryEntry, resume: Int, left: Int? = nil) -> String? {
         let episode = entry.match.flatMap { match in match.season.map { "S\($0)" + (match.episode.map { " E\($0)" } ?? "") } }
-        let time = resume >= 30 ? "Resume \(Format.clock(resume))" : nil
+        let time = resume >= 30 ? left.map(Format.left) ?? "Resume \(Format.clock(resume))" : nil
         let parts = [episode, time].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }

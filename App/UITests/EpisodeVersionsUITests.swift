@@ -20,10 +20,8 @@ final class EpisodeVersionsUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-demoScreen", "show"]
         app.launch()
-        let seasonMenu = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Season 1'")).firstMatch
-        XCTAssertTrue(seasonMenu.waitForExistence(timeout: 20))
-        seasonMenu.tap()
-        app.buttons["Season 2"].tap()
+        // Opens on the season being watched: Season 2 (S2 E4 is started).
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Season 2'")).firstMatch.waitForExistence(timeout: 20))
 
         let more = app.buttons["More for episode 4"]
         for _ in 0..<4 where !(more.exists && more.isHittable) { app.swipeUp() }

@@ -6,6 +6,11 @@ enum Format {
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
+    /// Time left to watch: "7m left", "1h 5m left", "Almost done".
+    static func left(_ seconds: Int) -> String {
+        seconds < 60 ? "Almost done" : "\(runtime(seconds / 60) ?? "") left"
+    }
+
     static func runtime(_ minutes: Int?) -> String? {
         guard let minutes, minutes > 0 else { return nil }
         let h = minutes / 60, m = minutes % 60

@@ -73,7 +73,8 @@ struct EntryCard: View {
             }
             router.play(entry, resumeFrom: resume)
         } label: {
-            LibraryPoster(entry: entry, width: width, resumeSeconds: resume)
+            LibraryPoster(entry: entry, width: width, resumeSeconds: resume,
+                          watched: app.library.watchedFraction(for: entry), left: app.library.remainingSeconds(for: entry))
         }
         .buttonStyle(.lift)
         .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in openDetails() })
