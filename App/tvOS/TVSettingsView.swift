@@ -112,6 +112,7 @@ struct TVSettingsView: View {
                                          @ViewBuilder destination: @escaping () -> Destination) -> some View {
         NavigationLink {
             destination()
+                .modifier(TVBackGoesUp())
                 .frame(maxWidth: 1300)
                 .frame(maxWidth: .infinity)
                 .tvPageBackground()
@@ -158,10 +159,8 @@ struct TVSettingsView: View {
             Section {
                 Toggle("Auto-play when ready", isOn: $draft.autoPlayCountdown)
                 Toggle("Auto-play next episode", isOn: $draft.autoPlayNextEpisode)
-                Picker("Audio language", selection: $draft.audioLanguage) {
-                    Text("Original").tag(String?.none)
-                    ForEach(Self.languages, id: \.code) { Text($0.name).tag(String?.some($0.code)) }
-                }
+                TVChoice(title: "Audio language", selection: $draft.audioLanguage,
+                         options: [("Original", String?.none)] + Self.languages.map { ($0.name, String?.some($0.code)) })
             } footer: {
                 Text("When ready: a video you asked for starts as soon as put.io has it. Next episode: a countdown at the end credits.")
             }
@@ -171,11 +170,9 @@ struct TVSettingsView: View {
     private var subtitlesPage: some View {
         Form {
             Section {
-                Picker("Language", selection: $draft.subtitleLanguage) {
-                    Text("Off").tag(String?.none)
-                    ForEach(Self.languages, id: \.code) { Text($0.name).tag(String?.some($0.code)) }
-                }
-                NavigationLink("Style") { SubtitleStyleEditor(style: $draft.subtitleStyle) }
+                TVChoice(title: "Language", selection: $draft.subtitleLanguage,
+                         options: [("Off", String?.none)] + Self.languages.map { ($0.name, String?.some($0.code)) })
+                NavigationLink("Style") { SubtitleStyleEditor(style: $draft.subtitleStyle).modifier(TVBackGoesUp()) }
             } footer: {
                 Text("While watching, swipe down on the remote for Subtitles: put.io's tracks and OpenSubtitles, with timing.")
             }
@@ -187,28 +184,14 @@ struct TVSettingsView: View {
         Form {
             Section {
                 Toggle("One-click Get", isOn: $draft.oneTapGet)
-                Picker("Quality", selection: $draft.smartGet.resolution) {
-                    Text("8K").tag(Int?.some(4320))
-                    Text("4K").tag(Int?.some(2160))
-                    Text("1080p").tag(Int?.some(1080))
-                    Text("720p").tag(Int?.some(720))
-                }
-                .disabled(!draft.oneTapGet)
-                Picker("Max size", selection: $draft.smartGet.maxSizeGB) {
-                    Text("5 GB").tag(Double?.some(5))
-                    Text("10 GB").tag(Double?.some(10))
-                    Text("20 GB").tag(Double?.some(20))
-                    Text("40 GB").tag(Double?.some(40))
-                    Text("No limit").tag(Double?.none)
-                }
-                .disabled(!draft.oneTapGet)
-                Picker("Versions list shows", selection: $draft.defaultResolution) {
-                    Text("All").tag(Int?.none)
-                    Text("8K").tag(Int?.some(4320))
-                    Text("4K").tag(Int?.some(2160))
-                    Text("1080p").tag(Int?.some(1080))
-                    Text("720p").tag(Int?.some(720))
-                }
+                TVChoice(title: "Quality", selection: $draft.smartGet.resolution,
+                         options: [("8K", Int?.some(4320)), ("4K", 2160), ("1080p", 1080), ("720p", 720)])
+                    .disabled(!draft.oneTapGet)
+                TVChoice(title: "Max size", selection: $draft.smartGet.maxSizeGB,
+                         options: [("5 GB", Double?.some(5)), ("10 GB", 10), ("20 GB", 20), ("40 GB", 40), ("No limit", nil)])
+                    .disabled(!draft.oneTapGet)
+                TVChoice(title: "Versions list shows", selection: $draft.defaultResolution,
+                         options: [("All", Int?.none), ("8K", 4320), ("4K", 2160), ("1080p", 1080), ("720p", 720)])
             } footer: {
                 Text("Get & Watch sends the release with the most seeders that matches. Versions is always one click away.")
             }
@@ -230,13 +213,8 @@ struct TVSettingsView: View {
             Section {
                 Toggle("Update automatically", isOn: $draft.libraryAutoUpdate)
                 if draft.libraryAutoUpdate {
-                    Picker("Check put.io every", selection: $draft.libraryUpdateMinutes) {
-                        Text("15 minutes").tag(15)
-                        Text("30 minutes").tag(30)
-                        Text("Hour").tag(60)
-                        Text("6 hours").tag(360)
-                        Text("Day").tag(1440)
-                    }
+                    TVChoice(title: "Check put.io every", selection: $draft.libraryUpdateMinutes,
+                             options: [("15 minutes", 15), ("30 minutes", 30), ("Hour", 60), ("6 hours", 360), ("Day", 1440)])
                 }
                 Button {
                     Task {
@@ -255,12 +233,8 @@ struct TVSettingsView: View {
                 .disabled(app.library.isRefreshing)
             }
             Section {
-                Picker("Delete finished movies", selection: $draft.autoCleanDays) {
-                    Text("Never").tag(Int?.none)
-                    Text("After 7 days").tag(Int?.some(7))
-                    Text("After 30 days").tag(Int?.some(30))
-                    Text("After 90 days").tag(Int?.some(90))
-                }
+                TVChoice(title: "Delete finished movies", selection: $draft.autoCleanDays,
+                         options: [("Never", Int?.none), ("After 7 days", 7), ("After 30 days", 30), ("After 90 days", 90)])
             } footer: {
                 Text("Only movies you watched to the end in Putio & Chill are offered for deletion, never shows or unwatched files; Library → Clean Up asks first.")
             }
@@ -281,7 +255,7 @@ struct TVSettingsView: View {
                     LabeledContent("TV shows", value: draft.tvFolder?.path ?? "AMDB/TV")
                 }
                 Toggle("Season folders", isOn: $draft.seasonFolders)
-                NavigationLink("Organize Library…") { TVOrganizeView() }
+                NavigationLink("Organize Library…") { TVOrganizeView().modifier(TVBackGoesUp()) }
                     .disabled(app.library.entries.isEmpty)
             } footer: {
                 Text("New downloads go to \(FolderLayout(settings: draft).displayPath(kind: .movie, title: "", season: nil)) and \(FolderLayout(settings: draft).displayPath(kind: .tv, title: "Show", season: draft.seasonFolders ? 1 : nil)).")
@@ -423,6 +397,7 @@ struct TVFolderPicker: View {
             }
         }
         .navigationTitle(path.last ?? title)
+        .modifier(TVBackGoesUp())
         .frame(maxWidth: 1300)
         .frame(maxWidth: .infinity)
         .task {
@@ -434,5 +409,61 @@ struct TVFolderPicker: View {
                 failed = true
             }
         }
+    }
+}
+
+/// A setting with a few choices: the row shows the current one, selecting it opens the list. (Apple's Picker opens an
+/// empty page inside the sidebar layout, with no way back.)
+struct TVChoice<Value: Hashable>: View {
+    let title: String
+    @Binding var selection: Value
+    let options: [(label: String, value: Value)]
+
+    var body: some View {
+        NavigationLink {
+            TVChoiceList(title: title, selection: $selection, options: options)
+        } label: {
+            LabeledContent(title, value: options.first { $0.value == selection }?.label ?? "")
+        }
+    }
+}
+
+private struct TVChoiceList<Value: Hashable>: View {
+    let title: String
+    @Binding var selection: Value
+    let options: [(label: String, value: Value)]
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var focused: Int?
+
+    var body: some View {
+        List {
+            ForEach(options.indices, id: \.self) { index in
+                Button {
+                    selection = options[index].value
+                    dismiss()
+                } label: {
+                    HStack {
+                        Text(options[index].label)
+                        Spacer()
+                        if options[index].value == selection { Image(systemName: "checkmark") }
+                    }
+                }
+                .focused($focused, equals: index)
+            }
+        }
+        .frame(maxWidth: 1000)
+        .frame(maxWidth: .infinity)
+        .navigationTitle(title)
+        .defaultFocus($focused, options.firstIndex { $0.value == selection } ?? 0)
+        .modifier(TVBackGoesUp())
+    }
+}
+
+/// Back on a settings page goes up one level (inside the sidebar layout it would otherwise leave the app).
+struct TVBackGoesUp: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+
+    func body(content: Content) -> some View {
+        content.onExitCommand { dismiss() }
     }
 }
