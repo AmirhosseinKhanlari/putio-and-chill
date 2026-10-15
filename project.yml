@@ -12,7 +12,7 @@ settings:
     DEVELOPMENT_TEAM: 8CG9QYMSR5
     MARKETING_VERSION: "1.0"
     # Build number for uploads: raise it for every TestFlight/App Store upload.
-    CURRENT_PROJECT_VERSION: "20"
+    CURRENT_PROJECT_VERSION: "21"
 packages:
   AMDBCore:
     path: AMDBCore
@@ -79,6 +79,7 @@ targets:
         NSSupportsLiveActivities: true
         # Only standard HTTPS: exempt from export compliance, so TestFlight builds don't wait on the question.
         ITSAppUsesNonExemptEncryption: false
+        LSApplicationCategoryType: public.app-category.entertainment
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.amdb.ios
