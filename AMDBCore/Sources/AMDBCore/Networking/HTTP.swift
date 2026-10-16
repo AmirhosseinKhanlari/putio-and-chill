@@ -15,6 +15,19 @@ public struct URLSessionTransport: HTTPTransport {
     }
 }
 
+extension URLSession {
+    /// Hands redirects back as they are instead of following them: for sites that send pages they won't show to their
+    /// home page, so that comes back as a 3xx error rather than a download of the home page.
+    public static let noRedirects = URLSession(configuration: .default, delegate: NoRedirectsDelegate(), delegateQueue: nil)
+}
+
+final class NoRedirectsDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest) async -> URLRequest? {
+        nil
+    }
+}
+
 public enum AppError: Error, Equatable, Sendable {
     case unauthorized(service: String)
     case http(service: String, status: Int)

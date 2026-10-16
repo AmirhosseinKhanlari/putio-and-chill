@@ -4,7 +4,7 @@ import Testing
 
 @Suite struct SettingsAndTokensTests {
     @Test func defaultsIncludeAllSources() {
-        #expect(AppSettings.defaults.sources.map(\.id) == ["chill", "yts", "eztv", "apibay", "knaben", "torrentscsv"])
+        #expect(AppSettings.defaults.sources.map(\.id) == ["chill", "yts", "eztv", "apibay", "knaben", "torrentscsv", "torrentgalaxy"])
         #expect(AppSettings.defaults.source("yts")?.baseURL == "https://movies-api.accel.li")
         #expect(AppSettings.defaults.autoPlayCountdown)
     }
@@ -38,6 +38,18 @@ import Testing
         settings.sources.removeAll { $0.id == "knaben" }
         settings.save(to: defaults)
         #expect(AppSettings.load(from: defaults).source("knaben") != nil)
+    }
+
+    @Test func settingsSavedBeforeTorrentGalaxyGetItTurnedOn() {
+        let defaults = testDefaults()
+        var settings = AppSettings.defaults
+        settings.sources.removeAll { $0.id == "torrentgalaxy" }
+        settings.sources[1].enabled = false
+        settings.save(to: defaults)
+        let loaded = AppSettings.load(from: defaults)
+        #expect(loaded.sources.last == SourceConfig(id: "torrentgalaxy", name: "TorrentGalaxy", enabled: true,
+                                                    baseURL: "https://torrentgalaxy.info"))
+        #expect(loaded.source("yts")?.enabled == false)
     }
 
     @Test func inMemoryTokens() {

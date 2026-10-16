@@ -12,7 +12,7 @@ let package = Package(
         .target(name: "AMDBCore"),
         .target(name: "AMDBKit", dependencies: ["AMDBCore"]),
         .executableTarget(name: "amdb-spike", dependencies: ["AMDBCore"]),
-        .testTarget(name: "AMDBCoreTests", dependencies: ["AMDBCore"]),
+        .testTarget(name: "AMDBCoreTests", dependencies: ["AMDBCore"], resources: [.copy("Fixtures")]),
         .testTarget(name: "AMDBKitTests", dependencies: ["AMDBKit"]),
     ]
 )

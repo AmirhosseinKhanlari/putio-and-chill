@@ -37,7 +37,7 @@ Putio & Chill is one Swift package holding all the logic, and thin, platform-nat
 | `Catalog/` | TMDB: search, details, seasons, people, collections, discover, now playing / upcoming, keywords, images |
 | `Charts/` | Trakt: IMDb Top 250 lists and the weekend box office; IMDb trailers |
 | `Ratings/` | MDBList ratings; IMDb per-episode ratings |
-| `Providers/` | Release sources (chill, YTS, EZTV, apibay, Knaben, Torrents.csv), chill's catalog lists, MyMoviz |
+| `Providers/` | Release sources (chill, YTS, EZTV, apibay, Knaben, Torrents.csv, TorrentGalaxy), chill's catalog lists, MyMoviz |
 | `Search/` | `LiveSearchEngine`: debounced, cancellable catalog search |
 | `Parsing/` | `ReleaseNameParser`: title, year, season/episode, resolution, codec from release and file names |
 | `Library/` | `LibraryMatcher`: matches put.io file names to TMDB titles with a confidence score |

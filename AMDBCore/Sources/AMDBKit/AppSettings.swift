@@ -136,6 +136,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         SourceConfig(id: "apibay", name: "The Pirate Bay (apibay)", enabled: true, baseURL: "https://apibay.org"),
         SourceConfig(id: "knaben", name: "Knaben", enabled: true, baseURL: "https://api.knaben.org"),
         SourceConfig(id: "torrentscsv", name: "Torrents.csv", enabled: true, baseURL: "https://torrents-csv.com"),
+        SourceConfig(id: "torrentgalaxy", name: "TorrentGalaxy", enabled: true, baseURL: "https://torrentgalaxy.info"),
     ], defaultResolution: nil, autoPlayCountdown: true)
 
     public func source(_ id: String) -> SourceConfig? { sources.first { $0.id == id } }

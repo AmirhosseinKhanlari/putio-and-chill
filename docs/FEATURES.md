@@ -83,8 +83,8 @@ Everything Putio & Chill does, by area. Unless noted, a feature works on iPhone,
 - **Get & Watch**: searches every enabled source, picks the best release by your Smart Get rule (resolution, max size,
   most seeders), and sends it to put.io.
 - **Versions**: every release found, best first, filterable by 4K / 1080p / 720p, marked when already in put.io.
-- **Sources**: chill.institute (with a chill account), YTS, EZTV, The Pirate Bay (apibay), Knaben, Torrents.csv; each
-  can be turned off or pointed to a new address in Settings.
+- **Sources**: chill.institute (with a chill account), YTS, EZTV, The Pirate Bay (apibay), Knaben, Torrents.csv,
+  TorrentGalaxy; each can be turned off or pointed to a new address in Settings.
 - **Transfers**: live progress, speed and peers; stalled transfers are flagged; a "Ready to watch" banner and
   notification with Play when done.
 - **put.io folders**: downloads go to Movies / TV folders you choose (with optional season folders); **Organize
