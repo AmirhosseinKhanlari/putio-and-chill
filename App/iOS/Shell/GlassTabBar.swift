@@ -48,16 +48,20 @@ struct GlassTabBar: View {
 private struct LibraryUpdatePill: View {
     @Environment(AppModel.self) private var app
     @Environment(Router.self) private var router
-    @State private var spin = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if app.library.isRefreshing, !app.library.entries.isEmpty {
             Button { router.tab = .library } label: {
+                // Spins for as long as the update runs. A keyframe loop, not a state flip in onAppear: that flip lands
+                // in the pill's own insertion transaction and SwiftUI drops it, so the icon sat still.
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.system(size: 13, weight: .semibold))
-                    .rotationEffect(.degrees(spin ? 360 : 0))
-                    .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: spin)
-                    .onAppear { spin = true }
+                    .keyframeAnimator(initialValue: 0.0, repeating: !reduceMotion) { icon, angle in
+                        icon.rotationEffect(.degrees(angle))
+                    } keyframes: { _ in
+                        LinearKeyframe(360.0, duration: 1.2)
+                    }
                     .frame(width: 34, height: 34)
                     .background(.white.opacity(0.1), in: Capsule())
             }
