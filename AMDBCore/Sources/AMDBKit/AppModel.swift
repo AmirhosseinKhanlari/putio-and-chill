@@ -64,7 +64,7 @@ public struct ServiceFactory: Sendable {
                 case "knaben": return KnabenProvider(baseURL: url, transport: transport)
                 case "torrentscsv": return TorrentsCSVProvider(baseURL: url, transport: transport)
                 case "torrentgalaxy":
-                    // Detail pages the site won't show redirect to its home page; don't download that.
+                    // It sometimes redirects a detail page to its home page (after bursts of requests); don't download that.
                     return TorrentGalaxyProvider(baseURL: url, transport: URLSessionTransport(session: .noRedirects))
                 default: return nil
                 }

@@ -21,7 +21,7 @@ import Testing
         return StubTransport { request in
             let parts = request.url!.path.split(separator: "/").map(String.init)
             guard parts.first == "post-detail" else { return (200, Data(search.utf8)) }
-            // The site redirects detail pages it won't show to its home page; the app doesn't follow that.
+            // The site sometimes redirects a detail page to its home page (seen after bursts of requests); the app doesn't follow.
             if failing.contains(parts[1]) { return (302, Data()) }
             return (200, Data(detail.replacingOccurrences(of: detailHash, with: hash(forPost: parts[1]).uppercased()).utf8))
         }

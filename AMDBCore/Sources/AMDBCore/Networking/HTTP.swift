@@ -16,8 +16,8 @@ public struct URLSessionTransport: HTTPTransport {
 }
 
 extension URLSession {
-    /// Hands redirects back as they are instead of following them: for sites that send pages they won't show to their
-    /// home page, so that comes back as a 3xx error rather than a download of the home page.
+    /// Hands redirects back as they are instead of following them: for sites that sometimes answer a page with a
+    /// redirect to their home page, so that comes back as a 3xx error rather than a download of the home page.
     public static let noRedirects = URLSession(configuration: .default, delegate: NoRedirectsDelegate(), delegateQueue: nil)
 }
 
