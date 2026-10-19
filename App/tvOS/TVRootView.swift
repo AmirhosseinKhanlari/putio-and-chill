@@ -238,6 +238,15 @@ struct TVRootView: View {
                 file: PutioFile(id: 2, name: "Severance.S02E04.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO", size: 2_000_000_000),
                 match: LibraryMatch(tmdbID: 95396, mediaType: .tv, season: 2, episode: 4, confidence: 1, title: "Severance"),
                 folderName: nil), resumeFrom: 0)
+        case "player-new":
+            // A download that just finished, which the library hasn't seen yet (it isn't in the demo put.io's folders).
+            let arrival = DemoCatalog.movies[6]
+            router.player = TVPlayRequest(entry: LibraryEntry(
+                file: PutioFile(id: 100_001, name: "Arrival.2016.1080p.BluRay.x264.mkv", fileType: "VIDEO", size: 9_000_000_000,
+                                createdAt: "2026-10-14T10:00:00"),
+                match: LibraryMatch(tmdbID: arrival.tmdbID, mediaType: .movie, season: nil, episode: nil, confidence: 1,
+                                    title: arrival.title, posterPath: arrival.posterPath, backdropPath: arrival.backdropPath),
+                folderName: nil), resumeFrom: 0)
         default: break
         }
         await app.library.loadCached()

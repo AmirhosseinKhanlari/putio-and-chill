@@ -371,6 +371,8 @@ struct TVEntryShelf: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("shelf.\(title)")
     }
 
     static func caption(_ entry: LibraryEntry, resume: Int, left: Int? = nil) -> String? {

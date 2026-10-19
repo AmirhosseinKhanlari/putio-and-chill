@@ -13,26 +13,33 @@ final class TVSearchUITests: XCTestCase {
         }
     }
 
-    /// Popular titles before typing; the on-screen keyboard types into the search and shows suggestions and results.
-    func testSearchKeyboardAndResults() {
+    /// Apple's search field and keyboard row, with its "Hold the microphone to dictate" hint (the system keyboard is
+    /// what takes Siri Remote dictation) and popular titles under it; typing on it with the remote shows results.
+    func testSystemSearchKeyboardAndResults() {
         let app = XCUIApplication()
         app.launchArguments = ["-demo", "-demoScreen", "search"]
         app.launch()
         sleep(5)
-        shot("search-empty")
+        let field = app.searchFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "the system search field is on screen")
         XCTAssertTrue(app.staticTexts["Popular Searches"].exists)
 
         let remote = XCUIRemote.shared
-        // Focus starts on the keyboard's "A".
-        shot("search-focus")
-        remote.press(.select)   // types the focused key ("a")
-        remote.press(.right)
-        remote.press(.right)
-        remote.press(.right)
-        remote.press(.right)    // "e"
+        // From the sidebar's Search into the page: the keyboard row takes focus.
+        remote.press(.select)
+        sleep(2)
+        shot("search-focused")
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "the system keyboard is showing")
+        XCTAssertTrue(field.hasFocus || app.keyboards.firstMatch.hasFocus, "typing goes to the search field")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'to dictate'")).firstMatch.exists,
+                      "the keyboard offers dictation")
+
+        // Focus starts on "a": four to the right is "e".
+        for _ in 0..<4 { remote.press(.right) }
         remote.press(.select)
         sleep(3)
         shot("search-typed")
-        XCTAssertTrue(app.staticTexts["Results"].waitForExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, "e")
+        XCTAssertTrue(app.staticTexts["Results"].waitForExistence(timeout: 5), "typing on the keyboard searches")
     }
 }

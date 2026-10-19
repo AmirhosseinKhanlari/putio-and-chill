@@ -78,14 +78,22 @@ final class PlayerCoordinator {
     private var conversionTask: Task<Void, Never>?
     private var startSeconds = 0
     private var finished = false
+    private var resignObserver: NSObjectProtocol?
 
     init(request: PlayerRequest, putio: any PutioService, app: AppModel, router: Router, localURL: URL? = nil) {
         self.request = request
         self.putio = putio
         self.app = app
         self.router = router
+        // With the entry, a file the library doesn't have yet (played from Files, a new transfer) still shows in
+        // Continue Watching as soon as it's been watched a little.
+        let entry = app.library.entries.first { $0.id == request.file.id } ?? LibraryEntry(
+            file: request.file,
+            match: request.played.map { LibraryMatch(tmdbID: $0.tmdbID, mediaType: $0.kind, season: request.season,
+                                                     episode: request.episode, confidence: 1, title: $0.title) },
+            folderName: nil)
         session = PlaybackSession(fileID: request.file.id, resumeFrom: request.resumeFrom, putio: putio,
-                                  library: app.library, store: app.store)
+                                  library: app.library, store: app.store, entry: entry)
         // Offline copy when downloaded; otherwise put.io's HLS stream.
         engine = PlayerEngine(url: localURL ?? session.streamURL)
         let episode = request.season.map { season in request.episode.map { "Season \(season) · Episode \($0)" } ?? "Season \(season)" }
@@ -133,6 +141,11 @@ final class PlayerCoordinator {
         if seconds > 0 { engine.seek(to: Double(seconds)) }
         presenter.present(controller, animated: true) { [engine] in engine.play() }
         progressTask = Task { [weak self] in await self?.run() }
+        // Leaving the app (Home, the app switcher) can suspend it before the next save: save the position now.
+        resignObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification,
+                                                                object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveNow() }
+        }
         Task { [weak self] in await self?.findNextUp() }
         Task { await chrome.subtitles?.restore() }
     }
@@ -253,15 +266,20 @@ final class PlayerCoordinator {
         progressTask?.cancel()
         gettingNext?.cancel()
         conversionTask?.cancel()
-        let position = engine.position
-        let duration = engine.duration
+        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
+        saveNow()
         engine.tearDown()
-        let session = session
-        if position > 0 {
-            Task { await session.finish(seconds: position, duration: duration) }
-        }
         if router.player?.id == request.id { router.player = nil }
         if Self.current === self { Self.current = nil }
+    }
+
+    /// Saves where playback is now (in the library at once, then to put.io), finishing even if the app is leaving.
+    private func saveNow() {
+        let position = engine.position
+        let duration = engine.duration
+        guard position > 0 else { return }
+        let session = session
+        BackgroundSave.run("Save playback position") { await session.finish(seconds: position, duration: duration) }
     }
 
     /// Picks the preferred audio track (Settings → Playback). Subtitles are drawn by the app (put.io + OpenSubtitles),

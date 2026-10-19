@@ -32,11 +32,13 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
     public var folders: [PutioFile]?
     /// Video lengths in seconds, learned while playing (put.io only keeps the position). Absent in older caches.
     public var durations: [Int64: Int]?
+    /// When each file was last watched on this device, so Continue Watching keeps its order after a relaunch.
+    public var watched: [Int64: Date]?
 
     public init(entries: [LibraryEntry], updatedAt: Date, progress: [Int64: Int]? = nil, folders: [PutioFile]? = nil,
-                durations: [Int64: Int]? = nil) {
+                durations: [Int64: Int]? = nil, watched: [Int64: Date]? = nil) {
         self.entries = entries; self.updatedAt = updatedAt; self.progress = progress; self.folders = folders
-        self.durations = durations
+        self.durations = durations; self.watched = watched
     }
 }
 
@@ -109,6 +111,11 @@ public final class LibraryIndex {
     /// Order in which files were watched this session (higher = more recent); a counter, so ties can't happen.
     private var touchedOrder: [Int64: Int] = [:]
     private var touchCount = 0
+    /// When files were last watched on this device (kept in the cache; orders Continue Watching after a relaunch).
+    private var watchedAt: [Int64: Date] = [:]
+    /// Played files the library didn't have (from Files, a transfer that just finished): shown at once, and kept through
+    /// an update that was already walking put.io when they were played. Each update starts this over.
+    private var playedOutside: [Int64: LibraryEntry] = [:]
 
     public init(store: LocalStore, cache: LibraryCache = LibraryCache(fileURL: nil), maxFolders: Int = 2000, parallelism: Int = 6) {
         self.store = store
@@ -123,6 +130,7 @@ public final class LibraryIndex {
         matcher = catalog.map { LibraryMatcher(catalog: $0) }
         if putio == nil {
             entries = []
+            playedOutside = [:]
             lastUpdated = nil
             // Signing out forgets the cached library so another account never sees it.
             if signedOut { Task { [cache] in await cache.clear() } }
@@ -141,6 +149,7 @@ public final class LibraryIndex {
         folderTree = FolderTree(folders: snapshot.folders ?? [])
         for (id, seconds) in snapshot.progress ?? [:] where progressOverrides[id] == nil { progressOverrides[id] = seconds }
         for (id, seconds) in snapshot.durations ?? [:] where durations[id] == nil { durations[id] = seconds }
+        for (id, date) in snapshot.watched ?? [:] where watchedAt[id] == nil { watchedAt[id] = date }
     }
 
     /// Whether the library is older than `maxAge` (or was never fetched).
@@ -173,6 +182,8 @@ public final class LibraryIndex {
         guard let putio else { return }
         isRefreshing = true
         defer { isRefreshing = false }
+        // put.io is the truth for files played before this walk; ones played during it are kept (see withPlayed).
+        playedOutside = [:]
         let before = Set(entries.map(\.id))
         do {
             var folders: [PutioFile] = []
@@ -195,7 +206,7 @@ public final class LibraryIndex {
             }
             lastError = nil
             guard let matcher else {
-                entries = Self.sorted(result)
+                entries = withPlayed(result)
                 return
             }
             // A file shows once it's matched (or known not to match), never as a raw file name while it waits.
@@ -208,7 +219,7 @@ public final class LibraryIndex {
             var settled = result.map { $0.match != nil || knownMiss($0.id) }
             let pending = result.indices.filter { !settled[$0] }
             pendingMatches = pending.count
-            entries = Self.sorted(result.indices.filter { settled[$0] }.map { result[$0] })
+            entries = withPlayed(result.indices.filter { settled[$0] }.map { result[$0] })
             await withTaskGroup(of: (Int, MatchOutcome).self) { group in
                 var next = 0
                 var done = 0
@@ -241,12 +252,12 @@ public final class LibraryIndex {
                     settled[index] = true
                     done += 1
                     pendingMatches -= 1
-                    if done % 6 == 0 { entries = Self.sorted(result.indices.filter { settled[$0] }.map { result[$0] }) }
+                    if done % 6 == 0 { entries = withPlayed(result.indices.filter { settled[$0] }.map { result[$0] }) }
                     if next < pending.count { add() }
                 }
             }
             pendingMatches = 0
-            entries = Self.sorted(result)
+            entries = withPlayed(result)
             let now = Date()
             lastUpdated = now
             // put.io's fresh positions win over ones restored from the cache; this session's still win over put.io.
@@ -269,6 +280,8 @@ public final class LibraryIndex {
         let started = entries.filter { resumeSeconds(for: $0) >= 30 }.sorted { a, b in
             let ta = touchedOrder[a.id], tb = touchedOrder[b.id]
             if ta != nil || tb != nil { return (ta ?? -1) > (tb ?? -1) }
+            let wa = watchedAt[a.id], wb = watchedAt[b.id]
+            if wa != nil || wb != nil { return (wa ?? .distantPast) > (wb ?? .distantPast) }
             return (a.file.updatedAt ?? "") > (b.file.updatedAt ?? "")
         }
         var seen: Set<String> = []
@@ -319,11 +332,27 @@ public final class LibraryIndex {
         return length - position
     }
 
-    public func noteProgress(fileID: Int64, seconds: Int) {
+    public func noteProgress(fileID: Int64, seconds: Int, now: Date = Date()) {
         progressOverrides[fileID] = seconds
         touchCount += 1
         touchedOrder[fileID] = touchCount
+        watchedAt[fileID] = now
         Task { await persist() }
+    }
+
+    /// A file being played that the library doesn't have yet (played from Files, a transfer that just finished):
+    /// added now so Continue Watching shows it right away, not after the next update. Nothing changes for a file it has.
+    public func notePlayed(_ entry: LibraryEntry) {
+        guard !entries.contains(where: { $0.id == entry.id }) else { return }
+        playedOutside[entry.id] = entry
+        entries = Self.sorted(entries + [entry])
+    }
+
+    /// What an update found, plus files played while it ran that it didn't find (its walk may have passed their
+    /// folder before they were played).
+    private func withPlayed(_ found: [LibraryEntry]) -> [LibraryEntry] {
+        let ids = Set(found.map(\.id))
+        return Self.sorted(found + playedOutside.values.filter { !ids.contains($0.id) })
     }
 
     /// Deletes files from put.io and forgets them locally.
@@ -338,6 +367,7 @@ public final class LibraryIndex {
     public func forget(_ ids: Set<Int64>) async {
         guard entries.contains(where: { ids.contains($0.id) }) else { return }
         entries.removeAll { ids.contains($0.id) }
+        for id in ids { playedOutside[id] = nil }
         await store.update { state in
             state.finished.removeAll { ids.contains($0.fileID) }
             for id in ids { state.matches[id] = nil }
@@ -407,7 +437,7 @@ public final class LibraryIndex {
     private func persist() async {
         guard let lastUpdated else { return }
         await cache.save(LibrarySnapshot(entries: entries, updatedAt: lastUpdated, progress: progressOverrides,
-                                         folders: Array(folderTree.folders.values), durations: durations))
+                                         folders: Array(folderTree.folders.values), durations: durations, watched: watchedAt))
     }
 
     /// Folders that only hold subtitles, samples or artwork: not read (a season pack's "Subs" folder alone can hold

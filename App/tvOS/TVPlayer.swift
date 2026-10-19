@@ -4,7 +4,8 @@ import AVKit
 import SwiftUI
 
 /// Apple's TV player with one Subtitles button of ours (like the iPhone app): put.io's subtitles and OpenSubtitles,
-/// timing, and style, all drawn over the video in the chosen style. Progress syncs to put.io.
+/// timing, and style, all drawn over the video in the chosen style. Apple's own Subtitles button is hidden (its Audio
+/// button stays); captions inside the video stream, if any, are in our menu too. Progress syncs to put.io.
 struct TVPlayerView: UIViewControllerRepresentable {
     let request: TVPlayRequest
     @Environment(AppModel.self) private var app
@@ -53,7 +54,11 @@ final class TVPlaybackCoordinator {
     private weak var controller: AVPlayerViewController?
     private var timeObserver: Any?
     private var finished = false
+    /// Set once playback is at the starting point (after the seek to the resume position): before that the player
+    /// reports 0, which must never be saved over where the user stopped last time.
+    private var atStart = false
     private var endObserver: NSObjectProtocol?
+    private var resignObserver: NSObjectProtocol?
     private var selectionObserver: NSObjectProtocol?
     private var sleepTimer: SleepTimer?
     private var lastSleepMinute = -1
@@ -65,6 +70,9 @@ final class TVPlaybackCoordinator {
     private var gettingStatus: String?
     private var gettingTask: Task<Void, Never>?
     private var gettingFailed = false
+    /// Captions inside the video stream itself (e.g. closed captions), offered in our menu; and the one picked there.
+    private var streamGroup: AVMediaSelectionGroup?
+    private var streamPick: AVMediaSelectionOption?
     var onNext: ((LibraryEntry) -> Void)?
     var onNextTransfer: ((TrackedTransfer) -> Void)?
     var onChooseVersion: ((TVVersionsRequest) -> Void)?
@@ -74,8 +82,10 @@ final class TVPlaybackCoordinator {
         self.request = request
         self.app = app
         if let putio = app.putio {
+            // With the entry, a file the library doesn't have yet (played from Files, a new transfer) still shows in
+            // Continue Watching as soon as it's been watched a little.
             session = PlaybackSession(fileID: request.entry.id, resumeFrom: request.resumeFrom, putio: putio,
-                                      library: app.library, store: app.store)
+                                      library: app.library, store: app.store, entry: request.entry)
             // Subtitles stay out of the stream: ours draws them, so style and timing apply to all of them.
             player = AVPlayer(url: putio.hlsURL(fileID: request.entry.id, subtitles: false))
         } else {
@@ -96,6 +106,8 @@ final class TVPlaybackCoordinator {
     func makeController() -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = player
+        // No languages allowed: Apple's Subtitles button goes away (the Audio one stays), so ours is the only one.
+        controller.allowedSubtitleOptionLanguages = []
         self.controller = controller
         let overlay = UIHostingController(rootView: TVSubtitleOverlay(line: line))
         overlay.view.backgroundColor = .clear
@@ -111,7 +123,14 @@ final class TVPlaybackCoordinator {
         metadata.value = request.title as NSString
         player.currentItem?.externalMetadata = [metadata]
 
-        if request.resumeFrom > 0 { player.seek(to: CMTime(seconds: Double(request.resumeFrom), preferredTimescale: 600)) }
+        lastSync = Double(request.resumeFrom)
+        if request.resumeFrom > 0 {
+            player.seek(to: CMTime(seconds: Double(request.resumeFrom), preferredTimescale: 600)) { [weak self] _ in
+                Task { @MainActor in self?.atStart = true }
+            }
+        } else {
+            atStart = true
+        }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 4), queue: .main) { [weak self] time in
             MainActor.assumeIsolated { self?.tick(time.seconds) }
         }
@@ -119,9 +138,10 @@ final class TVPlaybackCoordinator {
         // put.io's tracks, then the saved pick or the preferred language from Settings.
         Task {
             await finder.restore()
+            await loadStreamCaptions()
             await ourSubtitleChanged()
         }
-        // Only one subtitle at a time: captions picked in Apple's own menu turn ours off.
+        // Only one subtitle at a time: captions the player turns on by itself are turned off again.
         // Any item (the stream is replaced once a conversion finishes), but only the one playing counts.
         selectionObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.mediaSelectionDidChangeNotification,
                                                                    object: nil, queue: .main) { [weak self] note in
@@ -130,6 +150,11 @@ final class TVPlaybackCoordinator {
                 guard let self, item === self.player.currentItem else { return }
                 self.systemSelectionChanged()
             }
+        }
+        // Leaving the app (TV or Home button, the app switcher) doesn't close the player, so save the position now.
+        resignObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification,
+                                                                object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveProgress() }
         }
         endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification,
                                                              object: nil, queue: .main) { [weak self] note in
@@ -177,6 +202,7 @@ final class TVPlaybackCoordinator {
         player.replaceCurrentItem(with: item)
         if resumeAt > 0 { await player.seek(to: CMTime(seconds: resumeAt, preferredTimescale: 600)) }
         player.play()
+        await loadStreamCaptions()
     }
 
     private var lastSync = 0.0
@@ -187,7 +213,8 @@ final class TVPlaybackCoordinator {
         if line.text != text { line.text = text }
         updateNextOffer(at: seconds)
         applySleepTimer(position: seconds)
-        if seconds - lastSync >= 10, let session {
+        // Either way: after seeking back, the earlier position is saved without waiting to pass the old one.
+        if atStart, abs(seconds - lastSync) >= 10, let session {
             lastSync = seconds
             let duration = player.currentItem?.duration.seconds ?? 0
             Task { await session.tick(seconds: seconds, duration: duration.isFinite ? duration : 0) }
@@ -201,11 +228,19 @@ final class TVPlaybackCoordinator {
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         gettingTask?.cancel()
         if let selectionObserver { NotificationCenter.default.removeObserver(selectionObserver) }
+        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
         player.pause()
+        saveProgress()
+    }
+
+    /// Saves where playback is now (in the library at once, then to put.io), finishing even if the app is leaving.
+    private func saveProgress() {
         let position = player.currentTime().seconds
         let duration = player.currentItem?.duration.seconds ?? 0
-        if let session, position.isFinite, position > 0 {
-            Task { await session.finish(seconds: position, duration: duration.isFinite ? duration : 0) }
+        guard let session, atStart, position.isFinite, position > 0 else { return }
+        lastSync = position
+        BackgroundSave.run("Save playback position") {
+            await session.finish(seconds: position, duration: duration.isFinite ? duration : 0)
         }
     }
 
@@ -354,22 +389,52 @@ final class TVPlaybackCoordinator {
 
     // MARK: One subtitle at a time
 
-    /// Ours turned on: switch off whatever Apple's own Subtitles menu is showing (captions inside the video).
+    /// Captions inside the stream (put.io is asked for none, but a video can carry closed captions of its own).
+    private func loadStreamCaptions() async {
+        guard let item = player.currentItem else { return }
+        let group = try? await item.asset.loadMediaSelectionGroup(for: .legible)
+        guard item === player.currentItem else { return }
+        streamGroup = group
+        streamPick = nil
+        systemSelectionChanged()
+    }
+
+    /// Ours turned on: switch off captions inside the stream.
     private func ourSubtitleChanged() async {
-        if finder.isShowing, let item = player.currentItem,
-           let group = try? await item.asset.loadMediaSelectionGroup(for: .legible), group.allowsEmptySelection,
-           item.currentMediaSelection.selectedMediaOption(in: group) != nil {
-            item.select(nil, in: group)
+        if finder.isShowing { selectStream(nil) }
+        rebuildMenus()
+    }
+
+    /// The player picked captions by itself (the stream's default): turn them off unless they're the ones picked in
+    /// our menu, or ours are off and they're forced (signs) or the system's "Closed Captions and SDH" setting asks.
+    private func systemSelectionChanged() {
+        guard let item = player.currentItem, let group = streamGroup else { return }
+        let selected = item.currentMediaSelection.selectedMediaOption(in: group)
+        if let selected, selected != streamPick {
+            let forced = Self.isForcedOnly(selected)
+            if finder.isShowing || !(forced || UIAccessibility.isClosedCaptioningEnabled) {
+                if group.allowsEmptySelection { item.select(nil, in: group) }
+            } else if !forced {
+                streamPick = selected
+            }
         }
         rebuildMenus()
     }
 
-    /// Something picked in Apple's own Subtitles menu: turn ours off so two never show at once.
-    private func systemSelectionChanged() {
-        guard finder.isShowing, let item = player.currentItem,
-              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible),
-              item.currentMediaSelection.selectedMediaOption(in: group) != nil else { return }
-        Task { await finder.turnOff(); rebuildMenus() }
+    private func selectStream(_ option: AVMediaSelectionOption?) {
+        streamPick = option
+        guard let item = player.currentItem, let group = streamGroup, option != nil || group.allowsEmptySelection,
+              item.currentMediaSelection.selectedMediaOption(in: group) != option else { return }
+        item.select(option, in: group)
+    }
+
+    /// Stream captions worth offering: not forced-only tracks (those just translate signs and play on their own).
+    private var streamOptions: [AVMediaSelectionOption] {
+        (streamGroup?.options ?? []).filter { !Self.isForcedOnly($0) }
+    }
+
+    private static func isForcedOnly(_ option: AVMediaSelectionOption) -> Bool {
+        option.hasMediaCharacteristic(.containsOnlyForcedSubtitles)
     }
 
     // MARK: Subtitles menu (the player's swipe-down bar)
@@ -378,8 +443,9 @@ final class TVPlaybackCoordinator {
     /// level here, so sections are gray labels and style options step through their values.
     private func rebuildMenus() {
         var items: [UIMenuElement] = []
-        let off = !finder.isShowing
+        let off = !finder.isShowing && streamPick == nil
         items.append(UIAction(title: "Off", state: off ? .on : .off) { [weak self] _ in
+            self?.selectStream(nil)
             Task { await self?.finder.turnOff(); self?.rebuildMenus() }
         })
 
@@ -411,6 +477,21 @@ final class TVPlaybackCoordinator {
             }
         } else {
             items.append(UIAction(title: "Add an OpenSubtitles API key in Settings", attributes: .disabled) { _ in })
+        }
+
+        // Captions carried by the video stream itself (closed captions), shown by the player in the system's style.
+        if !streamOptions.isEmpty {
+            items.append(header("In the Video"))
+            for option in streamOptions {
+                let showing = !finder.isShowing && streamPick == option
+                items.append(UIAction(title: Self.title(option), state: showing ? .on : .off) { [weak self] _ in
+                    Task {
+                        await self?.finder.turnOff()
+                        self?.selectStream(option)
+                        self?.rebuildMenus()
+                    }
+                })
+            }
         }
 
         if finder.isShowing {
@@ -464,6 +545,12 @@ final class TVPlaybackCoordinator {
             app.updateSubtitleStyle(style)
             rebuildMenus()
         }
+    }
+
+    /// The stream's own name for it ("English CC"), or "Closed Captions" when it doesn't say its language.
+    static func title(_ option: AVMediaSelectionOption) -> String {
+        let unnamed = option.extendedLanguageTag == nil && option.locale == nil
+        return unnamed && option.mediaType == .closedCaption ? "Closed Captions" : option.displayName
     }
 
     static func title(_ track: PutioSubtitle) -> String {

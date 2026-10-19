@@ -2,7 +2,8 @@ import XCTest
 
 @MainActor
 final class TVPlayerUITests: XCTestCase {
-    /// Player transport bar: the player's own Subtitles (put.io tracks) and one OpenSubtitles button.
+    /// Player transport bar: one Subtitles button, ours (Apple's own is hidden; its Audio button stays), with
+    /// captions in the video, put.io's subtitles and OpenSubtitles; then the sleep timer.
     /// (The player's controls aren't in the accessibility tree here, so this drives the remote and records screens.)
     func testPlayerMenus() throws {
         let app = XCUIApplication()

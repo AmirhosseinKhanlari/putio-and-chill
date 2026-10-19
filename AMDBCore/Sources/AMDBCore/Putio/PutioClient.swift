@@ -176,9 +176,10 @@ public struct PutioClient: Sendable {
     }
 
     /// The HLS stream. With `subtitles`, put.io muxes every subtitle track into it (used for offline copies);
-    /// streaming leaves them out because the app draws subtitles itself.
+    /// streaming leaves them out because the app draws subtitles itself. Leaving out `subtitle_key` isn't enough: put.io
+    /// still adds the account's subtitle languages (one marked default), and only `max_subtitle_count=0` drops them.
     public func hlsURL(fileID: Int64, subtitles: Bool) -> URL {
-        let subtitleParam = subtitles ? "subtitle_key=all&" : ""
+        let subtitleParam = subtitles ? "subtitle_key=all&" : "max_subtitle_count=0&"
         return URL(string: "\(baseURL.absoluteString)/files/\(fileID)/hls/media.m3u8?\(subtitleParam)oauth_token=\(formEncode(token))")!
     }
 
