@@ -193,7 +193,7 @@ struct EpisodeActionButton: View {
                 playItems(entry, resumeFrom: 0)
             case let .resume(entry, seconds):
                 playItems(entry, resumeFrom: seconds)
-                Button { router.play(entry, resumeFrom: 0, next: next) } label: { Label("Start Over", systemImage: "backward.end") }
+                Button { router.play(entry, resumeFrom: 0, next: next, exactStart: true) } label: { Label("Start Over", systemImage: "backward.end") }
             case .get:
                 Button { Task { await get() } } label: { Label("Get Episode", systemImage: "icloud.and.arrow.down") }
             case let .downloading(transfer):
@@ -310,7 +310,7 @@ private struct PlaySourceMenu: ViewModifier {
                 Label("Stream from put.io", systemImage: "icloud")
             }
             if resumeFrom > 0 {
-                Button { router.play(entry, resumeFrom: 0, next: next) } label: { Label("Start Over", systemImage: "backward.end") }
+                Button { router.play(entry, resumeFrom: 0, next: next, exactStart: true) } label: { Label("Start Over", systemImage: "backward.end") }
             }
         }
     }

@@ -93,7 +93,7 @@ final class PlayerCoordinator {
                                                      episode: request.episode, confidence: 1, title: $0.title) },
             folderName: nil)
         session = PlaybackSession(fileID: request.file.id, resumeFrom: request.resumeFrom, putio: putio,
-                                  library: app.library, store: app.store, entry: entry)
+                                  library: app.library, store: app.store, entry: entry, watchLog: app.watchLog)
         // Offline copy when downloaded; otherwise put.io's HLS stream.
         engine = PlayerEngine(url: localURL ?? session.streamURL)
         let episode = request.season.map { season in request.episode.map { "Season \(season) · Episode \($0)" } ?? "Season \(season)" }
@@ -137,6 +137,8 @@ final class PlayerCoordinator {
             presenter.present(controller, animated: true) { completion(true) }
         }
         engine.enableNowPlaying(title: chrome.title)
+        // Pausing (or reaching the end) saves the position, for put.io and the other devices.
+        engine.onPause = { [weak self] in self?.saveNow() }
         startSeconds = seconds
         if seconds > 0 { engine.seek(to: Double(seconds)) }
         presenter.present(controller, animated: true) { [engine] in engine.play() }
@@ -267,6 +269,7 @@ final class PlayerCoordinator {
         gettingNext?.cancel()
         conversionTask?.cancel()
         if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
+        engine.onPause = nil
         saveNow()
         engine.tearDown()
         if router.player?.id == request.id { router.player = nil }

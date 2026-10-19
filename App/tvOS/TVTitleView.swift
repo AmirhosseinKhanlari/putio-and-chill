@@ -169,7 +169,7 @@ struct TVTitleActions: View {
         case let .resume(entry, seconds):
             Button { router.play(entry, from: seconds) } label: { Label("Resume \(Format.clock(seconds))", systemImage: "play.fill") }.tvPill()
                 .focused($primaryFocused)
-            Button { router.play(entry, from: 0) } label: { Image(systemName: "arrow.counterclockwise") }
+            Button { router.play(entry, from: 0, exactStart: true) } label: { Image(systemName: "arrow.counterclockwise") }
                 .tvCircle().accessibilityLabel("Start over")
         case let .downloading(transfer):
             TVTransferStatus(transfer: transfer)
@@ -335,7 +335,7 @@ struct TVEpisodes: View {
             Button("Play") { router.play(entry, from: 0) }
         case let .resume(entry, seconds):
             Button("Resume \(Format.clock(seconds))") { router.play(entry, from: seconds) }
-            Button("Start Over") { router.play(entry, from: 0) }
+            Button("Start Over") { router.play(entry, from: 0, exactStart: true) }
         case let .downloading(transfer):
             Button("Cancel Download", role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } }
         case .get, .failed:

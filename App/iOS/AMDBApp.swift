@@ -25,7 +25,8 @@ struct AMDBApp: App {
                        bundledTraktClientID: Bundle.main.object(forInfoDictionaryKey: "TraktClientID") as? String,
                        bundledOpenSubtitlesKey: Bundle.main.object(forInfoDictionaryKey: "OpenSubtitlesAPIKey") as? String,
                        subtitleCache: SubtitleFileCache(directory: SubtitleFileCache.defaultDirectory()),
-                       libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL()), chillFeedURL: ChillFeed.defaultURL())
+                       libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL()), chillFeedURL: ChillFeed.defaultURL(),
+                       watchLogStore: KeychainWatchLogStore(), deviceName: UIDevice.current.name)
         _model = State(initialValue: model)
         _downloader = State(initialValue: OfflineDownloader(app: model))
         let router = Router()
@@ -62,6 +63,7 @@ struct AMDBApp: App {
                             await model.refreshLibraryIfDue()
                         }
                     case .background:
+                        model.appWillLeave()
                         BackgroundRefresh.schedule(every: model.settings.libraryUpdateMinutes)
                     default:
                         break

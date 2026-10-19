@@ -25,6 +25,7 @@ public protocol PutioService: Sendable {
     func emptyTrash() async throws
     func startFrom(fileID: Int64) async throws -> Int
     func setStartFrom(fileID: Int64, seconds: Int) async throws
+    func resetStartFrom(fileID: Int64) async throws
     func hlsURL(fileID: Int64, subtitles: Bool) -> URL
     func originalURL(fileID: Int64) async throws -> URL
     func subtitles(fileID: Int64) async throws -> [PutioSubtitle]

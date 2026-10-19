@@ -111,6 +111,10 @@ public final class AppModel {
     public let episodeAlerts: EpisodeAlerts
     /// put.io MP4 conversions of videos Apple devices can't play as they are.
     public let conversions = VideoConversions()
+    /// Recent plays shared with the user's other Apple devices through iCloud Keychain (off in demo mode and tests).
+    public let watchLog: WatchLogSync
+    @ObservationIgnored private var positionsCheck: Task<Void, Never>?
+    @ObservationIgnored private var lastPositionsCheck: Date?
     @ObservationIgnored private var filesChangedRefresh: Task<Void, Never>?
     /// Whether the one-time merge of the old AMDB folders runs (off in demo mode, which has no real put.io).
     @ObservationIgnored public var mergesOldFolders = true
@@ -137,8 +141,10 @@ public final class AppModel {
                 bundledTMDBToken: String? = nil, ratingsCache: RatingsCache = RatingsCache(fileURL: nil),
                 bundledTraktClientID: String? = nil, bundledOpenSubtitlesKey: String? = nil,
                 subtitleCache: SubtitleFileCache = SubtitleFileCache(directory: nil),
-                libraryCache: LibraryCache = LibraryCache(fileURL: nil), chillFeedURL: URL? = nil) {
+                libraryCache: LibraryCache = LibraryCache(fileURL: nil), chillFeedURL: URL? = nil,
+                watchLogStore: (any WatchLogStore)? = nil, deviceName: String = "This device") {
         self.tokens = tokens
+        watchLog = WatchLogSync(store: watchLogStore, deviceName: deviceName)
         self.userDefaults = defaults
         self.store = store
         self.factory = factory
@@ -260,6 +266,44 @@ public final class AppModel {
         // Asked for by the user: also retry files that had no TMDB match.
         await library.refresh(retryUnmatched: force, now: now)
         return true
+    }
+
+    /// Brings positions and Continue Watching up to date without a full library update (launch, the app coming back,
+    /// Home appearing): sends positions put.io didn't get, reads what the user's other Apple devices played, then asks
+    /// put.io for the current position of the files that matter (`LibraryIndex.positionCandidates`). Skipped when the
+    /// last check was under `minInterval` seconds ago; a check already running is waited for instead.
+    public func refreshContinueWatching(minInterval: TimeInterval = 0, now: Date = Date()) async {
+        guard putio != nil else { return }
+        if let running = positionsCheck {
+            await running.value
+            return
+        }
+        if let last = lastPositionsCheck, now.timeIntervalSince(last) < minInterval { return }
+        lastPositionsCheck = now
+        let task = Task {
+            await library.sendPending()
+            await syncWatchLog()
+            await library.checkPositions(library.positionCandidates(log: watchLog.entries))
+        }
+        positionsCheck = task
+        await task.value
+        positionsCheck = nil
+    }
+
+    /// Reads the shared list of recent plays (and writes back what only this device had). It's kept per put.io
+    /// account, so the account is looked up first.
+    public func syncWatchLog() async {
+        guard watchLog.isEnabled, let putio else { return }
+        if watchLog.account == nil {
+            guard let info = try? await putio.accountInfo() else { return }
+            watchLog.use(account: WatchLog.account(for: info))
+        }
+        library.noteOtherDevices(watchLog.pull())
+    }
+
+    /// The app is leaving the screen: anything the shared list didn't get yet is written now.
+    public func appWillLeave() {
+        watchLog.flush()
     }
 
     /// What "Organize library" would move, using `layout` (the Settings being edited).
@@ -454,6 +498,11 @@ public final class AppModel {
     }
 
     private func rebuild() {
+        // Another put.io account (or none): its own list of recent plays, looked up again by the next check.
+        if lastTokens[.putio] != tokens.read(.putio) {
+            watchLog.use(account: nil)
+            lastPositionsCheck = nil
+        }
         lastTokens = currentTokens()
         putio = tokens.read(.putio).map(factory.makePutio)
         catalog = (tokens.read(.tmdb) ?? bundledTMDBToken).map(factory.makeCatalog)

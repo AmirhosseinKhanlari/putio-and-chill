@@ -57,12 +57,15 @@ enum PlaybackSource {
 struct PlayerRequest: Identifiable {
     let file: PutioFile
     let title: String
-    let resumeFrom: Int
+    /// Where to start; put.io's newest position is looked up before playing unless `startOver`.
+    var resumeFrom: Int
     let played: PlayedTitle?
     let next: NextEpisode?
     var season: Int? = nil
     var episode: Int? = nil
     var source: PlaybackSource = .automatic
+    /// Start exactly at `resumeFrom` (Start Over, demo screens), whatever position put.io has.
+    var exactStart = false
     var id: Int64 { file.id }
 
     var subtitleContext: SubtitleContext {
@@ -176,10 +179,11 @@ final class Router {
         }
     }
 
-    func play(_ entry: LibraryEntry, resumeFrom: Int, next: NextEpisode? = nil, source: PlaybackSource = .automatic) {
+    func play(_ entry: LibraryEntry, resumeFrom: Int, next: NextEpisode? = nil, source: PlaybackSource = .automatic,
+              exactStart: Bool = false) {
         let played = entry.match.map { PlayedTitle(tmdbID: $0.tmdbID, kind: $0.mediaType, title: $0.title) }
         player = PlayerRequest(file: entry.file, title: entry.displayTitle, resumeFrom: resumeFrom, played: played, next: next,
-                               season: entry.match?.season, episode: entry.match?.episode, source: source)
+                               season: entry.match?.season, episode: entry.match?.episode, source: source, exactStart: exactStart)
     }
 
     func play(_ transfer: TrackedTransfer) {

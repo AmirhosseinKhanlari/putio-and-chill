@@ -40,7 +40,10 @@ enum TVRoute: Hashable {
 /// A video to play: the put.io file plus what it is (for progress, subtitles and the next episode).
 struct TVPlayRequest: Identifiable {
     let entry: LibraryEntry
+    /// Where to start; put.io's newest position is looked up first unless `exactStart`.
     let resumeFrom: Int
+    /// Start exactly at `resumeFrom` (Start Over, demo screens), whatever position put.io has.
+    var exactStart = false
     var id: Int64 { entry.id }
 
     var title: String { entry.match?.title ?? entry.displayTitle }
@@ -125,8 +128,8 @@ final class TVRouter {
         open(.title(item))
     }
 
-    func play(_ entry: LibraryEntry, from seconds: Int) {
-        player = TVPlayRequest(entry: entry, resumeFrom: seconds)
+    func play(_ entry: LibraryEntry, from seconds: Int, exactStart: Bool = false) {
+        player = TVPlayRequest(entry: entry, resumeFrom: seconds, exactStart: exactStart)
     }
 
     /// Plays a transfer that just finished on put.io.

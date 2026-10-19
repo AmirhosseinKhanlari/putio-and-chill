@@ -82,17 +82,17 @@ enum DemoMode {
             router.moviesPath = [.chart(.top250Movies)]
         case "player":
             router.player = PlayerRequest(file: PutioFile(id: 1, name: "Interstellar.2014.1080p.BluRay.x264.mkv", fileType: "VIDEO"),
-                                          title: "Interstellar", resumeFrom: 4360, played: nil, next: nil)
+                                          title: "Interstellar", resumeFrom: 4360, played: nil, next: nil, exactStart: true)
         case "player-convert":
             // A video put.io has to convert for Apple devices first.
             router.player = PlayerRequest(file: PutioFile(id: 5, name: "Home.Video.2019.mov", fileType: "VIDEO"),
-                                          title: "Home Video", resumeFrom: 0, played: nil, next: nil)
+                                          title: "Home Video", resumeFrom: 0, played: nil, next: nil, exactStart: true)
         case "player-episode":
             // Severance S2 E4, a few seconds before the credits, to show the Next Episode card.
             router.player = PlayerRequest(file: PutioFile(id: 2, name: "Severance.S02E04.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO"),
                                           title: "Severance", resumeFrom: 1745,
                                           played: PlayedTitle(tmdbID: DemoCatalog.shows[0].tmdbID, kind: .tv, title: "Severance"),
-                                          next: nil, season: 2, episode: 4)
+                                          next: nil, season: 2, episode: 4, exactStart: true)
         default: break
         }
     }
@@ -416,8 +416,13 @@ final class DemoPutio: PutioService, @unchecked Sendable {
         }
     }
 
-    func startFrom(fileID: Int64) async throws -> Int { 0 }
-    func setStartFrom(fileID: Int64, seconds: Int) async throws {}
+    /// Positions saved while playing (put.io's start-from); the demo files start with theirs from the list.
+    private var positions: [Int64: Int] = [:]
+    func startFrom(fileID: Int64) async throws -> Int {
+        lock.withLock { positions[fileID] ?? (rootFiles + Array(extraFiles.values)).first { $0.id == fileID }?.startFrom ?? 0 }
+    }
+    func setStartFrom(fileID: Int64, seconds: Int) async throws { lock.withLock { positions[fileID] = seconds } }
+    func resetStartFrom(fileID: Int64) async throws { lock.withLock { positions[fileID] = 0 } }
     func hlsURL(fileID: Int64, subtitles: Bool) -> URL {
         // The video that needs converting has no stream until put.io has converted it.
         if fileID == 5, mp4(5).status != .completed { return URL(string: "https://devstreaming-cdn.apple.com/videos/missing/master.m3u8")! }

@@ -29,15 +29,43 @@ import Testing
         #expect(stub.requests.first?.queryItems["parent_id"] == "0")
     }
 
+    /// put.io's documented calls (as its official SDK uses them): GET and POST files/{id}/start-from, and
+    /// POST files/{id}/start-from/delete to reset.
     @Test func startFromRoundTrip() async throws {
         let stub = StubTransport { request in
-            request.url!.path.hasSuffix("/start-from/set") ? (200, Data(#"{"status":"OK"}"#.utf8)) : (200, Data(#"{"status":"OK","start_from":4360}"#.utf8))
+            request.httpMethod == "GET" ? (200, Data(#"{"status":"OK","start_from":4360}"#.utf8)) : (200, Data(#"{"status":"OK"}"#.utf8))
         }
         let client = PutioClient(token: "T", transport: stub)
         #expect(try await client.startFrom(fileID: 9) == 4360)
         try await client.setStartFrom(fileID: 9, seconds: 4400)
-        #expect(stub.requests[1].url?.path == "/v2/files/9/start-from/set")
-        #expect(stub.requests[1].bodyString == "time=4400")
+        try await client.resetStartFrom(fileID: 9)
+
+        let read = stub.requests[0]
+        #expect(read.httpMethod == "GET")
+        #expect(read.url?.absoluteString == "https://api.put.io/v2/files/9/start-from")
+        #expect(read.value(forHTTPHeaderField: "Authorization") == "token T")
+        #expect(read.cachePolicy == .reloadIgnoringLocalCacheData, "never a cached answer: another device may have moved it")
+
+        let save = stub.requests[1]
+        #expect(save.httpMethod == "POST")
+        #expect(save.url?.absoluteString == "https://api.put.io/v2/files/9/start-from")
+        #expect(save.bodyString == "time=4400")
+        #expect(save.value(forHTTPHeaderField: "Authorization") == "token T")
+
+        let reset = stub.requests[2]
+        #expect(reset.httpMethod == "POST")
+        #expect(reset.url?.absoluteString == "https://api.put.io/v2/files/9/start-from/delete")
+    }
+
+    @Test func startFromWithoutAValueIsZero() async throws {
+        let client = PutioClient(token: "T", transport: StubTransport(json: #"{"status":"OK"}"#))
+        #expect(try await client.startFrom(fileID: 9) == 0)
+    }
+
+    @Test func startFromErrorsAreThrownNotSwallowed() async {
+        let client = PutioClient(token: "T", transport: StubTransport(status: 404, json: #"{"error_type":"NotFound"}"#))
+        await #expect(throws: AppError.http(service: "putio", status: 404)) { try await client.startFrom(fileID: 9) }
+        await #expect(throws: AppError.self) { try await client.setStartFrom(fileID: 9, seconds: 10) }
     }
 
     @Test func hlsURLCarriesTokenAndOptionalSubtitles() {

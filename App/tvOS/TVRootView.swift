@@ -34,18 +34,26 @@ struct TVRootView: View {
                 .task { await startUp() }
                 .task(id: app.putio == nil) { username = try? await app.putio?.accountInfo().username }
                 .onChange(of: app.library.entries) { _, _ in TVTopShelfPublisher.publish(app.library) }
-                .onChange(of: app.library.continueWatching.map(\.id)) { _, _ in TVTopShelfPublisher.publish(app.library) }
+                // Also when only a position changed (e.g. watched further on the iPhone).
+                .onChange(of: app.library.continueWatching.map { "\($0.id):\(app.library.resumeSeconds(for: $0))" }) { _, _ in
+                    TVTopShelfPublisher.publish(app.library)
+                }
             }
         }
         .preferredColorScheme(.dark)
         // Leaving the app: make sure the Top Shelf shows what you were just watching.
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active, app.putio != nil { TVTopShelfPublisher.publish(app.library, force: true) }
+            if phase != .active, app.putio != nil {
+                TVTopShelfPublisher.publish(app.library, force: true)
+                app.appWillLeave()
+            }
             // Back in the app: Latest Movies / Shows are fetched every time it opens, and the library is checked.
             if phase == .active, app.putio != nil {
                 Task {
                     // Connections made on the iPhone (IMDb, ratings) reach the TV through iCloud Keychain.
                     if app.reloadSyncedTokens() { await app.imdbWatchlist.load(force: true) }
+                    // Watched on another device meanwhile: Continue Watching shows it now, not at the next update.
+                    Task { await app.refreshContinueWatching() }
                     await app.refreshChillFeed(force: true)
                     await app.refreshLibraryIfDue()
                 }
@@ -251,12 +259,12 @@ struct TVRootView: View {
                 file: PutioFile(id: 2, name: "Severance.S02E04.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO", size: 2_000_000_000),
                 match: LibraryMatch(tmdbID: DemoCatalog.shows[0].tmdbID, mediaType: .tv, season: 2, episode: 4, confidence: 1,
                                     title: "Severance"),
-                folderName: nil), resumeFrom: 1745)
+                folderName: nil), resumeFrom: 1745, exactStart: true)
         case "player":
             router.player = TVPlayRequest(entry: LibraryEntry(
                 file: PutioFile(id: 2, name: "Severance.S02E04.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO", size: 2_000_000_000),
                 match: LibraryMatch(tmdbID: 95396, mediaType: .tv, season: 2, episode: 4, confidence: 1, title: "Severance"),
-                folderName: nil), resumeFrom: 0)
+                folderName: nil), resumeFrom: 0, exactStart: true)
         case "player-new":
             // A download that just finished, which the library hasn't seen yet (it isn't in the demo put.io's folders).
             let arrival = DemoCatalog.movies[6]
@@ -265,11 +273,13 @@ struct TVRootView: View {
                                 createdAt: "2026-10-14T10:00:00"),
                 match: LibraryMatch(tmdbID: arrival.tmdbID, mediaType: .movie, season: nil, episode: nil, confidence: 1,
                                     title: arrival.title, posterPath: arrival.posterPath, backdropPath: arrival.backdropPath),
-                folderName: nil), resumeFrom: 0)
+                folderName: nil), resumeFrom: 0, exactStart: true)
         default: break
         }
         await app.library.loadCached()
         TVTopShelfPublisher.publish(app.library)
+        // Positions saved on other devices since last time, without waiting for a library update.
+        Task { await app.refreshContinueWatching() }
         await app.myList.load()
         await app.transfers.restore()
         Task { await app.refreshChillFeed(force: true) }

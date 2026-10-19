@@ -77,7 +77,7 @@ import Testing
         // put.io's dates alone put Severance (12) first; Dune (10) was watched last on this device.
         index.noteProgress(fileID: 12, seconds: 950, now: Date(timeIntervalSince1970: 1_000))
         index.noteProgress(fileID: 10, seconds: 300, now: Date(timeIntervalSince1970: 2_000))
-        await waitForSave(cache) { $0.watched?.count == 2 }
+        await waitForSave(cache) { $0.positions?[10]?.seconds == 300 && $0.positions?[12]?.seconds == 950 }
 
         let relaunched = LibraryIndex(store: LocalStore(fileURL: nil), cache: cache)
         relaunched.configure(putio: LibraryIndexTests.tree(), catalog: LibraryIndexTests.catalog)

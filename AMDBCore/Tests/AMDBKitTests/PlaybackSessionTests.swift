@@ -15,7 +15,10 @@ import Testing
         let library = LibraryIndex(store: LocalStore(fileURL: nil))
         let session = PlaybackSession(fileID: 5, resumeFrom: 400, putio: putio, library: library)
         await session.finish(seconds: 960, duration: 1000)
-        #expect(putio.startFromSets.map(\.seconds) == [0])
+        // put.io's reset call, rather than saving 0.
+        #expect(putio.startFromResets == [5])
+        #expect(putio.startFromSets.isEmpty)
+        #expect(library.resumeSeconds(fileID: 5) == 0)
     }
 
     @Test func finishingMidwaySavesPosition() async {

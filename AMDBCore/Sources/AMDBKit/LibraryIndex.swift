@@ -26,21 +26,34 @@ public struct LibraryEntry: Identifiable, Sendable, Hashable, Codable {
 public struct LibrarySnapshot: Codable, Sendable, Equatable {
     public var entries: [LibraryEntry]
     public var updatedAt: Date
-    /// Resume positions saved locally since that fetch (put.io has them too, but the cache may predate them).
+    /// Resume positions saved by older builds (read once into `positions`, no longer written).
     public var progress: [Int64: Int]?
     /// Every folder seen in that fetch (for organizing without re-listing put.io).
     public var folders: [PutioFile]?
     /// Video lengths in seconds, learned while playing (put.io only keeps the position). Absent in older caches.
     public var durations: [Int64: Int]?
-    /// When each file was last watched on this device, so Continue Watching keeps its order after a relaunch.
+    /// When each file was last watched, saved by older builds (read once into `positions`, no longer written).
     public var watched: [Int64: Date]?
     /// `LibraryScope.signature` of the walk that found these entries (absent in older caches, which read all of put.io).
     public var scope: String?
+    /// Resume positions with when they were true and where they came from (this device, put.io, the other devices).
+    public var positions: [Int64: WatchProgress]?
 
     public init(entries: [LibraryEntry], updatedAt: Date, progress: [Int64: Int]? = nil, folders: [PutioFile]? = nil,
-                durations: [Int64: Int]? = nil, watched: [Int64: Date]? = nil, scope: String? = nil) {
+                durations: [Int64: Int]? = nil, watched: [Int64: Date]? = nil, scope: String? = nil,
+                positions: [Int64: WatchProgress]? = nil) {
         self.entries = entries; self.updatedAt = updatedAt; self.progress = progress; self.folders = folders
-        self.durations = durations; self.watched = watched; self.scope = scope
+        self.durations = durations; self.watched = watched; self.scope = scope; self.positions = positions
+    }
+
+    /// Positions, including those an older build saved (as already sent to put.io: put.io's newer value may replace them).
+    var allPositions: [Int64: WatchProgress] {
+        var all = positions ?? [:]
+        for (id, seconds) in progress ?? [:] where all[id] == nil {
+            let watchedAt = watched?[id]
+            all[id] = WatchProgress(seconds: seconds, at: watchedAt ?? updatedAt, source: .device, watchedAt: watchedAt)
+        }
+        return all
     }
 }
 
@@ -121,17 +134,20 @@ public final class LibraryIndex {
     /// Four lookups at a time keeps well under TMDB's rate limit (each file can take two searches).
     private let matchParallelism = 4
     @ObservationIgnored private var currentRefresh: Task<Void, Never>?
-    private var progressOverrides: [Int64: Int] = [:]
+    /// Resume positions, newest wins (`WatchProgress.merged`); kept in the cache and never dropped by an update.
+    var positions: [Int64: WatchProgress] = [:]
     /// Video lengths (seconds) seen by the player, so cards can show how much is left.
-    private var durations: [Int64: Int] = [:]
+    var durations: [Int64: Int] = [:]
     /// Order in which files were watched this session (higher = more recent); a counter, so ties can't happen.
     private var touchedOrder: [Int64: Int] = [:]
     private var touchCount = 0
-    /// When files were last watched on this device (kept in the cache; orders Continue Watching after a relaunch).
-    private var watchedAt: [Int64: Date] = [:]
-    /// Played files the library didn't have (from Files, a transfer that just finished): shown at once, and kept through
-    /// an update that was already walking put.io when they were played. Each update starts this over.
+    /// Played files the library didn't have (from Files, a transfer that just finished, another device): shown at once,
+    /// and kept through an update that was already walking put.io when they were played. Each update starts this over.
     private var playedOutside: [Int64: LibraryEntry] = [:]
+    /// Files put.io says no longer exist (asked for their position): never brought back from another device's list.
+    var goneFiles: Set<Int64> = []
+    /// put.io, for reading and sending positions (`LibraryIndex+Positions`).
+    var putioService: (any PutioService)? { putio }
 
     public init(store: LocalStore, cache: LibraryCache = LibraryCache(fileURL: nil), maxFolders: Int = 2000, parallelism: Int = 6) {
         self.store = store
@@ -147,6 +163,8 @@ public final class LibraryIndex {
         if putio == nil {
             entries = []
             playedOutside = [:]
+            positions = [:]
+            touchedOrder = [:]
             lastUpdated = nil
             entriesScope = nil
             needsRescan = false
@@ -167,9 +185,9 @@ public final class LibraryIndex {
         entriesScope = snapshot.scope
         needsRescan = snapshot.scope != scope.signature
         folderTree = FolderTree(folders: snapshot.folders ?? [])
-        for (id, seconds) in snapshot.progress ?? [:] where progressOverrides[id] == nil { progressOverrides[id] = seconds }
+        // Anything noted since launch is newer than the cache.
+        for (id, saved) in snapshot.allPositions { positions[id] = WatchProgress.merged(saved, positions[id] ?? saved) }
         for (id, seconds) in snapshot.durations ?? [:] where durations[id] == nil { durations[id] = seconds }
-        for (id, date) in snapshot.watched ?? [:] where watchedAt[id] == nil { watchedAt[id] = date }
     }
 
     /// Whether the library is older than `maxAge` (or was never fetched).
@@ -208,12 +226,16 @@ public final class LibraryIndex {
         let before = Set(entries.map(\.id))
         let scope = scope
         let rescoped = needsRescan
+        // put.io's positions in the list are as of when the walk began (a save during it is newer).
+        let walkStarted = Date()
+        let updatedBefore = lastUpdated != nil
         do {
             var folders: [PutioFile] = []
             let found = try await Self.walk(putio, scope: scope, maxFolders: maxFolders, parallelism: parallelism) { folders.append($0) }
             folderTree = FolderTree(folders: folders)
             entriesScope = scope.signature
             if self.scope.signature == scope.signature { needsRescan = false }
+            notePutioList(found.map(\.file), readAt: walkStarted, firstRead: !updatedBefore)
             let state = await store.snapshot
             var result = found.map { LibraryEntry(file: $0.file, match: state.matches[$0.file.id], folderName: $0.folder) }
             // Earlier builds saved one file of each finished season pack as "season N" with no episode: complete
@@ -285,8 +307,7 @@ public final class LibraryIndex {
             entries = withPlayed(result)
             let now = Date()
             lastUpdated = now
-            // put.io's fresh positions win over ones restored from the cache; this session's still win over put.io.
-            progressOverrides = progressOverrides.filter { touchedOrder[$0.key] != nil }
+            prunePositions(now: now)
             await persist()
             let after = Set(entries.map(\.id))
             onUpdated?(LibraryChange(added: after.subtracting(before).count, removed: before.subtracting(after).count,
@@ -302,12 +323,14 @@ public final class LibraryIndex {
 
     /// In-progress files, most recently watched first, one per title: a movie with several versions,
     /// or a show with several started episodes, appears once at whichever was watched last.
+    /// "Watched last" is when it was watched on any device (this one, another through iCloud, or a change put.io
+    /// reported), then the order of this session, then put.io's change date.
     public var continueWatching: [LibraryEntry] {
         let started = entries.filter { resumeSeconds(for: $0) >= 30 }.sorted { a, b in
+            let wa = positions[a.id]?.watchedAt, wb = positions[b.id]?.watchedAt
+            if wa != wb, wa != nil || wb != nil { return (wa ?? .distantPast) > (wb ?? .distantPast) }
             let ta = touchedOrder[a.id], tb = touchedOrder[b.id]
             if ta != nil || tb != nil { return (ta ?? -1) > (tb ?? -1) }
-            let wa = watchedAt[a.id], wb = watchedAt[b.id]
-            if wa != nil || wb != nil { return (wa ?? .distantPast) > (wb ?? .distantPast) }
             return (a.file.updatedAt ?? "") > (b.file.updatedAt ?? "")
         }
         var seen: Set<String> = []
@@ -335,7 +358,16 @@ public final class LibraryIndex {
         }
     }
 
-    public func resumeSeconds(for entry: LibraryEntry) -> Int { progressOverrides[entry.id] ?? entry.startFrom }
+    /// The newest known position; put.io's list value when nothing else is known.
+    public func resumeSeconds(for entry: LibraryEntry) -> Int { positions[entry.id]?.seconds ?? entry.startFrom }
+
+    /// Same, for a file known only by its id.
+    public func resumeSeconds(fileID: Int64) -> Int {
+        positions[fileID]?.seconds ?? entries.first { $0.id == fileID }?.startFrom ?? 0
+    }
+
+    /// The video's length when the player (here or on another device) has seen it.
+    public func duration(fileID: Int64) -> Int? { durations[fileID] }
 
     /// The video's length, as the player found it (saved with the next position).
     public func noteDuration(fileID: Int64, seconds: Int) {
@@ -358,20 +390,28 @@ public final class LibraryIndex {
         return length - position
     }
 
+    /// A position saved on this device: the newest there is, waiting to reach put.io (`markSent`).
     public func noteProgress(fileID: Int64, seconds: Int, now: Date = Date()) {
-        progressOverrides[fileID] = seconds
+        positions[fileID] = WatchProgress.merged(positions[fileID], WatchProgress(seconds: seconds, at: now, source: .device,
+                                                                                  watchedAt: now, pending: true))
         touchCount += 1
         touchedOrder[fileID] = touchCount
-        watchedAt[fileID] = now
         Task { await persist() }
     }
 
     /// A file being played that the library doesn't have yet (played from Files, a transfer that just finished):
     /// added now so Continue Watching shows it right away, not after the next update. Nothing changes for a file it has.
     public func notePlayed(_ entry: LibraryEntry) {
+        goneFiles.remove(entry.id)
         guard !entries.contains(where: { $0.id == entry.id }) else { return }
         playedOutside[entry.id] = entry
         entries = Self.sorted(entries + [entry])
+    }
+
+    /// A file played elsewhere that put.io no longer has: off the screen now (the next update would drop it anyway).
+    func dropPlayedOutside(_ id: Int64) {
+        guard playedOutside.removeValue(forKey: id) != nil else { return }
+        entries.removeAll { $0.id == id }
     }
 
     /// What an update found, plus files played while it ran that it didn't find (its walk may have passed their
@@ -472,11 +512,10 @@ public final class LibraryIndex {
         return videos
     }
 
-    private func persist() async {
+    func persist() async {
         guard let lastUpdated else { return }
-        await cache.save(LibrarySnapshot(entries: entries, updatedAt: lastUpdated, progress: progressOverrides,
-                                         folders: Array(folderTree.folders.values), durations: durations, watched: watchedAt,
-                                         scope: entriesScope))
+        await cache.save(LibrarySnapshot(entries: entries, updatedAt: lastUpdated, folders: Array(folderTree.folders.values),
+                                         durations: durations, scope: entriesScope, positions: positions))
     }
 
     /// Folders that only hold subtitles, samples or artwork: not read (a season pack's "Subs" folder alone can hold

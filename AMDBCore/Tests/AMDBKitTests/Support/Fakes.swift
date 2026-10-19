@@ -33,7 +33,7 @@ final class FakePutio: PutioService, @unchecked Sendable {
             return (delay, disk, trashed.reduce(0) { $0 + ($1.size ?? 0) })
         }
         if delay > .zero { try await Task.sleep(for: delay) }
-        return PutioAccount(username: "me", disk: disk, trashSize: trash)
+        return PutioAccount(username: "me", userId: accountUserID, disk: disk, trashSize: trash)
     }
 
     func addTransfer(url: String, saveParentID: Int64?) async throws -> PutioTransfer {
@@ -216,8 +216,44 @@ final class FakePutio: PutioService, @unchecked Sendable {
     func deleteFromTrash(ids: [Int64]) async throws { lock.withLock { trashed.removeAll { ids.contains($0.id) } } }
     func emptyTrash() async throws { lock.withLock { trashed = [] } }
 
-    func startFrom(fileID: Int64) async throws -> Int { lock.withLock { filesByID[fileID]?.startFrom ?? 0 } }
-    func setStartFrom(fileID: Int64, seconds: Int) async throws { lock.withLock { startFromSets.append((fileID, seconds)) } }
+    // put.io's own position per file (its start-from): what other devices saved, or this fake's list value.
+    private var savedPositions: [Int64: Int] = [:]
+    private(set) var startFromResets: [Int64] = []
+    private(set) var startFromReads: [Int64] = []
+    /// Saves that fail before one goes through (offline, a put.io error).
+    var failingSaves = 0
+    /// Reads that take this long (to time them out).
+    var startFromDelay: Duration = .zero
+    /// Files put.io answers 404 for.
+    var missingFiles: Set<Int64> = []
+    var accountUserID: Int64?
+
+    /// Another device saved a position (or reset it with 0).
+    func setPosition(_ seconds: Int, fileID: Int64) { lock.withLock { savedPositions[fileID] = seconds } }
+
+    func startFrom(fileID: Int64) async throws -> Int {
+        let (delay, missing) = lock.withLock { () -> (Duration, Bool) in
+            startFromReads.append(fileID)
+            return (startFromDelay, missingFiles.contains(fileID))
+        }
+        if delay > .zero { try await Task.sleep(for: delay) }
+        if missing { throw AppError.http(service: "putio", status: 404) }
+        return lock.withLock { savedPositions[fileID] ?? filesByID[fileID]?.startFrom ?? 0 }
+    }
+    func setStartFrom(fileID: Int64, seconds: Int) async throws {
+        try lock.withLock {
+            if failingSaves > 0 { failingSaves -= 1; throw AppError.transport("offline") }
+            startFromSets.append((fileID, seconds))
+            savedPositions[fileID] = seconds
+        }
+    }
+    func resetStartFrom(fileID: Int64) async throws {
+        try lock.withLock {
+            if failingSaves > 0 { failingSaves -= 1; throw AppError.transport("offline") }
+            startFromResets.append(fileID)
+            savedPositions[fileID] = 0
+        }
+    }
     func hlsURL(fileID: Int64, subtitles: Bool) -> URL { URL(string: "https://hls.test/\(fileID).m3u8\(subtitles ? "?subs" : "")")! }
     var subtitleTracks: [PutioSubtitle] = []
     func subtitles(fileID: Int64) async throws -> [PutioSubtitle] { subtitleTracks }

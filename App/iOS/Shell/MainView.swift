@@ -49,7 +49,7 @@ struct MainView: View {
         .animation(.easeInOut(duration: 0.2), value: router.resumePrompt?.id)
         .onChange(of: router.player?.id) { _, _ in
             guard let request = router.player, PlayerCoordinator.current?.request.id != request.id else { return }
-            if request.resumeFrom > 30 { router.resumePrompt = request } else { launch(request, from: 0) }
+            Task { await open(request) }
         }
         .onChange(of: router.tab, initial: true) { _, tab in visited.insert(tab) }
         .sheet(item: $router.versions) { VersionsSheet(request: $0) }
@@ -60,6 +60,8 @@ struct MainView: View {
             wireEvents()
             // The saved library first, so Home and Library fill instantly; put.io is checked afterwards.
             await app.library.loadCached()
+            // Positions saved on other devices since last time, without waiting for a library update.
+            Task { await app.refreshContinueWatching() }
             await app.myList.load()
             await app.downloads.load()
             downloader.restore()
@@ -82,7 +84,10 @@ struct MainView: View {
             }
         }
         .onChange(of: app.transfers.tracked) { _, tracked in liveActivities.sync(tracked) }
-        .onChange(of: app.library.continueWatching.map(\.id)) { _, _ in Task { await WidgetPublisher.publish(app.library) } }
+        // Also when only a position changed (e.g. watched further on another device).
+        .onChange(of: app.library.continueWatching.map { "\($0.id):\(app.library.resumeSeconds(for: $0))" }) { _, _ in
+            Task { await WidgetPublisher.publish(app.library) }
+        }
         // Downloads saved by earlier builds pick up what the library now knows (e.g. a season-pack episode's number).
         .onChange(of: app.library.lastUpdated) { _, _ in Task { await app.downloads.adopt(app.library.entries) } }
         // Siri and Spotlight know your put.io and My List titles.
@@ -92,9 +97,14 @@ struct MainView: View {
         .onOpenURL { url in open(DeepLink(url: url)) }
         // Controls (Control Center, Action button) leave the screen to open in the App Group.
         .onReceive(NotificationCenter.default.publisher(for: PendingLink.notification)) { _ in openPendingLink() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+            app.appWillLeave()
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             openPendingLink()
             if app.reloadSyncedTokens() { Task { await app.imdbWatchlist.load(force: true) } }
+            // Watched on another device meanwhile: Continue Watching shows it now, not at the next library update.
+            Task { await app.refreshContinueWatching() }
             // Latest Movies / Shows (chill, MyMoviz) are fetched every time the app opens.
             Task { await app.refreshChillFeed(force: true) }
             // New-episode alerts follow TMDB's schedule, which changes: plan them again.
@@ -181,6 +191,19 @@ struct MainView: View {
         } catch {
             withAnimation { router.toast = "Couldn't clean up put.io right now" }
         }
+    }
+
+    /// Plays a request: first asks put.io where it was left (it may have been watched on another device since), briefly,
+    /// then offers to resume from the newest position, or starts.
+    private func open(_ request: PlayerRequest) async {
+        var request = request
+        if !request.exactStart {
+            let fresh = await app.library.freshResumeSeconds(fileID: request.file.id)
+            // Closed or replaced while put.io was asked.
+            guard router.player?.id == request.id, PlayerCoordinator.current?.request.id != request.id else { return }
+            request.resumeFrom = fresh
+        }
+        if request.resumeFrom > 30 { router.resumePrompt = request } else { launch(request, from: 0) }
     }
 
     private func launch(_ request: PlayerRequest, from seconds: Int) {

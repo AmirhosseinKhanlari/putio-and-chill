@@ -76,6 +76,8 @@ struct TVHomeView: View {
         .ignoresSafeArea(edges: .top)
         .tvPageBackground()
         .task { await app.imdbWatchlist.load() }
+        // Back on Home: anything watched on another device lately (at most every 30 seconds).
+        .onAppear { Task { await app.refreshContinueWatching(minInterval: 30) } }
         .task {
             guard model == nil, let catalog = app.catalog else { return }
             let home = HomeModel(catalog: catalog, store: app.store)

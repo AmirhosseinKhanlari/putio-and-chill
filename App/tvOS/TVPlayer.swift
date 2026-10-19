@@ -58,6 +58,9 @@ final class TVPlaybackCoordinator {
     /// reports 0, which must never be saved over where the user stopped last time.
     private var atStart = false
     private var endObserver: NSObjectProtocol?
+    private var pauseObservation: NSKeyValueObservation?
+    /// Where playback starts: the request's position, or put.io's newer one (looked up before playing).
+    private var startSeconds = 0
     private var resignObserver: NSObjectProtocol?
     private var selectionObserver: NSObjectProtocol?
     private var sleepTimer: SleepTimer?
@@ -85,7 +88,7 @@ final class TVPlaybackCoordinator {
             // With the entry, a file the library doesn't have yet (played from Files, a new transfer) still shows in
             // Continue Watching as soon as it's been watched a little.
             session = PlaybackSession(fileID: request.entry.id, resumeFrom: request.resumeFrom, putio: putio,
-                                      library: app.library, store: app.store, entry: request.entry)
+                                      library: app.library, store: app.store, entry: request.entry, watchLog: app.watchLog)
             // Subtitles stay out of the stream: ours draws them, so style and timing apply to all of them.
             player = AVPlayer(url: putio.hlsURL(fileID: request.entry.id, subtitles: false))
         } else {
@@ -123,18 +126,23 @@ final class TVPlaybackCoordinator {
         metadata.value = request.title as NSString
         player.currentItem?.externalMetadata = [metadata]
 
-        lastSync = Double(request.resumeFrom)
-        if request.resumeFrom > 0 {
-            player.seek(to: CMTime(seconds: Double(request.resumeFrom), preferredTimescale: 600)) { [weak self] _ in
-                Task { @MainActor in self?.atStart = true }
-            }
-        } else {
-            atStart = true
-        }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 4), queue: .main) { [weak self] time in
             MainActor.assumeIsolated { self?.tick(time.seconds) }
         }
-        player.play()
+        if request.exactStart || session == nil {
+            start(at: request.resumeFrom)
+        } else {
+            // It may have been watched further on another device: put.io's position, briefly, then play.
+            Task { [weak self, app, id = request.entry.id] in
+                let fresh = await app.library.freshResumeSeconds(fileID: id)
+                self?.start(at: fresh)
+            }
+        }
+        // Pausing (or reaching the end) saves the position, for put.io and the other devices.
+        pauseObservation = player.observe(\.timeControlStatus, options: [.old, .new]) { [weak self] _, change in
+            guard change.oldValue != .paused, change.newValue == .paused else { return }
+            Task { @MainActor in self?.saveProgress() }
+        }
         // put.io's tracks, then the saved pick or the preferred language from Settings.
         Task {
             await finder.restore()
@@ -193,7 +201,7 @@ final class TVPlaybackCoordinator {
         player.pause()
         let ok = await app.conversions.makePlayable(fileID: fileID)
         guard ok, !finished else { return }
-        let resumeAt = max(player.currentTime().seconds.isFinite ? player.currentTime().seconds : 0, Double(request.resumeFrom))
+        let resumeAt = max(player.currentTime().seconds.isFinite ? player.currentTime().seconds : 0, Double(startSeconds))
         let item = AVPlayerItem(url: putio.hlsURL(fileID: fileID, subtitles: false))
         let metadata = AVMutableMetadataItem()
         metadata.identifier = .commonIdentifierTitle
@@ -206,6 +214,21 @@ final class TVPlaybackCoordinator {
     }
 
     private var lastSync = 0.0
+
+    /// Seeks to the starting point and plays. Positions aren't saved until the seek is done (`atStart`).
+    private func start(at seconds: Int) {
+        guard !finished else { return }
+        startSeconds = seconds
+        lastSync = Double(seconds)
+        if seconds > 0 {
+            player.seek(to: CMTime(seconds: Double(seconds), preferredTimescale: 600)) { [weak self] _ in
+                Task { @MainActor in self?.atStart = true }
+            }
+        } else {
+            atStart = true
+        }
+        player.play()
+    }
 
     private func tick(_ seconds: Double) {
         guard seconds.isFinite else { return }
@@ -229,6 +252,7 @@ final class TVPlaybackCoordinator {
         gettingTask?.cancel()
         if let selectionObserver { NotificationCenter.default.removeObserver(selectionObserver) }
         if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
+        pauseObservation?.invalidate()
         player.pause()
         saveProgress()
     }

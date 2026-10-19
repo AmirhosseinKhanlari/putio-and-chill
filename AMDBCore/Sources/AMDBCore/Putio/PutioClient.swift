@@ -149,12 +149,20 @@ public struct PutioClient: Sendable {
         try await post("files/create-folder", [("name", name), ("parent_id", String(parentID))], as: FileEnvelope.self).file
     }
 
+    /// Where playback stopped last time, on any device (put.io's own record; 0 when never started or reset).
+    /// The file list isn't documented to carry this, so this is the call to trust.
     public func startFrom(fileID: Int64) async throws -> Int {
         try await get("files/\(fileID)/start-from", as: StartFromEnvelope.self).startFrom ?? 0
     }
 
+    /// Saves where playback is, for every device (put.io's documented call; `start-from/set` is an older alias).
     public func setStartFrom(fileID: Int64, seconds: Int) async throws {
-        _ = try await http.data(form("files/\(fileID)/start-from/set", [("time", String(seconds))]))
+        _ = try await http.data(form("files/\(fileID)/start-from", [("time", String(seconds))]))
+    }
+
+    /// Forgets the position (the video was watched to the end).
+    public func resetStartFrom(fileID: Int64) async throws {
+        _ = try await http.data(form("files/\(fileID)/start-from/delete", []))
     }
 
     public func originalURL(fileID: Int64) async throws -> URL {

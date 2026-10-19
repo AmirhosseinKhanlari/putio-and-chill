@@ -32,36 +32,48 @@ public struct KeychainTokenStore: TokenStore {
     public init(service: String = "app.amdb.tokens") { self.service = service }
 
     public func read(_ key: TokenKey) -> String? {
-        var query = baseQuery(key)
+        Keychain.read(service: service, account: key.rawValue).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
+    public func write(_ value: String?, for key: TokenKey) {
+        Keychain.write(value.flatMap { $0.isEmpty ? nil : Data($0.utf8) }, service: service, account: key.rawValue,
+                       synchronizes: key.synchronizes)
+    }
+}
+
+/// Generic password items, optionally shared with the user's other devices through iCloud Keychain.
+enum Keychain {
+    static func read(service: String, account: String) -> Data? {
+        var query = baseQuery(service: service, account: account)
         query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else { return nil }
+        return result as? Data
     }
 
-    public func write(_ value: String?, for key: TokenKey) {
-        var deleteQuery = baseQuery(key)
+    /// Replaces the item (nil deletes it).
+    static func write(_ data: Data?, service: String, account: String, synchronizes: Bool) {
+        var deleteQuery = baseQuery(service: service, account: account)
         deleteQuery[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
         SecItemDelete(deleteQuery as CFDictionary)
-        guard let value, !value.isEmpty else { return }
+        guard let data else { return }
 
-        var item = baseQuery(key)
-        item[kSecValueData as String] = Data(value.utf8)
+        var item = baseQuery(service: service, account: account)
+        item[kSecValueData as String] = data
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        if key.synchronizes { item[kSecAttrSynchronizable as String] = true }
-        if SecItemAdd(item as CFDictionary, nil) != errSecSuccess, key.synchronizes {
+        if synchronizes { item[kSecAttrSynchronizable as String] = true }
+        if SecItemAdd(item as CFDictionary, nil) != errSecSuccess, synchronizes {
             // Simulators and free provisioning can refuse synchronizable items; keep a device-only copy.
             item[kSecAttrSynchronizable as String] = false
             SecItemAdd(item as CFDictionary, nil)
         }
     }
 
-    private func baseQuery(_ key: TokenKey) -> [String: Any] {
+    private static func baseQuery(service: String, account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: service,
-         kSecAttrAccount as String: key.rawValue]
+         kSecAttrAccount as String: account]
     }
 }

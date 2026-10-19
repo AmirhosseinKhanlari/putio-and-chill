@@ -25,6 +25,8 @@ final class PlayerEngine {
         }
     }
 
+    /// Playback stopped (the user paused, or it ended): a moment to save the position.
+    @ObservationIgnored var onPause: (() -> Void)?
     @ObservationIgnored private var playerObservations: [NSKeyValueObservation] = []
     @ObservationIgnored private var itemObservations: [NSKeyValueObservation] = []
     @ObservationIgnored private var timeObserver: Any?
@@ -144,6 +146,7 @@ final class PlayerEngine {
     }
 
     private func timeControlChanged(_ value: AVPlayer.TimeControlStatus) {
+        if value == .paused, isPlaying { onPause?() }
         isPlaying = value != .paused
         isBuffering = value == .waitingToPlayAtSpecifiedRate
         updateNowPlaying()
