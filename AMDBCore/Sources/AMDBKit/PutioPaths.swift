@@ -49,8 +49,40 @@ public enum PlaybackResolver {
     }
 }
 
+/// The folders Putio & Chill saves into by default: "Movies" and "TV Series" at the top of put.io. Builds before
+/// these used AMDB/Movies and AMDB/TV; `OldFolderMerge` moves those into these once.
+public enum DefaultFolders {
+    public static let movies = "Movies"
+    public static let tv = "TV Series"
+    /// Where older builds saved: AMDB/Movies and AMDB/TV.
+    public static let oldRoot = "AMDB"
+    public static let oldMovies = "Movies"
+    public static let oldTV = "TV"
+
+    /// Folder names are compared ignoring case and surrounding spaces ("tv series" is "TV Series").
+    public static func key(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    public static func sameName(_ a: String, _ b: String) -> Bool { key(a) == key(b) }
+
+    /// The folder in `files` called `name`: the exact spelling first, else one that differs only in case or spaces.
+    public static func folder(named name: String, in files: [PutioFile]) -> PutioFile? {
+        files.first { $0.isFolder && $0.name == name } ?? files.first { $0.isFolder && sameName($0.name, name) }
+    }
+
+    /// Whether a folder picked in Settings is one of the old AMDB/Movies or AMDB/TV folders (by its path, or by an id
+    /// known to be one of them). Those picks go back to the defaults.
+    public static func isOldFolder(_ ref: PutioFolderRef, oldIDs: Set<Int64> = []) -> Bool {
+        if oldIDs.contains(ref.id) { return true }
+        let parts = ref.path.split(separator: "/").map { key(String($0)) }.filter { !$0.isEmpty }
+        return parts.count == 2 && parts[0] == key(oldRoot) && (parts[1] == key(oldMovies) || parts[1] == key(oldTV))
+    }
+}
+
 public enum FolderResolver {
-    /// Finds or creates `path` (e.g. ["AMDB", "Movies"]) under `root` (the put.io root by default) and caches its id.
+    /// Finds or creates `path` (e.g. ["TV Series", "Severance"]) under `root` (the put.io root by default) and caches
+    /// its id. Existing folders are found ignoring case ("tv series" counts as "TV Series").
     public static func folderID(path: [String], under root: Int64 = 0, putio: any PutioService, store: LocalStore) async throws -> Int64 {
         guard !path.isEmpty else { return root }
         let key = cacheKey(path, root)
@@ -58,7 +90,7 @@ public enum FolderResolver {
         var parent = root
         for name in path {
             let children = try await putio.listFiles(parentID: parent).files
-            if let existing = children.first(where: { $0.isFolder && $0.name == name }) {
+            if let existing = DefaultFolders.folder(named: name, in: children) {
                 parent = existing.id
             } else {
                 parent = try await putio.createFolder(name: name, parentID: parent).id
@@ -75,7 +107,7 @@ public enum FolderResolver {
         if let cached = await store.snapshot.folderIDs[cacheKey(path, root)] { return cached }
         var parent = root
         for name in path {
-            guard let existing = try await putio.listFiles(parentID: parent).files.first(where: { $0.isFolder && $0.name == name })
+            guard let existing = DefaultFolders.folder(named: name, in: try await putio.listFiles(parentID: parent).files)
             else { return nil }
             parent = existing.id
         }
@@ -92,21 +124,21 @@ public enum FolderResolver {
         await store.update { $0.folderIDs = [:] }
     }
 
-    /// Old cache entries (root 0) keep their "AMDB/Movies" keys.
+    /// Entries under the root have plain keys ("Movies", "TV Series/Severance"); others start with the root's id.
     private static func cacheKey(_ path: [String], _ root: Int64) -> String {
         root == 0 ? path.joined(separator: "/") : "\(root):" + path.joined(separator: "/")
     }
 }
 
-/// Where things are saved in put.io: a base folder for movies and one for shows (picked in Settings, or AMDB/…),
-/// then a folder per show and, optionally, per season.
+/// Where things are saved in put.io: a base folder for movies and one for shows (picked in Settings, else Movies and
+/// TV Series at the top of put.io), then a folder per show and, optionally, per season.
 public struct FolderLayout: Sendable, Hashable {
     public var movies: PutioFolderRef?
     public var tv: PutioFolderRef?
     public var seasonFolders: Bool
 
-    public static let defaultMoviesPath = ["AMDB", "Movies"]
-    public static let defaultTVPath = ["AMDB", "TV"]
+    public static let defaultMoviesPath = [DefaultFolders.movies]
+    public static let defaultTVPath = [DefaultFolders.tv]
     public static let standard = FolderLayout(movies: nil, tv: nil, seasonFolders: true)
 
     public init(movies: PutioFolderRef?, tv: PutioFolderRef?, seasonFolders: Bool) {
@@ -125,7 +157,7 @@ public struct FolderLayout: Sendable, Hashable {
         return [show]
     }
 
-    /// Human-readable destination, e.g. "AMDB/TV/Severance/Season 2".
+    /// Human-readable destination, e.g. "TV Series/Severance/Season 2".
     public func displayPath(kind: MediaKind, title: String, season: Int?) -> String {
         let base = kind == .tv ? (tv?.path ?? Self.defaultTVPath.joined(separator: "/"))
                                : (movies?.path ?? Self.defaultMoviesPath.joined(separator: "/"))
@@ -179,8 +211,9 @@ public struct FolderTree: Sendable, Equatable {
 
     public var isEmpty: Bool { folders.isEmpty }
 
+    /// The exact spelling first, else a folder whose name differs only in case or spaces (as `FolderResolver` finds it).
     public func child(named name: String, in parent: Int64) -> PutioFile? {
-        childrenByParent[parent]?.first { $0.name == name }
+        DefaultFolders.folder(named: name, in: childrenByParent[parent] ?? [])
     }
 
     /// Follows `path` from `root`; nil when a step is missing.

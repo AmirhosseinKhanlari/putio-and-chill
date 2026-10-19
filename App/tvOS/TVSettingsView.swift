@@ -245,20 +245,21 @@ struct TVSettingsView: View {
         Form {
             Section {
                 NavigationLink {
-                    TVFolderPicker(title: "Movies Folder", defaultPath: "AMDB/Movies", selection: $draft.moviesFolder)
+                    TVFolderPicker(title: "Movies Folder", defaultPath: FolderLayout.defaultMoviesPath.joined(separator: "/"),
+                                      selection: $draft.moviesFolder)
                 } label: {
-                    LabeledContent("Movies", value: draft.moviesFolder?.path ?? "AMDB/Movies")
+                    LabeledContent("Movies", value: draft.moviesFolder?.path ?? FolderLayout.defaultMoviesPath.joined(separator: "/"))
                 }
                 NavigationLink {
-                    TVFolderPicker(title: "TV Folder", defaultPath: "AMDB/TV", selection: $draft.tvFolder)
+                    TVFolderPicker(title: "TV Folder", defaultPath: FolderLayout.defaultTVPath.joined(separator: "/"), selection: $draft.tvFolder)
                 } label: {
-                    LabeledContent("TV shows", value: draft.tvFolder?.path ?? "AMDB/TV")
+                    LabeledContent("TV shows", value: draft.tvFolder?.path ?? FolderLayout.defaultTVPath.joined(separator: "/"))
                 }
                 Toggle("Season folders", isOn: $draft.seasonFolders)
                 NavigationLink("Organize Library…") { TVOrganizeView().modifier(TVBackGoesUp()) }
                     .disabled(app.library.entries.isEmpty)
             } footer: {
-                Text("New downloads go to \(FolderLayout(settings: draft).displayPath(kind: .movie, title: "", season: nil)) and \(FolderLayout(settings: draft).displayPath(kind: .tv, title: "Show", season: draft.seasonFolders ? 1 : nil)).")
+                Text("New downloads go to \(FolderLayout(settings: draft).displayPath(kind: .movie, title: "", season: nil)) and \(FolderLayout(settings: draft).displayPath(kind: .tv, title: "Show", season: draft.seasonFolders ? 1 : nil)). Your library shows Movies, TV Series and the folders picked here, plus videos at the top of your put.io; Files shows everything.")
             }
         }
     }

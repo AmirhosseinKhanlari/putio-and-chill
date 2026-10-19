@@ -31,9 +31,9 @@ import Testing
         let release = makeRelease("a", seeders: 10, name: "Dune.Part.Two.2024.1080p")
         let tracked = try await rig.monitor.send(release, target: target)
         rig.monitor.stop()
-        #expect(rig.putio.createdFolders == ["AMDB", "Movies"])
+        #expect(rig.putio.createdFolders == ["Movies"])
         #expect(rig.putio.added.first?.url == release.link)
-        let moviesFolder = await rig.store.snapshot.folderIDs["AMDB/Movies"]
+        let moviesFolder = await rig.store.snapshot.folderIDs["Movies"]
         #expect(rig.putio.added.first?.parent == moviesFolder)
         #expect(await rig.store.snapshot.pending.map(\.transferID) == [tracked.id])
         #expect(rig.monitor.latest(tmdbID: 693134)?.id == tracked.id)
@@ -44,14 +44,14 @@ import Testing
         let tv = TransferTarget(tmdbID: 1, kind: .tv, title: "Severance", posterPath: nil, backdropPath: nil, season: 2, episode: 4)
         _ = try await rig.monitor.send(makeRelease("b", seeders: 5, name: "Severance.S02E04"), target: tv)
         rig.monitor.stop()
-        #expect(rig.putio.createdFolders == ["AMDB", "TV", "Severance", "Season 2"])
-        #expect(rig.putio.added.first?.parent == (await rig.store.snapshot.folderIDs["AMDB/TV/Severance/Season 2"]))
+        #expect(rig.putio.createdFolders == ["TV Series", "Severance", "Season 2"])
+        #expect(rig.putio.added.first?.parent == (await rig.store.snapshot.folderIDs["TV Series/Severance/Season 2"]))
 
         // Season folders off: straight into the show folder.
         rig.monitor.layout = FolderLayout(movies: nil, tv: nil, seasonFolders: false)
         _ = try await rig.monitor.send(makeRelease("c", seeders: 5, name: "Severance.S02E05"), target: tv)
         rig.monitor.stop()
-        #expect(rig.putio.added.last?.parent == (await rig.store.snapshot.folderIDs["AMDB/TV/Severance"]))
+        #expect(rig.putio.added.last?.parent == (await rig.store.snapshot.folderIDs["TV Series/Severance"]))
     }
 
     @Test func customBaseFoldersFromSettings() async throws {

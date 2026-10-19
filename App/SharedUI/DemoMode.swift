@@ -32,6 +32,8 @@ enum DemoMode {
                              defaults: UserDefaults(suiteName: "amdb.demo") ?? .standard,
                              store: LocalStore(fileURL: nil), factory: factory, bundledTraktClientID: "demo",
                              bundledOpenSubtitlesKey: "demo")
+        // The demo put.io has no AMDB folder anyway; never move anything in it.
+        model.mergesOldFolders = false
         // One finished and one running download, so the Downloads screens have something to show.
         Task {
             await model.downloads.upsert(DownloadRecord(fileID: 2, title: "Severance", posterPath: nil, tmdbID: 95396, kind: .tv,

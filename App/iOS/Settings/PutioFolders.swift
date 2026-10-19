@@ -43,7 +43,7 @@ private struct FolderLevel: View {
                     }
                     .buttonStyle(.plain)
                 } footer: {
-                    Text("Putio & Chill creates and uses this folder. Or pick any folder in your put.io below.")
+                    Text("At the top of your put.io; Putio & Chill creates it if it isn't there. Or pick any folder below.")
                 }
             }
             Section(path.isEmpty ? "Your put.io" : path.joined(separator: "/")) {

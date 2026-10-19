@@ -35,8 +35,21 @@
 
 All four app/extension targets use the App Group `group.app.amdb`.
 
-The app is called **Putio & Chill**; schemes, targets, the bundle IDs and the put.io folders (`AMDB/Movies`, `AMDB/TV`)
-keep the original AMDB name so TestFlight builds and existing libraries carry on unchanged.
+The app is called **Putio & Chill**; schemes, targets and the bundle IDs keep the original AMDB name so TestFlight
+builds carry on unchanged.
+
+## put.io folders
+
+Get & Watch saves movies into `Movies` and shows into `TV Series/<Show>/Season N` at the top of put.io (found ignoring
+case, created when missing; `DefaultFolders` and `FolderLayout` in `PutioPaths.swift`). Folders picked in Settings
+override them. The library reads only those folders, the picked ones, and videos loose at the top of put.io
+(`LibraryScope`).
+
+Builds up to 25 saved into `AMDB/Movies` and `AMDB/TV`. The first launch signed in to put.io merges those into
+`Movies` and `TV Series` once per account on each device (`OldFolderMerge`, planned by `FolderMergePlanner`): items
+move in, same-named folders merge, a file whose name is taken moves as "Name (from AMDB).ext", and emptied folders go
+to put.io's Trash. Anything else in AMDB is left alone. A failed move stops the run; the next launch continues. Demo
+mode never runs it.
 
 ## Demo mode
 

@@ -56,11 +56,38 @@ final class FakePutio: PutioService, @unchecked Sendable {
     func retryTransfer(id: Int64) async throws -> PutioTransfer { try await transfer(id: id) }
 
     func listFiles(parentID: Int64) async throws -> PutioFileList {
-        lock.withLock {
+        try lock.withLock {
             listCalls += 1
+            // Like put.io: a deleted folder can't be listed.
+            if deletedFolders.contains(parentID) { throw AppError.http(service: "putio", status: 404) }
             return PutioFileList(parent: filesByID[parentID], files: children[parentID] ?? [])
         }
     }
+
+    /// Moves or renames of these ids fail (put.io refusing, or the connection dropping mid-way).
+    var failingMoves: Set<Int64> = []
+    var failingRenames: Set<Int64> = []
+    /// Runs after each successful move (e.g. a download landing in a folder meanwhile).
+    var afterMove: (@Sendable () -> Void)?
+    private var deletedFolders: Set<Int64> = []
+
+    /// Every file and folder inside `parent`, at any depth.
+    func everything(in parent: Int64) -> [PutioFile] {
+        lock.withLock {
+            var found: [PutioFile] = []
+            var queue = [parent]
+            while let next = queue.popLast() {
+                for file in children[next] ?? [] {
+                    found.append(file)
+                    if file.isFolder { queue.append(file.id) }
+                }
+            }
+            return found
+        }
+    }
+
+    /// The names inside a folder, sorted (for checking where things ended up).
+    func names(in parent: Int64) -> [String] { lock.withLock { (children[parent] ?? []).map(\.name).sorted() } }
 
     func file(id: Int64) async throws -> PutioFile {
         guard let file = lock.withLock({ filesByID[id] }) else { throw AppError.http(service: "putio", status: 404) }
@@ -79,7 +106,8 @@ final class FakePutio: PutioService, @unchecked Sendable {
 
     private(set) var moved: [(ids: [Int64], parent: Int64)] = []
     func moveFiles(ids: [Int64], to parentID: Int64) async throws {
-        lock.withLock {
+        try lock.withLock {
+            if !failingMoves.isDisjoint(with: ids) { throw AppError.http(service: "putio", status: 500) }
             moved.append((ids, parentID))
             for id in ids {
                 guard let file = filesByID[id] else { continue }
@@ -91,6 +119,7 @@ final class FakePutio: PutioService, @unchecked Sendable {
                 children[parentID, default: []].append(movedFile)
             }
         }
+        afterMove?()
     }
 
     private(set) var deleted: [Int64] = []
@@ -106,6 +135,7 @@ final class FakePutio: PutioService, @unchecked Sendable {
                     trashed.append(PutioTrashFile(id: id, name: file.name, fileType: file.fileType, size: file.size,
                                                   deletedAt: "2026-10-14T10:00:0\(trashed.count % 10)"))
                 }
+                if filesByID[id]?.isFolder == true { deletedFolders.insert(id) }
                 filesByID[id] = nil
                 for key in children.keys { children[key]?.removeAll { $0.id == id } }
             }
@@ -142,7 +172,8 @@ final class FakePutio: PutioService, @unchecked Sendable {
 
     private(set) var renamed: [(id: Int64, name: String)] = []
     func renameFile(id: Int64, name: String) async throws {
-        lock.withLock {
+        try lock.withLock {
+            if failingRenames.contains(id) { throw AppError.http(service: "putio", status: 500) }
             renamed.append((id, name))
             guard let file = filesByID[id] else { return }
             let renamedFile = PutioFile(id: id, name: name, fileType: file.fileType, size: file.size, parentId: file.parentId,

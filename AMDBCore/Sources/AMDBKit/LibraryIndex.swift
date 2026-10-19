@@ -34,11 +34,13 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
     public var durations: [Int64: Int]?
     /// When each file was last watched on this device, so Continue Watching keeps its order after a relaunch.
     public var watched: [Int64: Date]?
+    /// `LibraryScope.signature` of the walk that found these entries (absent in older caches, which read all of put.io).
+    public var scope: String?
 
     public init(entries: [LibraryEntry], updatedAt: Date, progress: [Int64: Int]? = nil, folders: [PutioFile]? = nil,
-                durations: [Int64: Int]? = nil, watched: [Int64: Date]? = nil) {
+                durations: [Int64: Int]? = nil, watched: [Int64: Date]? = nil, scope: String? = nil) {
         self.entries = entries; self.updatedAt = updatedAt; self.progress = progress; self.folders = folders
-        self.durations = durations; self.watched = watched
+        self.durations = durations; self.watched = watched; self.scope = scope
     }
 }
 
@@ -77,8 +79,13 @@ public actor LibraryCache {
 public struct LibraryChange: Sendable, Equatable {
     public let added: Int
     public let removed: Int
+    /// The first update after what the library reads changed (`LibraryScope`): files that left are out of scope,
+    /// not deleted, so this isn't news to announce.
+    public let rescoped: Bool
 
-    public init(added: Int, removed: Int) { self.added = added; self.removed = removed }
+    public init(added: Int, removed: Int, rescoped: Bool = false) {
+        self.added = added; self.removed = removed; self.rescoped = rescoped
+    }
     public var isEmpty: Bool { added == 0 && removed == 0 }
 }
 
@@ -93,6 +100,15 @@ public final class LibraryIndex {
     public private(set) var folderTree = FolderTree(folders: [])
     /// Called after each successful refresh with what changed.
     @ObservationIgnored public var onUpdated: ((LibraryChange) -> Void)?
+    /// What the library reads in put.io (from Settings). A change makes the library due for an update.
+    @ObservationIgnored public var scope = LibraryScope.standard {
+        didSet { if oldValue.signature != scope.signature, lastUpdated != nil { needsRescan = true } }
+    }
+    /// The entries on screen came from a different scope (an older build, or a folder picked since): read put.io again
+    /// even when the library isn't otherwise due.
+    public private(set) var needsRescan = false
+    /// The scope the entries on screen were read with.
+    private var entriesScope: String?
 
     private let store: LocalStore
     private let cache: LibraryCache
@@ -132,6 +148,8 @@ public final class LibraryIndex {
             entries = []
             playedOutside = [:]
             lastUpdated = nil
+            entriesScope = nil
+            needsRescan = false
             // Signing out forgets the cached library so another account never sees it.
             if signedOut { Task { [cache] in await cache.clear() } }
         }
@@ -146,6 +164,8 @@ public final class LibraryIndex {
             return entry
         })
         lastUpdated = snapshot.updatedAt
+        entriesScope = snapshot.scope
+        needsRescan = snapshot.scope != scope.signature
         folderTree = FolderTree(folders: snapshot.folders ?? [])
         for (id, seconds) in snapshot.progress ?? [:] where progressOverrides[id] == nil { progressOverrides[id] = seconds }
         for (id, seconds) in snapshot.durations ?? [:] where durations[id] == nil { durations[id] = seconds }
@@ -154,7 +174,7 @@ public final class LibraryIndex {
 
     /// Whether the library is older than `maxAge` (or was never fetched).
     public func isStale(maxAge: TimeInterval, now: Date = Date()) -> Bool {
-        guard let lastUpdated else { return true }
+        guard let lastUpdated, !needsRescan else { return true }
         return now.timeIntervalSince(lastUpdated) >= maxAge
     }
 
@@ -162,13 +182,14 @@ public final class LibraryIndex {
     public static let unmatchedRetry: TimeInterval = 3 * 86_400
 
     /// Re-reads put.io and matches new files to TMDB. `retryUnmatched` (pull to refresh, Update Now) also looks up
-    /// again every file that had no match.
-    public func refresh(retryUnmatched: Bool = false, now: Date = Date()) async {
+    /// again every file that had no match. `afterChanges`: put.io just changed, so an update that was already running
+    /// (and may have read the old state) doesn't count.
+    public func refresh(retryUnmatched: Bool = false, afterChanges: Bool = false, now: Date = Date()) async {
         // An update is already running (e.g. the one at launch): wait for it. If this one was asked for by the user
-        // (pull to refresh, Update Now), run again afterwards so misses are retried, rather than doing nothing.
+        // (pull to refresh, Update Now) or follows changes, run again afterwards rather than doing nothing.
         if let running = currentRefresh {
             await running.value
-            guard retryUnmatched else { return }
+            guard retryUnmatched || afterChanges else { return }
             // Someone else already started a newer one meanwhile: that one will do.
             if let another = currentRefresh, another != running { await another.value; return }
         }
@@ -185,10 +206,14 @@ public final class LibraryIndex {
         // put.io is the truth for files played before this walk; ones played during it are kept (see withPlayed).
         playedOutside = [:]
         let before = Set(entries.map(\.id))
+        let scope = scope
+        let rescoped = needsRescan
         do {
             var folders: [PutioFile] = []
-            let found = try await Self.walk(putio, maxFolders: maxFolders, parallelism: parallelism) { folders.append($0) }
+            let found = try await Self.walk(putio, scope: scope, maxFolders: maxFolders, parallelism: parallelism) { folders.append($0) }
             folderTree = FolderTree(folders: folders)
+            entriesScope = scope.signature
+            if self.scope.signature == scope.signature { needsRescan = false }
             let state = await store.snapshot
             var result = found.map { LibraryEntry(file: $0.file, match: state.matches[$0.file.id], folderName: $0.folder) }
             // Earlier builds saved one file of each finished season pack as "season N" with no episode: complete
@@ -264,7 +289,8 @@ public final class LibraryIndex {
             progressOverrides = progressOverrides.filter { touchedOrder[$0.key] != nil }
             await persist()
             let after = Set(entries.map(\.id))
-            onUpdated?(LibraryChange(added: after.subtracting(before).count, removed: before.subtracting(after).count))
+            onUpdated?(LibraryChange(added: after.subtracting(before).count, removed: before.subtracting(after).count,
+                                     rescoped: rescoped))
         } catch is CancellationError {
             return
         } catch let error as AppError {
@@ -401,10 +427,17 @@ public final class LibraryIndex {
 
     struct FoundVideo: Sendable { let file: PutioFile; let folder: String? }
 
-    /// Breadth-first walk of the put.io tree, listing up to `parallelism` folders at a time.
-    static func walk(_ putio: any PutioService, maxFolders: Int, parallelism: Int = 6,
+    /// Breadth-first walk of what `scope` covers, listing up to `parallelism` folders at a time: the top of put.io
+    /// (its loose videos, and the in-scope folders there), everything below those, and the folders picked in Settings.
+    /// Every top-level folder is still reported to `onFolder`, so the folder tree can find Movies and TV Series.
+    static func walk(_ putio: any PutioService, scope: LibraryScope = .standard, maxFolders: Int, parallelism: Int = 6,
                      onFolder: (PutioFile) -> Void = { _ in }) async throws -> [FoundVideo] {
-        var queue: [(id: Int64, name: String?)] = [(0, nil)]
+        struct Pending { let id: Int64; let name: String?; let optional: Bool }
+        // A picked folder that no longer exists is skipped rather than failing the whole update.
+        var queue = [Pending(id: 0, name: nil, optional: false)]
+            + scope.extraRoots.map { Pending(id: $0.id, name: $0.name, optional: true) }
+        var queued = Set(queue.map(\.id))
+        var seenVideos: Set<Int64> = []
         var visited = 0
         var videos: [FoundVideo] = []
         while !queue.isEmpty, visited < maxFolders {
@@ -414,18 +447,23 @@ public final class LibraryIndex {
             visited += batch.count
             let listed = try await withThrowingTaskGroup(of: (Int, [PutioFile]).self) { group in
                 for (index, folder) in batch.enumerated() {
-                    group.addTask { (index, try await putio.listFiles(parentID: folder.id).files) }
+                    group.addTask {
+                        if folder.optional { return (index, (try? await putio.listFiles(parentID: folder.id).files) ?? []) }
+                        return (index, try await putio.listFiles(parentID: folder.id).files)
+                    }
                 }
                 var results: [(Int, [PutioFile])] = []
                 for try await result in group { results.append(result) }
                 return results.sorted { $0.0 < $1.0 }
             }
             for (index, files) in listed {
+                let atTop = batch[index].id == 0
                 for file in files {
                     if file.isFolder {
                         onFolder(file)
-                        if !isSkippedFolder(file.name) { queue.append((file.id, file.name)) }
-                    } else if file.isVideo, !isSample(file) {
+                        let reads = atTop ? scope.includesTopLevelFolder(file) : !isSkippedFolder(file.name)
+                        if reads, queued.insert(file.id).inserted { queue.append(Pending(id: file.id, name: file.name, optional: false)) }
+                    } else if file.isVideo, !isSample(file), seenVideos.insert(file.id).inserted {
                         videos.append(FoundVideo(file: file, folder: batch[index].name))
                     }
                 }
@@ -437,7 +475,8 @@ public final class LibraryIndex {
     private func persist() async {
         guard let lastUpdated else { return }
         await cache.save(LibrarySnapshot(entries: entries, updatedAt: lastUpdated, progress: progressOverrides,
-                                         folders: Array(folderTree.folders.values), durations: durations, watched: watchedAt))
+                                         folders: Array(folderTree.folders.values), durations: durations, watched: watchedAt,
+                                         scope: entriesScope))
     }
 
     /// Folders that only hold subtitles, samples or artwork: not read (a season pack's "Subs" folder alone can hold

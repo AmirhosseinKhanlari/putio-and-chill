@@ -61,7 +61,8 @@ import Testing
     /// What earlier builds saved ("season 1", no episode) is completed on the next refresh; nothing else changes.
     @Test func refreshRepairsOldSeasonOnlyMatches() async {
         let putio = FakePutio()
-        putio.add(PutioFile(id: 1, name: "Season 1", fileType: "FOLDER"), to: 0)
+        putio.add(PutioFile(id: 2, name: "TV Series", fileType: "FOLDER"), to: 0)
+        putio.add(PutioFile(id: 1, name: "Season 1", fileType: "FOLDER"), to: 2)
         putio.add(PutioFile(id: 11, name: "Task.S01E05.1080p.mkv", fileType: "VIDEO", size: 100), to: 1)
         let store = LocalStore(fileURL: nil)
         await store.update { state in
@@ -75,13 +76,14 @@ import Testing
         #expect(await store.snapshot.matches[11]?.title == "Task")
     }
 
-    /// Subtitle folders aren't read, and a big put.io is read past the old 300-folder limit.
+    /// Subtitle folders aren't read, and a big TV Series folder is read past the old 300-folder limit.
     @Test func walkSkipsSubtitleFoldersAndReadsDeepPacks() async throws {
         let putio = FakePutio()
+        putio.add(PutioFile(id: 1, name: "TV Series", fileType: "FOLDER"), to: 0)
         var id: Int64 = 1
         for _ in 0..<400 {
             id += 1
-            putio.add(PutioFile(id: id, name: "Old \(id)", fileType: "FOLDER"), to: 0)
+            putio.add(PutioFile(id: id, name: "Old \(id)", fileType: "FOLDER"), to: 1)
         }
         putio.add(PutioFile(id: 9000, name: "Pack", fileType: "FOLDER"), to: id)
         putio.add(PutioFile(id: 9001, name: "Task.S01E01.mkv", fileType: "VIDEO", size: 100), to: 9000)
@@ -89,7 +91,7 @@ import Testing
         putio.add(PutioFile(id: 9003, name: "1_English", fileType: "FOLDER"), to: 9002)
         let found = try await LibraryIndex.walk(putio, maxFolders: 2000)
         #expect(found.map(\.file.id) == [9001])
-        #expect(putio.listCalls == 402)  // root + 400 folders + the pack; not Subs or its folders
+        #expect(putio.listCalls == 403)  // root + TV Series + 400 folders + the pack; not Subs or its folders
     }
 
     @Test func downloadsTakeTheRepairedEpisode() async {

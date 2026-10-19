@@ -66,6 +66,8 @@ struct MainView: View {
             DemoMode.apply(to: router)
             openPendingLink()
             await app.transfers.restore()
+            // Before the library update, so it reads the merged folders.
+            await mergeOldFolders()
             await app.refreshLibraryIfDue()
             await runAutoClean()
             await app.episodeAlerts.load()
@@ -114,7 +116,8 @@ struct MainView: View {
                     .padding(.bottom, sizeClass == .compact ? 96 : 40)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .task(id: toast) {
-                        try? await Task.sleep(for: .seconds(4))
+                        // Longer messages (the folder merge) stay up long enough to read.
+                        try? await Task.sleep(for: .seconds(max(4, Double(toast.count) / 18)))
                         withAnimation { router.toast = nil }
                     }
             }
@@ -157,6 +160,12 @@ struct MainView: View {
         }
     }
 
+    /// The one-time move of AMDB/Movies and AMDB/TV into Movies and TV Series; says what it did.
+    private func mergeOldFolders() async {
+        guard let message = await app.mergeOldFoldersIfNeeded()?.message else { return }
+        withAnimation { router.toast = message }
+    }
+
     /// Opt-in auto-clean: the first time, show the list; afterwards delete silently and say so.
     private func runAutoClean() async {
         let due = AutoCleaner.candidates(entries: app.library.entries, finished: await app.store.snapshot.finished,
@@ -193,8 +202,9 @@ struct MainView: View {
 
     private func wireEvents() {
         app.library.onUpdated = { [router, app] change in
-            // The very first fetch isn't news; later ones say what changed.
-            guard change.added != app.library.entries.count else { return }
+            // The very first fetch isn't news, nor files leaving because the library reads fewer folders now;
+            // later ones say what changed.
+            guard change.added != app.library.entries.count, !change.rescoped else { return }
             let message: String? = switch (change.added, change.removed) {
             case (0, 0): nil
             case let (added, 0): "Library updated · \(added) new"

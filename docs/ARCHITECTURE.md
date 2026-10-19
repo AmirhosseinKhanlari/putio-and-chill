@@ -50,7 +50,7 @@ Putio & Chill is one Swift package holding all the logic, and thin, platform-nat
 |---|---|
 | `AppModel` | Root object: settings, tokens, services (built by `ServiceFactory`), and the long-lived models below |
 | `ReleaseAggregator` | Asks every enabled release source in parallel and merges the results into one ranked list |
-| `LibraryIndex` | Walks put.io, matches files to TMDB, caches the result, tracks progress and Continue Watching |
+| `LibraryIndex` | Walks put.io (what `LibraryScope` covers), matches files to TMDB, caches the result, tracks progress and Continue Watching |
 | `TransferMonitor` | Sends releases to put.io, polls transfers, reports ready / failed events |
 | `TitleModel` | A title page: details, ratings, seasons, episode ratings, and which action to show |
 | `HomeModel`, `BrowseModel`, `SearchModel`, `ChartModel`, `ComingUpModel` | Screen models |
@@ -59,7 +59,9 @@ Putio & Chill is one Swift package holding all the logic, and thin, platform-nat
 | `SurpriseModel`, `AskSearch` | Surprise Me and Ask Chill |
 | `SubtitleFinder` | put.io tracks + OpenSubtitles, timing, per-file choice |
 | `PlaybackSession` | Progress sync to put.io while playing |
-| `LibraryOrganizer`, `PutioPaths` | Folder layout and Organize library |
+| `LibraryOrganizer`, `PutioPaths` | Folder layout (`DefaultFolders`: Movies, TV Series) and Organize library |
+| `LibraryScope` | What the library reads: Movies, TV Series, picked folders, loose top-level videos |
+| `FolderMergePlanner`, `OldFolderMerge` | One-time merge of the old AMDB/Movies and AMDB/TV folders (pure plan, then put.io calls) |
 | `DownloadsIndex`, `AutoCleaner` | Offline download records and auto-clean |
 | `LocalStore`, `LibraryCache`, `RatingsCache` | On-disk state |
 | `DeepLink`, `SleepTimer`, `StorageLocation` | Small shared pieces |
@@ -85,9 +87,11 @@ responses with `StubTransport`.
 
 **Opening the app**
 1. `LibraryIndex.loadCached()` shows the saved library immediately.
-2. `refreshLibraryIfDue()` re-walks put.io if the cache is older than the user's interval.
-3. New files are matched to TMDB (six at a time) and appear once matched.
-4. `ChillFeed` refreshes Latest Movies / Shows; screen models load TMDB rows.
+2. `mergeOldFoldersIfNeeded()` merges AMDB/Movies and AMDB/TV into Movies and TV Series (once per account).
+3. `refreshLibraryIfDue()` re-walks put.io if the cache is older than the user's interval (or was read with another
+   `LibraryScope`).
+4. New files are matched to TMDB (six at a time) and appear once matched.
+5. `ChillFeed` refreshes Latest Movies / Shows; screen models load TMDB rows.
 
 **Get & Watch**
 1. `TitleModel` builds a query (IMDb id, title, year, season/episode).

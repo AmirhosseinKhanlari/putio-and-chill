@@ -61,7 +61,7 @@ import Testing
         #expect(model.query(season: 2, episode: 4) == .episode(imdbID: "tt11280740", title: "Severance", season: 2, episode: 4))
         #expect(model.query(season: 2) == .season(imdbID: "tt11280740", title: "Severance", season: 2))
         let tv = model.target(season: 2, episode: 4)
-        #expect(FolderLayout.standard.displayPath(kind: tv.kind, title: tv.title, season: tv.season) == "AMDB/TV/Severance/Season 2")
+        #expect(FolderLayout.standard.displayPath(kind: tv.kind, title: tv.title, season: tv.season) == "TV Series/Severance/Season 2")
     }
 
     @Test func showOpensOnTheSeasonBeingWatched() async {

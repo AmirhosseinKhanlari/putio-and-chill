@@ -22,13 +22,13 @@ import Testing
         LibraryMatch(tmdbID: 95396, mediaType: .tv, season: 2, episode: episode, confidence: confidence, title: "Severance")
     }
 
-    /// root: AMDB/Movies (with one movie already inside a release folder), a chill download folder with a movie
+    /// root: Movies (with one movie already inside a release folder), a chill download folder with a movie
     /// release folder and a season pack, a "Downloads" folder holding one movie, a loose episode in root,
     /// and an unrecognized file.
     static func world() -> (FakePutio, [LibraryEntry]) {
         let putio = FakePutio()
         let files: [(PutioFile, Int64)] = [
-            (folder(1, "AMDB", in: 0), 0), (folder(2, "Movies", in: 1), 1),
+            (folder(2, "Movies", in: 0), 0),
             (folder(3, "Heat.1995.1080p.BluRay", in: 2), 2), (video(31, "Heat.1995.1080p.BluRay.mkv", in: 3), 3),
             (folder(4, "chill", in: 0), 0),
             (folder(5, "Dune.Part.Two.2024.2160p.WEB-DL", in: 4), 4), (video(51, "Dune.Part.Two.2024.2160p.WEB-DL.mkv", in: 5), 5),
@@ -56,10 +56,10 @@ import Testing
         let plan = try await LibraryOrganizer.plan(entries: entries, layout: .standard, putio: putio, store: LocalStore(fileURL: nil))
         let summary = plan.moves.map { "\($0.name) -> \($0.destination)\($0.isFolder ? " [folder]" : "")" }
         #expect(summary == [
-            "Dune.Part.Two.2024.2160p.WEB-DL -> AMDB/Movies [folder]",
-            "Dune.Part.Two.2024.720p.mkv -> AMDB/Movies",
-            "Severance.S02.1080p.WEB -> AMDB/TV/Severance/Season 2 [folder]",
-            "Severance.S02E03.1080p.mkv -> AMDB/TV/Severance/Season 2",
+            "Dune.Part.Two.2024.2160p.WEB-DL -> Movies [folder]",
+            "Dune.Part.Two.2024.720p.mkv -> Movies",
+            "Severance.S02.1080p.WEB -> TV Series/Severance/Season 2 [folder]",
+            "Severance.S02E03.1080p.mkv -> TV Series/Severance/Season 2",
         ])
         #expect(plan.inPlace == 1, "Heat already sits in a release folder inside Movies")
         #expect(plan.unrecognized.map(\.id) == [91])
@@ -67,7 +67,7 @@ import Testing
 
     @Test func folderTreeGivesTheSamePlanWithoutListingPutio() async throws {
         let (putio, entries) = Self.world()
-        let tree = FolderTree(folders: [Self.folder(1, "AMDB", in: 0), Self.folder(2, "Movies", in: 1),
+        let tree = FolderTree(folders: [Self.folder(2, "Movies", in: 0),
                                         Self.folder(3, "Heat.1995.1080p.BluRay", in: 2), Self.folder(4, "chill", in: 0),
                                         Self.folder(5, "Dune.Part.Two.2024.2160p.WEB-DL", in: 4),
                                         Self.folder(6, "Severance.S02.1080p.WEB", in: 4), Self.folder(7, "Downloads", in: 0)])
@@ -85,15 +85,14 @@ import Testing
         let plan = try await LibraryOrganizer.plan(entries: entries, layout: .standard, putio: putio, store: store)
         let moved = try await LibraryOrganizer.apply(plan, layout: .standard, putio: putio, store: store)
         #expect(moved == 4)
-        #expect(putio.createdFolders == ["TV", "Severance", "Season 2"])
+        #expect(putio.createdFolders == ["TV Series", "Severance", "Season 2"])
         #expect(putio.moved.map { $0.ids.sorted() } == [[5, 71], [6, 81]])
         #expect(putio.moved.first?.parent == 2)
     }
 
     @Test func lowConfidenceAndShowFoldersStayPut() async throws {
         let putio = FakePutio()
-        putio.add(Self.folder(1, "AMDB", in: 0), to: 0)
-        putio.add(Self.folder(2, "TV", in: 1), to: 1)
+        putio.add(Self.folder(2, "TV Series", in: 0), to: 0)
         putio.add(Self.folder(3, "Severance", in: 2), to: 2)
         putio.add(Self.video(31, "Severance.S02E04.mkv", in: 3), to: 3)
         putio.add(Self.video(32, "Severance.S02E05.mkv", in: 3), to: 3)

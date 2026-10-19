@@ -63,6 +63,8 @@ final class TVRouter {
     var player: TVPlayRequest?
     /// "Ready to watch" notice for a finished transfer.
     var ready: TrackedTransfer?
+    /// A short message in the corner (e.g. what the folder merge moved).
+    var notice: String?
 
     /// Pages opened from the sidebar's lower sections (Your Lists, Browse, Surprise Me).
     var listsPath: [TVRoute] = []

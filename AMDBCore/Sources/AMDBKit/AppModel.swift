@@ -112,6 +112,9 @@ public final class AppModel {
     /// put.io MP4 conversions of videos Apple devices can't play as they are.
     public let conversions = VideoConversions()
     @ObservationIgnored private var filesChangedRefresh: Task<Void, Never>?
+    /// Whether the one-time merge of the old AMDB folders runs (off in demo mode, which has no real put.io).
+    @ObservationIgnored public var mergesOldFolders = true
+    @ObservationIgnored private var oldFolderMergeRunning = false
     @ObservationIgnored private var lastTokens: [TokenKey: String] = [:]
 
     @ObservationIgnored private let tokens: any TokenStore
@@ -149,7 +152,11 @@ public final class AppModel {
         self.subtitleCache = subtitleCache
         let trakt = bundledTraktClientID?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.chartsService = (trakt?.isEmpty ?? true) ? nil : trakt.map(factory.makeCharts)
-        settings = AppSettings.load(from: defaults)
+        // A folder picked as the old AMDB/Movies or AMDB/TV goes back to the default (those are merged away).
+        let loaded = AppSettings.load(from: defaults)
+        let current = loaded.withoutOldFolderPicks()
+        if current != loaded { current.save(to: defaults) }
+        settings = current
         library = LibraryIndex(store: store, cache: libraryCache)
         transfers = TransferMonitor(store: store)
         myList = MyList(store: store)
@@ -189,6 +196,36 @@ public final class AppModel {
         }
     }
 
+    /// Moves what older builds saved in AMDB/Movies and AMDB/TV into Movies and TV Series (`OldFolderMerge`), once
+    /// per put.io account on this device, then reads the library again. Returns what it did (its `message` is for
+    /// the user); nil when it already ran for this account, is running, or couldn't reach put.io.
+    public func mergeOldFoldersIfNeeded() async -> OldFolderMergeReport? {
+        guard mergesOldFolders, let putio, !oldFolderMergeRunning else { return nil }
+        oldFolderMergeRunning = true
+        defer { oldFolderMergeRunning = false }
+        guard let account = try? await putio.accountInfo() else { return nil }
+        let key = Self.oldFolderMergeKey(account)
+        guard !userDefaults.bool(forKey: key) else { return nil }
+        let report = await OldFolderMerge.run(putio: putio)
+        // Folders picked in Settings that are the old ones go back to the defaults (they're merged, then removed).
+        let known = await store.snapshot.folderIDs
+        let oldIDs = report.oldFolderIDs.union([known["AMDB/Movies"], known["AMDB/TV"]].compactMap { $0 })
+        let migrated = settings.withoutOldFolderPicks(oldIDs: oldIDs)
+        if migrated != settings { updateSettings(migrated) }
+        // Done for this account once nothing is left to merge; until then it runs again at the next launch.
+        if report.finished { userDefaults.set(true, forKey: key) }
+        if report.changedPutio {
+            await FolderResolver.forgetAll(store: store)
+            await library.refresh(afterChanges: true)
+        }
+        return report
+    }
+
+    /// Remembered per put.io account, so another account signing in on this device gets its own merge.
+    static func oldFolderMergeKey(_ account: PutioAccount) -> String {
+        "amdb.oldFoldersMerged." + (account.userId.map(String.init) ?? account.username.lowercased())
+    }
+
     /// Connects a public IMDb watchlist from a link the user pasted. Returns what's wrong, or nil when it worked.
     public func connectIMDb(_ link: String) async -> String? {
         guard let ref = IMDbListRef.parse(link) else {
@@ -218,7 +255,8 @@ public final class AppModel {
     public func refreshLibraryIfDue(force: Bool = false, now: Date = Date()) async -> Bool {
         guard putio != nil else { return false }
         let due = library.isStale(maxAge: TimeInterval(settings.libraryUpdateMinutes * 60), now: now)
-        guard force || (settings.libraryAutoUpdate && due) || library.lastUpdated == nil else { return false }
+        // Also when what the library reads changed (a new build, or a folder picked in Settings).
+        guard force || (settings.libraryAutoUpdate && due) || library.lastUpdated == nil || library.needsRescan else { return false }
         // Asked for by the user: also retry files that had no TMDB match.
         await library.refresh(retryUnmatched: force, now: now)
         return true
@@ -437,5 +475,6 @@ public final class AppModel {
         imdbWatchlist.configure(link: tokens.read(.imdb), service: factory.imdbLists, catalog: catalog)
         transfers.configure(putio: putio, library: library)
         transfers.layout = FolderLayout(settings: settings)
+        library.scope = LibraryScope(layout: transfers.layout)
     }
 }

@@ -83,7 +83,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var libraryAutoUpdate = true
     /// How often the automatic library update runs.
     public var libraryUpdateMinutes = 60
-    /// Where movies and shows are saved in put.io; nil = AMDB/Movies and AMDB/TV.
+    /// Where movies and shows are saved in put.io; nil = Movies and TV Series at the top of put.io.
     public var moviesFolder: PutioFolderRef?
     public var tvFolder: PutioFolderRef?
     /// Episodes go into "Season N" folders inside the show's folder.
@@ -150,6 +150,15 @@ public struct AppSettings: Codable, Sendable, Equatable {
             decoded.sources.append(source)
         }
         return decoded
+    }
+
+    /// The same settings with any folder pick that is the old AMDB/Movies or AMDB/TV set back to the default (those
+    /// folders are merged into Movies and TV Series and then removed).
+    public func withoutOldFolderPicks(oldIDs: Set<Int64> = []) -> AppSettings {
+        var settings = self
+        if let movies = moviesFolder, DefaultFolders.isOldFolder(movies, oldIDs: oldIDs) { settings.moviesFolder = nil }
+        if let tv = tvFolder, DefaultFolders.isOldFolder(tv, oldIDs: oldIDs) { settings.tvFolder = nil }
+        return settings
     }
 
     public func save(to userDefaults: UserDefaults) {

@@ -30,6 +30,7 @@ struct TVRootView: View {
                 .tabViewStyle(.sidebarAdaptable)
                 .modifier(TVSidebarAccountHeader(name: accountName))
                 .overlay(alignment: .topTrailing) { readyNotice }
+                .overlay(alignment: .topTrailing) { messageNotice }
                 .task { await startUp() }
                 .task(id: app.putio == nil) { username = try? await app.putio?.accountInfo().username }
                 .onChange(of: app.library.entries) { _, _ in TVTopShelfPublisher.publish(app.library) }
@@ -185,6 +186,24 @@ struct TVRootView: View {
         }
     }
 
+    /// A message (what the folder merge moved): the same quiet card, without a button.
+    @ViewBuilder private var messageNotice: some View {
+        if router.ready == nil, let notice = router.notice {
+            Text(notice)
+                .font(.system(size: 24, weight: .semibold))
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: 760, alignment: .leading)
+                .padding(.horizontal, 34).padding(.vertical, 22)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 30))
+                .padding(.top, 40).padding(.trailing, 60)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .task(id: notice) {
+                    try? await Task.sleep(for: .seconds(12))
+                    withAnimation { if router.notice == notice { router.notice = nil } }
+                }
+        }
+    }
+
     private func open(_ link: DeepLink?) async {
         guard let link, app.putio != nil else { return }
         if app.library.entries.isEmpty { await app.library.loadCached() }
@@ -254,6 +273,10 @@ struct TVRootView: View {
         await app.myList.load()
         await app.transfers.restore()
         Task { await app.refreshChillFeed(force: true) }
+        // The one-time move of AMDB/Movies and AMDB/TV into Movies and TV Series, before the library update reads them.
+        if let message = await app.mergeOldFoldersIfNeeded()?.message {
+            withAnimation(.snappy) { router.notice = message }
+        }
         await app.refreshLibraryIfDue()
     }
 }
