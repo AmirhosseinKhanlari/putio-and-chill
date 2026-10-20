@@ -266,6 +266,11 @@ struct TVRootView: View {
                 file: PutioFile(id: 2, name: "Severance.S02E04.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO", size: 2_000_000_000),
                 match: LibraryMatch(tmdbID: 95396, mediaType: .tv, season: 2, episode: 4, confidence: 1, title: "Severance"),
                 folderName: nil), resumeFrom: 0, exactStart: true)
+        case "player-url":
+            // `-demoPlayURL <url>`: a test video played through the player routing (see DemoMode.playURL).
+            if let file = DemoMode.playFile {
+                router.player = TVPlayRequest(entry: LibraryEntry(file: file, match: nil, folderName: nil), resumeFrom: 0, exactStart: true)
+            }
         case "player-new":
             // A download that just finished, which the library hasn't seen yet (it isn't in the demo put.io's folders).
             let arrival = DemoCatalog.movies[6]

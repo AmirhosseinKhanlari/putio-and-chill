@@ -94,6 +94,9 @@ struct PlayerControlsView: View {
                     NextUpCard(next: next, chrome: chrome, regular: regular, liftedBy: visible ? (regular ? 150 : 110) : 0)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
+                if let notice = engine.airPlayNotice, chrome.failure == nil {
+                    AirPlayNotice(text: notice, regular: regular)
+                }
                 if let failure = chrome.failure {
                     PlayerFailureView(message: failure, link: chrome.failureLink, close: chrome.onClose)
                 }
@@ -158,7 +161,8 @@ struct PlayerControlsView: View {
                     .padding(.horizontal, 12).frame(height: 32)
                     .glassCapsule()
             }
-            RoutePicker()
+            // The built-in player can't send the picture over AirPlay (only the sound): no video devices first there.
+            RoutePicker(prefersVideo: engine.kind == .apple)
                 .frame(width: 44, height: 44)
                 .glassCapsule()
                 .accessibilityLabel("AirPlay")
@@ -211,7 +215,8 @@ struct PlayerControlsView: View {
                 sleepMenu
                 speedMenu
                 if chrome.subtitles != nil {
-                    pillButton(chrome.subtitles?.isShowing == true ? "captions.bubble.fill" : "captions.bubble",
+                    let showing = chrome.subtitles?.isShowing == true || engine.embeddedSubtitleID != nil
+                    pillButton(showing ? "captions.bubble.fill" : "captions.bubble",
                                title: regular ? "Subtitles" : nil, label: "Subtitles") { showOptions = true }
                 }
                 if let label = chrome.nextLabel {
@@ -474,15 +479,39 @@ struct Scrubber: View {
 
 /// AirPlay button.
 struct RoutePicker: UIViewRepresentable {
+    var prefersVideo = true
+
     func makeUIView(context: Context) -> AVRoutePickerView {
         let picker = AVRoutePickerView()
         picker.tintColor = .white
         picker.activeTintColor = .systemBlue
-        picker.prioritizesVideoDevices = true
+        picker.prioritizesVideoDevices = prefersVideo
         return picker
     }
 
-    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) { uiView.prioritizesVideoDevices = prefersVideo }
+}
+
+/// The built-in player is on and AirPlay is the audio route: says plainly that only the sound goes there.
+private struct AirPlayNotice: View {
+    let text: String
+    let regular: Bool
+
+    var body: some View {
+        VStack {
+            Label(text, systemImage: "airplayaudio")
+                .font(.footnote.weight(.medium))
+                .multilineTextAlignment(.leading)
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .glassRounded(16)
+                .frame(maxWidth: 460)
+                .padding(.top, regular ? 96 : 72)
+            Spacer()
+        }
+        .safeAreaPadding(.horizontal)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+    }
 }
 
 struct PlayerFailureView: View {

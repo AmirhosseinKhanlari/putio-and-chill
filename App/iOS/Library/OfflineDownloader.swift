@@ -4,16 +4,21 @@ import AVFoundation
 import Observation
 
 /// Offline copies via Apple's HLS download system (same as the Apple TV app): resumable, keeps subtitles,
-/// plays in the same native player. Not supported in the iOS Simulator.
+/// plays in the same native player. A video Apple's player can't play is downloaded as the original file instead
+/// (OriginalFileDownloader) and plays in the built-in player. Apple's HLS downloads don't run in the Simulator.
 @Observable @MainActor
 final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
     static var isSupported: Bool {
         #if targetEnvironment(simulator)
-        false
+        // Only the demo's original-file download (from a local test server) works here.
+        DemoMode.playURL != nil
         #else
         true
         #endif
     }
+
+    /// A downloaded original file (the built-in player plays it), rather than an HLS package (Apple's player).
+    static func isOriginalFile(_ url: URL) -> Bool { url.pathExtension.lowercased() != "movpkg" }
 
     @ObservationIgnored private let app: AppModel
     @ObservationIgnored private var session: AVAssetDownloadURLSession?
@@ -25,9 +30,12 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
     @ObservationIgnored private var progressObservers: [Int64: NSKeyValueObservation] = [:]
     /// Downloads being set up (waiting for put.io's conversion or the stream): not started twice.
     @ObservationIgnored private var starting: Set<Int64> = []
+    /// Original-file downloads, for videos Apple's player can't play.
+    @ObservationIgnored private let originals: OriginalFileDownloader
 
     init(app: AppModel) {
         self.app = app
+        originals = OriginalFileDownloader(app: app, identifier: "app.amdb.downloads.originals")
         super.init()
     }
 
@@ -42,6 +50,7 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
     /// Re-attaches to downloads that continued while the app was closed.
     func restore() {
         guard Self.isSupported else { return }
+        Task { await originals.restore() }
         ensureSession().getAllTasks { tasks in
             MainActor.assumeIsolated {
                 for case let task as AVAssetDownloadTask in tasks {
@@ -58,7 +67,9 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
     }
 
     private func markInterrupted() async {
-        for record in app.downloads.records where tasks[record.fileID] == nil && !starting.contains(record.fileID) {
+        await originals.restore()
+        for record in app.downloads.records where tasks[record.fileID] == nil && !starting.contains(record.fileID)
+            && !originals.isRunning(fileID: record.fileID) {
             switch record.state {
             case .queued, .downloading:
                 await app.downloads.update(fileID: record.fileID) { $0.state = .failed(message: "Stopped. Tap download to try again.") }
@@ -69,7 +80,8 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
     }
 
     func start(_ entry: LibraryEntry) async {
-        guard Self.isSupported, let putio = app.putio, tasks[entry.id] == nil, !starting.contains(entry.id) else { return }
+        guard Self.isSupported, let putio = app.putio, tasks[entry.id] == nil, !starting.contains(entry.id),
+              !originals.isRunning(fileID: entry.id) else { return }
         starting.insert(entry.id)
         defer { starting.remove(entry.id) }
         let match = entry.match
@@ -81,11 +93,21 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         // subtitles menu works offline too.
         let fileID = entry.id
         Task { await app.cachePutioSubtitles(fileID: fileID) }
+        // A video Apple's player can't play (put.io's codec info says so, or the built-in player played it before):
+        // the original file, for the built-in player. No conversion.
+        if await BuiltInPlayer.plan(fileID: entry.id, app: app).firstStep() == .play(.builtIn) {
+            await startOriginal(entry)
+            return
+        }
         var asset = AVURLAsset(url: putio.hlsURL(fileID: entry.id, subtitles: false))
-        // A stream Apple devices can't play, in a format put.io says needs converting: put.io converts it to MP4 first
-        // (the button shows how far), then it downloads like any other.
         let streamable = asset
         let playable = await Self.within(seconds: 20, { try? await streamable.load(.isPlayable) }) ?? false
+        // put.io's stream doesn't play: the original file for the built-in player, or (in the Mac app, or with "Convert
+        // with put.io") put.io converts it to MP4 first (the button shows how far), then it downloads like any other.
+        if !playable, BuiltInPlayer.isAvailable, app.settings.unsupportedVideoPlayer == .builtIn {
+            await startOriginal(entry)
+            return
+        }
         if !playable, await app.conversions.needsConversion(fileID: entry.id) {
             guard await app.conversions.makePlayable(fileID: entry.id) else {
                 await app.downloads.update(fileID: entry.id) {
@@ -120,6 +142,17 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         tasks[entry.id] = task
         observeProgress(task, fileID: entry.id)
         task.resume()
+    }
+
+    /// Downloads the original file from put.io (its download link) in the background.
+    private func startOriginal(_ entry: LibraryEntry) async {
+        guard let putio = app.putio, let url = try? await putio.originalURL(fileID: entry.id) else {
+            await app.downloads.update(fileID: entry.id) { $0.state = .failed(message: "put.io didn't give a download link. Try again.") }
+            return
+        }
+        // Cancelled while it was asked for the link.
+        guard app.downloads.record(fileID: entry.id) != nil else { return }
+        originals.start(fileID: entry.id, url: url, fileName: entry.file.name, expectedBytes: entry.file.size)
     }
 
     /// `work`'s answer, or nil if it takes longer than `seconds` (it's left to finish on its own).
@@ -162,6 +195,7 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
     func cancel(fileID: Int64) async {
         tasks[fileID]?.cancel()
         tasks[fileID] = nil
+        originals.cancel(fileID: fileID)
         await remove(fileID: fileID)
     }
 
@@ -183,8 +217,12 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
 
     /// Space the offline copy takes on this device.
     func size(fileID: Int64) -> Int64? {
-        guard let url = localURL(fileID: fileID),
-              let files = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.totalFileAllocatedSizeKey]) else { return nil }
+        guard let url = localURL(fileID: fileID) else { return nil }
+        // An original file is one file; an HLS package is a folder.
+        if Self.isOriginalFile(url) {
+            return (try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize.map(Int64.init)
+        }
+        guard let files = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.totalFileAllocatedSizeKey]) else { return nil }
         var total: Int64 = 0
         for case let file as URL in files {
             total += Int64((try? file.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize ?? 0)
@@ -194,8 +232,8 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
 
     func localURL(fileID: Int64) -> URL? {
         guard case let .done(stored)? = app.downloads.record(fileID: fileID)?.state else { return nil }
-        // Demo mode's "downloads" have no file behind them; they play the demo video.
-        if DemoMode.isEnabled { return app.putio?.hlsURL(fileID: fileID, subtitles: false) }
+        // Demo mode's "downloads" have no file behind them; they play the demo video (an original it downloaded does).
+        if DemoMode.isEnabled, !stored.hasPrefix("Library/Originals/") { return app.putio?.hlsURL(fileID: fileID, subtitles: false) }
         let path = DownloadPaths.resolve(stored: stored, home: NSHomeDirectory())
         for candidate in [path, "/private" + path] where FileManager.default.fileExists(atPath: candidate) {
             return URL(fileURLWithPath: candidate)

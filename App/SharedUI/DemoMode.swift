@@ -7,10 +7,24 @@ import Foundation
 enum DemoMode {
     static var isEnabled: Bool { ProcessInfo.processInfo.arguments.contains("-demo") }
 
-    static var screen: String? {
+    static var screen: String? { value(after: "-demoScreen") }
+
+    /// `-demoPlayURL <url>` (with `-demoScreen player-url`): a test video (e.g. from a local server) played through
+    /// the app's player routing as a demo file: put.io's "stream" and its original file are both this URL, so a file
+    /// Apple's player can't play falls back to the built-in player. `-demoCodecs mpeg4,mp3` makes put.io report its
+    /// codecs (and that it needs converting), which sends it straight to the built-in player.
+    static var playURL: URL? { value(after: "-demoPlayURL").flatMap(URL.init(string:)) }
+    static var playCodecs: [String]? { value(after: "-demoCodecs").map { $0.split(separator: ",").map(String.init) } }
+    static let playFileID: Int64 = 7777
+
+    private static func value(after flag: String) -> String? {
         let args = ProcessInfo.processInfo.arguments
-        guard let index = args.firstIndex(of: "-demoScreen"), index + 1 < args.count else { return nil }
+        guard let index = args.firstIndex(of: flag), index + 1 < args.count else { return nil }
         return args[index + 1]
+    }
+
+    static var playFile: PutioFile? {
+        playURL.map { PutioFile(id: playFileID, name: $0.lastPathComponent, fileType: "VIDEO", size: 50_000_000) }
     }
 
     @MainActor static func makeModel() -> AppModel {
@@ -87,6 +101,9 @@ enum DemoMode {
             // A video put.io has to convert for Apple devices first.
             router.player = PlayerRequest(file: PutioFile(id: 5, name: "Home.Video.2019.mov", fileType: "VIDEO"),
                                           title: "Home Video", resumeFrom: 0, played: nil, next: nil, exactStart: true)
+        case "player-url":
+            guard let file = playFile else { break }
+            router.player = PlayerRequest(file: file, title: file.name, resumeFrom: 0, played: nil, next: nil, exactStart: true)
         case "player-episode":
             // Severance S2 E4, a few seconds before the credits, to show the Next Episode card.
             router.player = PlayerRequest(file: PutioFile(id: 2, name: "Severance.S02E04.1080p.WEB.H264-NTb.mkv", fileType: "VIDEO"),
@@ -313,7 +330,20 @@ final class DemoPutio: PutioService, @unchecked Sendable {
     func fileStatus(id: Int64) async throws -> PutioFile {
         let file = try await file(id: id)
         return PutioFile(id: file.id, name: file.name, fileType: file.fileType, size: file.size, createdAt: file.createdAt,
-                         needConvert: id == 5, isMp4Available: mp4(id).status == .completed)
+                         needConvert: id == 5 || needsConvertPlayFile(id), isMp4Available: mp4(id).status == .completed)
+    }
+    func mediaInfo(fileID: Int64) async throws -> PutioMediaInfo {
+        if fileID == DemoMode.playFileID, let codecs = DemoMode.playCodecs {
+            let audio: Set<String> = ["aac", "mp3", "ac3", "eac3", "dts", "truehd", "flac", "opus", "vorbis", "mp2", "pcm_s16le", "wmav2"]
+            return PutioMediaInfo(videoCodecs: codecs.filter { !audio.contains($0) }, audioCodecs: codecs.filter(audio.contains),
+                                  needConvert: true, isMp4Available: false)
+        }
+        return PutioMediaInfo(needConvert: fileID == 5 || needsConvertPlayFile(fileID), isMp4Available: mp4(fileID).status == .completed)
+    }
+    /// The demo test video needs converting unless it's an MP4 (put.io streams those).
+    private func needsConvertPlayFile(_ id: Int64) -> Bool {
+        guard id == DemoMode.playFileID, let url = DemoMode.playURL else { return false }
+        return !["mp4", "m4v", "mov"].contains(url.pathExtension.lowercased())
     }
     func mp4Status(fileID: Int64) async throws -> PutioMp4Status { mp4(fileID) }
     func convertToMp4(fileID: Int64) async throws -> PutioMp4Status {
@@ -403,6 +433,7 @@ final class DemoPutio: PutioService, @unchecked Sendable {
     }
 
     func file(id: Int64) async throws -> PutioFile {
+        if id == DemoMode.playFileID, let file = DemoMode.playFile { return file }
         if let file = lock.withLock({ tree.values.joined().first { $0.id == id } ?? extraFiles[id] }) { return file }
         return PutioFile(id: id, name: "Folder", fileType: "FOLDER")
     }
@@ -424,6 +455,7 @@ final class DemoPutio: PutioService, @unchecked Sendable {
     func setStartFrom(fileID: Int64, seconds: Int) async throws { lock.withLock { positions[fileID] = seconds } }
     func resetStartFrom(fileID: Int64) async throws { lock.withLock { positions[fileID] = 0 } }
     func hlsURL(fileID: Int64, subtitles: Bool) -> URL {
+        if fileID == DemoMode.playFileID, let url = DemoMode.playURL { return url }
         // The video that needs converting has no stream until put.io has converted it.
         if fileID == 5, mp4(5).status != .completed { return URL(string: "https://devstreaming-cdn.apple.com/videos/missing/master.m3u8")! }
         // Like put.io: subtitle tracks only when asked for (the app streams without them and draws its own).

@@ -6,6 +6,8 @@ import SwiftUI
 /// Apple's TV player with one Subtitles button of ours (like the iPhone app): put.io's subtitles and OpenSubtitles,
 /// timing, and style, all drawn over the video in the chosen style. Apple's own Subtitles button is hidden (its Audio
 /// button stays); captions inside the video stream, if any, are in our menu too. Progress syncs to put.io.
+/// A video Apple's player can't play goes to the built-in player (TVBuiltInPlayerController) instead, with the same
+/// menus, subtitles, Next Episode and progress sync.
 struct TVPlayerView: UIViewControllerRepresentable {
     let request: TVPlayRequest
     @Environment(AppModel.self) private var app
@@ -23,16 +25,17 @@ struct TVPlayerView: UIViewControllerRepresentable {
             router.player = nil
             router.open(.versions(request))
         }
+        coordinator.onClose = { [router] in router.player = nil }
         return coordinator
     }
 
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
+    func makeUIViewController(context: Context) -> TVPlayerHostController {
         context.coordinator.makeController()
     }
 
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {}
+    func updateUIViewController(_ controller: TVPlayerHostController, context: Context) {}
 
-    static func dismantleUIViewController(_ controller: AVPlayerViewController, coordinator: TVPlaybackCoordinator) {
+    static func dismantleUIViewController(_ controller: TVPlayerHostController, coordinator: TVPlaybackCoordinator) {
         coordinator.finish()
     }
 }
@@ -51,7 +54,16 @@ final class TVPlaybackCoordinator {
     private let finder: SubtitleFinder
     private let line = TVSubtitleLine()
     private let player: AVPlayer
+    private let host = TVPlayerHostController()
     private weak var controller: AVPlayerViewController?
+    /// The built-in player, while it plays this video (nil: Apple's player).
+    private var builtIn: PlayerEngine?
+    private let builtInChrome = TVBuiltInChrome()
+    private var builtInTicker: Task<Void, Never>?
+    /// Which player to try next when one fails.
+    private let plan: PlaybackPlan?
+    private var routingTask: Task<Void, Never>?
+    private var endHandled = false
     private var timeObserver: Any?
     private var finished = false
     /// Set once playback is at the starting point (after the seek to the resume position): before that the player
@@ -80,6 +92,7 @@ final class TVPlaybackCoordinator {
     var onNextTransfer: ((TrackedTransfer) -> Void)?
     var onChooseVersion: ((TVVersionsRequest) -> Void)?
     var onDetails: ((CatalogItem) -> Void)?
+    var onClose: (() -> Void)?
 
     init(request: TVPlayRequest, app: AppModel) {
         self.request = request
@@ -91,9 +104,11 @@ final class TVPlaybackCoordinator {
                                       library: app.library, store: app.store, entry: request.entry, watchLog: app.watchLog)
             // Subtitles stay out of the stream: ours draws them, so style and timing apply to all of them.
             player = AVPlayer(url: putio.hlsURL(fileID: request.entry.id, subtitles: false))
+            plan = BuiltInPlayer.plan(fileID: request.entry.id, app: app)
         } else {
             session = nil
             player = AVPlayer()
+            plan = nil
         }
         finder = app.subtitleFinder(for: request.subtitleContext, fileSize: request.entry.file.size)
         line.style = app.settings.subtitleStyle
@@ -106,7 +121,7 @@ final class TVPlaybackCoordinator {
         }
     }
 
-    func makeController() -> AVPlayerViewController {
+    func makeController() -> TVPlayerHostController {
         let controller = AVPlayerViewController()
         controller.player = player
         // No languages allowed: Apple's Subtitles button goes away (the Audio one stays), so ours is the only one.
@@ -125,18 +140,36 @@ final class TVPlaybackCoordinator {
         metadata.identifier = .commonIdentifierTitle
         metadata.value = request.title as NSString
         player.currentItem?.externalMetadata = [metadata]
+        host.show(controller)
+
+        builtInChrome.title = request.title
+        if let match = request.entry.match, let season = match.season, let episode = match.episode {
+            builtInChrome.subtitle = "Season \(season) · Episode \(episode)"
+        }
+        builtInChrome.onClose = { [weak self] in self?.close() }
 
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 4), queue: .main) { [weak self] time in
-            MainActor.assumeIsolated { self?.tick(time.seconds) }
-        }
-        if request.exactStart || session == nil {
-            start(at: request.resumeFrom)
-        } else {
-            // It may have been watched further on another device: put.io's position, briefly, then play.
-            Task { [weak self, app, id = request.entry.id] in
-                let fresh = await app.library.freshResumeSeconds(fileID: id)
-                self?.start(at: fresh)
+            MainActor.assumeIsolated {
+                guard let self, self.builtIn == nil else { return }
+                self.tick(time.seconds)
             }
+        }
+        // Which player first (Apple's, or the built-in one when put.io's codec info says Apple's can't decode it),
+        // and where to start: the request's position, or put.io's newer one (it may have been watched further on
+        // another device).
+        routingTask = Task { [weak self, app, id = self.request.entry.id, exact = self.request.exactStart || self.session == nil] in
+            let fresh = exact ? nil : await app.library.freshResumeSeconds(fileID: id)
+            guard let self, !self.finished else { return }
+            let seconds = fresh ?? self.request.resumeFrom
+            let step = await self.plan?.firstStep() ?? .play(.apple)
+            BuiltInPlayer.log.notice("file \(id): first \(String(describing: step)) (TV)")
+            if step == .play(.builtIn), await self.switchToBuiltIn(at: Double(seconds)) {
+                self.startSeconds = seconds
+                self.atStart = true
+            } else {
+                self.start(at: seconds)
+            }
+            await self.watchApplesPlayer()
         }
         // Pausing (or reaching the end) saves the position, for put.io and the other devices.
         pauseObservation = player.observe(\.timeControlStatus, options: [.old, .new]) { [weak self] _, change in
@@ -168,13 +201,12 @@ final class TVPlaybackCoordinator {
                                                              object: nil, queue: .main) { [weak self] note in
             let item = note.object as? AVPlayerItem
             MainActor.assumeIsolated {
-                guard let self, item === self.player.currentItem, let next = self.nextUp else { return }
-                // The episode is over: play the next one now if it's in put.io (and auto-play is on), else offer it.
-                if self.autoplay, next.isInPutio { self.playNext() } else { self.creditsDismissed = false; self.refreshNextActions(atEnd: true) }
+                guard let self, item === self.player.currentItem else { return }
+                self.playbackEnded()
             }
         }
         rebuildMenus()
-        // A video Apple devices can't play as it is: put.io converts it (a card shows how far), then it plays.
+        // A video put.io has to convert first (the last resort): a card shows how far, then it plays.
         if let content = controller.contentOverlayView, app.putio != nil {
             let card = UIHostingController(rootView: TVConversionOverlay(conversions: app.conversions, fileID: request.entry.id))
             card.view.backgroundColor = .clear
@@ -183,34 +215,175 @@ final class TVPlaybackCoordinator {
             card.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             content.addSubview(card.view)
             controller.addChild(card)
-            Task { [weak self] in await self?.convertIfNeeded() }
         }
-        return controller
+        return host
     }
 
-    /// If the video doesn't start within 20 s (or fails) and put.io says its format needs converting, converts it
-    /// and then plays it. Not done up front: put.io also flags videos only web browsers can't play.
-    private func convertIfNeeded() async {
-        let fileID = request.entry.id
-        for _ in 0..<20 {
-            if player.currentItem?.status == .readyToPlay || finished { return }
-            if player.currentItem?.status == .failed { break }
+    // MARK: Which player
+
+    /// Apple's player has up to 20 s to get going (60 s when put.io doesn't say the format needs converting). If it
+    /// fails, the next player: the built-in one on the original file, then put.io's conversion, the last resort.
+    private func watchApplesPlayer() async {
+        guard let plan, builtIn == nil else { return }
+        for second in 1...60 {
             try? await Task.sleep(for: .seconds(1))
+            guard !finished, builtIn == nil else { return }
+            if player.currentItem?.status == .readyToPlay, await applesPlayerDecodes() {
+                plan.succeeded(.apple)
+                BuiltInPlayer.log.notice("file \(self.request.entry.id): playing with apple (TV)")
+                return
+            }
+            let failed = player.currentItem?.status == .failed || (player.currentItem?.status == .readyToPlay)
+            let stuck = second == 20 ? await app.conversions.needsConversion(fileID: request.entry.id) : false
+            if failed || stuck || second == 60 { break }
         }
-        guard let putio = app.putio, !finished, await app.conversions.needsConversion(fileID: fileID) else { return }
+        guard !finished else { return }
+        await moveOn(after: .apple)
+    }
+
+    /// "Ready to play" can also mean a video AVFoundation opens but can't decode (a black picture).
+    private func applesPlayerDecodes() async -> Bool {
+        guard let asset = player.currentItem?.asset else { return false }
+        for track in (try? await asset.loadTracks(withMediaType: .video)) ?? [] where (try? await track.load(.isDecodable)) == false {
+            return false
+        }
+        let audio = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+        if audio.isEmpty { return true }
+        for track in audio where (try? await track.load(.isDecodable)) != false { return true }
+        return false
+    }
+
+    /// `failed` couldn't play it: the next step of the plan.
+    private func moveOn(after failed: PlaybackEngineKind) async {
+        guard let plan, !finished else { return }
+        var step = await plan.step(afterFailureOf: failed)
+        BuiltInPlayer.log.notice("file \(self.request.entry.id): \(failed.rawValue) failed, next \(String(describing: step)) (TV)")
+        while !finished {
+            switch step {
+            case .play(.builtIn):
+                if await switchToBuiltIn(at: resumePoint) { return }
+                step = await plan.step(afterFailureOf: .builtIn)
+            case .play(.apple):
+                switchToApple(url: app.putio?.hlsURL(fileID: request.entry.id, subtitles: false))
+                await watchApplesPlayer()
+                return
+            case .convert:
+                switchToApple(url: nil)
+                await convert()
+                return
+            case .fail:
+                if builtIn != nil { builtInChrome.message = "This video couldn't be played. Try another version of it." }
+                return
+            }
+        }
+    }
+
+    private var resumePoint: Double { max(currentSeconds, Double(startSeconds)) }
+
+    /// The built-in player takes over the screen, on put.io's link to the original file.
+    private func switchToBuiltIn(at seconds: Double) async -> Bool {
+        guard let putio = app.putio else { return false }
+        let fileID = request.entry.id
+        guard let original = try? await putio.originalURL(fileID: fileID), !finished,
+              let backend = BuiltInPlayer.backend(url: original, audioLanguage: app.settings.audioLanguage,
+                                                  refreshURL: { try? await putio.originalURL(fileID: fileID) }) else { return false }
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        let engine = PlayerEngine(backend: backend)
+        engine.onPause = { [weak self] in self?.saveProgress() }
+        engine.enableNowPlaying(title: request.title)
+        builtIn = engine
+        builtInChrome.message = nil
+        endHandled = false
+        host.show(TVBuiltInPlayerController(engine: engine, chrome: builtInChrome, line: line))
+        engine.start(at: seconds)
+        rebuildMenus()
+        builtInTicker = Task { [weak self] in await self?.watchBuiltIn(engine) }
+        return true
+    }
+
+    /// Back to Apple's player (the built-in one failed, or put.io converted the video).
+    private func switchToApple(url: URL?) {
+        builtInTicker?.cancel()
+        builtIn?.tearDown()
+        builtIn = nil
+        builtInChrome.nextActions = []
+        shownActions = []
+        if let controller { host.show(controller) }
+        if let url {
+            let item = AVPlayerItem(url: url)
+            let metadata = AVMutableMetadataItem()
+            metadata.identifier = .commonIdentifierTitle
+            metadata.value = request.title as NSString
+            item.externalMetadata = [metadata]
+            player.replaceCurrentItem(with: item)
+            let resumeAt = Double(startSeconds)
+            if resumeAt > 0 { player.seek(to: CMTime(seconds: resumeAt, preferredTimescale: 600)) }
+            player.play()
+            Task { await loadStreamCaptions() }
+        }
+        rebuildMenus()
+    }
+
+    /// The built-in player's clock drives subtitles, Next Episode, the sleep timer and saving; a failure moves on.
+    private func watchBuiltIn(_ engine: PlayerEngine) async {
+        var remembered = false
+        var waited = 0
+        while !Task.isCancelled, !finished, builtIn === engine {
+            try? await Task.sleep(for: .milliseconds(250))
+            if engine.status == .ready {
+                if !remembered {
+                    remembered = true
+                    plan?.succeeded(.builtIn)
+                    BuiltInPlayer.log.notice("file \(self.request.entry.id): playing with builtIn (TV)")
+                }
+                tick(engine.position)
+                if engine.duration > 0, engine.position >= engine.duration - 1, !engine.isPlaying, !endHandled {
+                    endHandled = true
+                    playbackEnded()
+                }
+            } else {
+                waited += 1
+            }
+            if engine.status.isFailed || waited >= 240 {
+                await moveOn(after: .builtIn)
+                return
+            }
+        }
+    }
+
+    /// put.io converts it to MP4, then Apple's player plays the stream.
+    private func convert() async {
+        let fileID = request.entry.id
+        guard let putio = app.putio, !finished else { return }
         player.pause()
         let ok = await app.conversions.makePlayable(fileID: fileID)
         guard ok, !finished else { return }
-        let resumeAt = max(player.currentTime().seconds.isFinite ? player.currentTime().seconds : 0, Double(startSeconds))
-        let item = AVPlayerItem(url: putio.hlsURL(fileID: fileID, subtitles: false))
-        let metadata = AVMutableMetadataItem()
-        metadata.identifier = .commonIdentifierTitle
-        metadata.value = request.title as NSString
-        item.externalMetadata = [metadata]
-        player.replaceCurrentItem(with: item)
-        if resumeAt > 0 { await player.seek(to: CMTime(seconds: resumeAt, preferredTimescale: 600)) }
-        player.play()
-        await loadStreamCaptions()
+        switchToApple(url: putio.hlsURL(fileID: fileID, subtitles: false))
+    }
+
+    /// Where playback is, whichever player plays.
+    private var currentSeconds: Double {
+        if let builtIn { return builtIn.position }
+        let seconds = player.currentTime().seconds
+        return seconds.isFinite ? seconds : 0
+    }
+
+    private var currentDuration: Double {
+        if let builtIn { return builtIn.duration }
+        let seconds = player.currentItem?.duration.seconds ?? 0
+        return seconds.isFinite ? seconds : 0
+    }
+
+    private func pausePlayback() { builtIn?.pause() ?? player.pause() }
+
+    private func setVolume(_ volume: Float) {
+        if let builtIn { builtIn.volume = volume } else { player.volume = volume }
+    }
+
+    private func close() {
+        finish()
+        onClose?()
     }
 
     private var lastSync = 0.0
@@ -232,21 +405,31 @@ final class TVPlaybackCoordinator {
 
     private func tick(_ seconds: Double) {
         guard seconds.isFinite else { return }
-        let text = finder.text(at: seconds)
+        let text: String? = if case let .text(embedded)? = builtIn?.embeddedSubtitle { embedded }
+            else if builtIn?.embeddedSubtitleID != nil { nil }
+            else { finder.text(at: seconds) }
         if line.text != text { line.text = text }
         updateNextOffer(at: seconds)
         applySleepTimer(position: seconds)
         // Either way: after seeking back, the earlier position is saved without waiting to pass the old one.
         if atStart, abs(seconds - lastSync) >= 10, let session {
             lastSync = seconds
-            let duration = player.currentItem?.duration.seconds ?? 0
-            Task { await session.tick(seconds: seconds, duration: duration.isFinite ? duration : 0) }
+            let duration = currentDuration
+            Task { await session.tick(seconds: seconds, duration: duration) }
         }
+    }
+
+    /// The episode is over: play the next one now if it's in put.io (and auto-play is on), else offer it.
+    private func playbackEnded() {
+        guard let next = nextUp else { return }
+        if autoplay, next.isInPutio { playNext() } else { creditsDismissed = false; refreshNextActions(atEnd: true) }
     }
 
     func finish() {
         guard !finished else { return }
         finished = true
+        routingTask?.cancel()
+        builtInTicker?.cancel()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         gettingTask?.cancel()
@@ -255,16 +438,18 @@ final class TVPlaybackCoordinator {
         pauseObservation?.invalidate()
         player.pause()
         saveProgress()
+        builtIn?.onPause = nil
+        builtIn?.tearDown()
     }
 
     /// Saves where playback is now (in the library at once, then to put.io), finishing even if the app is leaving.
     private func saveProgress() {
-        let position = player.currentTime().seconds
-        let duration = player.currentItem?.duration.seconds ?? 0
+        let position = currentSeconds
+        let duration = currentDuration
         guard let session, atStart, position.isFinite, position > 0 else { return }
         lastSync = position
         BackgroundSave.run("Save playback position") {
-            await session.finish(seconds: position, duration: duration.isFinite ? duration : 0)
+            await session.finish(seconds: position, duration: duration)
         }
     }
 
@@ -275,7 +460,8 @@ final class TVPlaybackCoordinator {
     /// From the start of the credits: "Next Episode · 8" counting down (then it plays), and "Watch Credits".
     /// Not in put.io yet: "Get Next Episode", which fetches it and plays it when ready.
     private func updateNextOffer(at seconds: Double) {
-        guard nextUp != nil, let duration = player.currentItem?.duration.seconds, duration.isFinite, duration > 0 else { return }
+        let duration = currentDuration
+        guard nextUp != nil, duration > 0 else { return }
         let remaining = duration - seconds
         if remaining > NextUp.creditsLength(duration: duration) {
             // Before the credits (or seeked back): nothing on screen unless a download is under way.
@@ -288,7 +474,7 @@ final class TVPlaybackCoordinator {
     private func refreshNextActions(atEnd: Bool, inCredits: Bool = true) {
         guard var next = nextUp, !finished else { return }
         if !next.isInPutio, gettingTask == nil { next = next.resolved(in: app.library); nextUp = next }
-        var actions: [UIAction] = []
+        var actions: [TVMenuItem] = []
         let show = (inCredits && !creditsDismissed) || atEnd || gettingStatus != nil || gettingFailed
         if show {
             if next.isInPutio {
@@ -300,17 +486,16 @@ final class TVPlaybackCoordinator {
                     if left <= 0 { playNext(); return }
                     title += " · \(left)"
                 }
-                actions.append(UIAction(title: title, image: UIImage(systemName: "play.fill")) { [weak self] _ in self?.playNext() })
+                actions.append(TVMenuItem(title: title, symbol: "play.fill") { [weak self] in self?.playNext() })
             } else if gettingFailed {
-                actions.append(UIAction(title: "Choose Version", image: UIImage(systemName: "square.stack.3d.up")) { [weak self] _ in
-                    self?.chooseVersion()
-                })
+                actions.append(TVMenuItem(title: "Choose Version", symbol: "square.stack.3d.up") { [weak self] in self?.chooseVersion() })
             } else {
-                actions.append(UIAction(title: gettingStatus ?? "Get Next Episode",
-                                        image: UIImage(systemName: "icloud.and.arrow.down")) { [weak self] _ in self?.getNext() })
+                actions.append(TVMenuItem(title: gettingStatus ?? "Get Next Episode", symbol: "icloud.and.arrow.down") { [weak self] in
+                    self?.getNext()
+                })
             }
             if !atEnd, gettingStatus == nil {
-                actions.append(UIAction(title: "Watch Credits") { [weak self] _ in
+                actions.append(TVMenuItem(title: "Watch Credits", symbol: "text.append") { [weak self] in
                     self?.creditsDismissed = true
                     self?.countdownStarted = nil
                     self?.refreshNextActions(atEnd: false)
@@ -320,7 +505,16 @@ final class TVPlaybackCoordinator {
         let titles = actions.map(\.title)
         guard titles != shownActions else { return }
         shownActions = titles
-        controller?.contextualActions = actions
+        if builtIn != nil {
+            builtInChrome.nextActions = actions
+        } else {
+            controller?.contextualActions = actions.map { item in
+                let run = MainThreadAction { item.action?() }
+                return UIAction(title: item.title, image: item.title == "Watch Credits" ? nil : item.symbol.flatMap { UIImage(systemName: $0) }) { _ in
+                    run()
+                }
+            }
+        }
     }
 
     private func playNext() {
@@ -372,14 +566,15 @@ final class TVPlaybackCoordinator {
     /// Fades the sound over the last 15 seconds, then pauses.
     private func applySleepTimer(position: Double) {
         guard let timer = sleepTimer else { return }
-        let duration = player.currentItem?.duration.seconds ?? 0
+        let duration = currentDuration
         let now = Date()
-        player.volume = timer.volume(now: now, position: position, duration: duration)
+        setVolume(timer.volume(now: now, position: position, duration: duration))
         if timer.shouldStop(now: now, position: position, duration: duration) {
-            player.pause()
-            player.volume = 1
+            pausePlayback()
+            setVolume(1)
             sleepTimer = nil
             controller?.contextualActions = []
+            builtInChrome.nextActions = []
             rebuildMenus()
             return
         }
@@ -388,27 +583,26 @@ final class TVPlaybackCoordinator {
         if minute != lastSleepMinute { lastSleepMinute = minute; rebuildMenus() }
     }
 
-    private func sleepMenu() -> UIMenu {
-        var items: [UIMenuElement] = []
+    private func sleepMenu() -> TVMenu {
+        var items: [TVMenuItem] = []
         if let sleepTimer {
-            let position = player.currentTime().seconds
-            let duration = player.currentItem?.duration.seconds ?? 0
-            let left = sleepTimer.remaining(now: Date(), position: position, duration: duration).map { max(1, Int(($0 / 60).rounded())) }
-            items.append(UIAction(title: left.map { "Stops in about \($0) min" } ?? sleepTimer.option.title, attributes: .disabled) { _ in })
-            items.append(UIAction(title: "Turn Off", image: UIImage(systemName: "xmark")) { [weak self] _ in
+            let left = sleepTimer.remaining(now: Date(), position: currentSeconds, duration: currentDuration)
+                .map { max(1, Int(($0 / 60).rounded())) }
+            items.append(.header(left.map { "Stops in about \($0) min" } ?? sleepTimer.option.title))
+            items.append(TVMenuItem(title: "Turn Off", symbol: "xmark") { [weak self] in
                 self?.sleepTimer = nil
-                self?.player.volume = 1
+                self?.setVolume(1)
                 self?.rebuildMenus()
             })
         }
         for option in SleepTimer.Option.choices {
-            items.append(UIAction(title: option.title, state: sleepTimer?.option == option ? .on : .off) { [weak self] _ in
+            items.append(TVMenuItem(title: option.title, isOn: sleepTimer?.option == option) { [weak self] in
                 self?.sleepTimer = SleepTimer(option, startedAt: Date())
                 self?.lastSleepMinute = -1
                 self?.rebuildMenus()
             })
         }
-        return UIMenu(title: "Sleep Timer", image: UIImage(systemName: sleepTimer == nil ? "moon" : "moon.fill"), children: items)
+        return TVMenu(title: "Sleep Timer", symbol: sleepTimer == nil ? "moon" : "moon.fill", items: items)
     }
 
     // MARK: One subtitle at a time
@@ -423,9 +617,12 @@ final class TVPlaybackCoordinator {
         systemSelectionChanged()
     }
 
-    /// Ours turned on: switch off captions inside the stream.
+    /// Ours turned on: switch off captions inside the stream (or the file, on the built-in player).
     private func ourSubtitleChanged() async {
-        if finder.isShowing { selectStream(nil) }
+        if finder.isShowing {
+            selectStream(nil)
+            if builtIn?.embeddedSubtitleID != nil { builtIn?.selectEmbeddedSubtitle(id: nil) }
+        }
         rebuildMenus()
     }
 
@@ -461,54 +658,70 @@ final class TVPlaybackCoordinator {
         option.hasMediaCharacteristic(.containsOnlyForcedSubtitles)
     }
 
-    // MARK: Subtitles menu (the player's swipe-down bar)
+    // MARK: Menus (Apple's player's swipe-down bar, or the built-in player's panel)
 
-    /// One button with everything: put.io's subtitles, OpenSubtitles, timing and style. tvOS allows only one menu
-    /// level here, so sections are gray labels and style options step through their values.
+    /// One Subtitles menu with everything: put.io's subtitles, OpenSubtitles, timing and style. tvOS allows only one
+    /// menu level here, so sections are gray labels and style options step through their values. The built-in
+    /// player adds Audio and Speed (Apple's player has its own).
     private func rebuildMenus() {
-        var items: [UIMenuElement] = []
-        let off = !finder.isShowing && streamPick == nil
-        items.append(UIAction(title: "Off", state: off ? .on : .off) { [weak self] _ in
+        var items: [TVMenuItem] = []
+        let embeddedID = builtIn?.embeddedSubtitleID
+        let off = !finder.isShowing && streamPick == nil && embeddedID == nil
+        items.append(TVMenuItem(title: "Off", isOn: off) { [weak self] in
             self?.selectStream(nil)
+            self?.builtIn?.selectEmbeddedSubtitle(id: nil)
             Task { await self?.finder.turnOff(); self?.rebuildMenus() }
         })
 
         if !finder.putioTracks.isEmpty {
-            items.append(header("From put.io"))
+            items.append(.header("From put.io"))
             for track in finder.putioTracks {
                 let showing = finder.isShowing && finder.choice?.putioKey == track.key
-                items.append(UIAction(title: Self.title(track), state: showing ? .on : .off) { [weak self] _ in
+                items.append(TVMenuItem(title: Self.title(track), isOn: showing) { [weak self] in
                     Task { await self?.finder.choose(track); await self?.ourSubtitleChanged() }
                 })
             }
         }
 
-        items.append(header("OpenSubtitles"))
+        // Tracks inside the file itself, which the built-in player reads.
+        if let builtIn, !builtIn.embeddedSubtitles.isEmpty {
+            items.append(.header("In the File"))
+            for track in builtIn.embeddedSubtitles {
+                items.append(TVMenuItem(title: track.name, isOn: embeddedID == track.id) { [weak self] in
+                    Task {
+                        await self?.finder.turnOff()
+                        self?.builtIn?.selectEmbeddedSubtitle(id: track.id)
+                        self?.rebuildMenus()
+                    }
+                })
+            }
+        }
+
+        items.append(.header("OpenSubtitles"))
         if finder.canSearch {
             if finder.results.isEmpty {
-                items.append(UIAction(title: finder.isSearching ? "Searching…" : "Search OpenSubtitles",
-                                      image: UIImage(systemName: "magnifyingglass"),
-                                      attributes: finder.isSearching ? .disabled : []) { [weak self] _ in
-                    Task { await self?.finder.search(); self?.rebuildMenus() }
-                })
+                items.append(TVMenuItem(title: finder.isSearching ? "Searching…" : "Search OpenSubtitles", symbol: "magnifyingglass",
+                                        action: finder.isSearching ? nil : { [weak self] in
+                                            Task { await self?.finder.search(); self?.rebuildMenus() }
+                                        }))
             }
             for result in finder.results.prefix(12) {
                 let showing = finder.isShowing && finder.choice?.putioKey == nil && finder.choice?.subtitleFileID == result.fileID
                 let badge = result.hashMatch ? "  ·  matches this file" : ""
-                items.append(UIAction(title: "\(result.release)\(badge)", state: showing ? .on : .off) { [weak self] _ in
+                items.append(TVMenuItem(title: "\(result.release)\(badge)", isOn: showing) { [weak self] in
                     Task { await self?.finder.choose(result); await self?.ourSubtitleChanged() }
                 })
             }
         } else {
-            items.append(UIAction(title: "Add an OpenSubtitles API key in Settings", attributes: .disabled) { _ in })
+            items.append(.header("Add an OpenSubtitles API key in Settings"))
         }
 
         // Captions carried by the video stream itself (closed captions), shown by the player in the system's style.
-        if !streamOptions.isEmpty {
-            items.append(header("In the Video"))
+        if builtIn == nil, !streamOptions.isEmpty {
+            items.append(.header("In the Video"))
             for option in streamOptions {
                 let showing = !finder.isShowing && streamPick == option
-                items.append(UIAction(title: Self.title(option), state: showing ? .on : .off) { [weak self] _ in
+                items.append(TVMenuItem(title: Self.title(option), isOn: showing) { [weak self] in
                     Task {
                         await self?.finder.turnOff()
                         self?.selectStream(option)
@@ -520,48 +733,67 @@ final class TVPlaybackCoordinator {
 
         if finder.isShowing {
             let offset = finder.choice?.offset ?? 0
-            items.append(header(offset == 0 ? "Timing: in sync" : String(format: "Timing: %+.1f s", offset)))
-            items.append(UIAction(title: "Show Earlier  (−0.5 s)", image: UIImage(systemName: "backward")) { [weak self] _ in
+            items.append(.header(offset == 0 ? "Timing: in sync" : String(format: "Timing: %+.1f s", offset)))
+            items.append(TVMenuItem(title: "Show Earlier  (−0.5 s)", symbol: "backward") { [weak self] in
                 Task { await self?.finder.shiftTiming(by: -0.5); self?.rebuildMenus() }
             })
-            items.append(UIAction(title: "Show Later  (+0.5 s)", image: UIImage(systemName: "forward")) { [weak self] _ in
+            items.append(TVMenuItem(title: "Show Later  (+0.5 s)", symbol: "forward") { [weak self] in
                 Task { await self?.finder.shiftTiming(by: 0.5); self?.rebuildMenus() }
             })
         }
 
-        items.append(header("Style"))
+        items.append(.header("Style"))
         let style = line.style
-        items.append(styleAction("Size", Self.name(style.size), image: "textformat.size") { $0.size = Self.next($0.size) })
-        items.append(styleAction("Background", Self.name(style.background), image: "rectangle.fill") { $0.background = Self.next($0.background) })
-        items.append(styleAction("Color", Self.name(style.color), image: "paintpalette") { $0.color = Self.next($0.color) })
-        items.append(styleAction("Font", Self.name(style.typeface), image: "textformat") { $0.typeface = Self.next($0.typeface) })
+        items.append(styleItem("Size", Self.name(style.size), image: "textformat.size") { $0.size = Self.next($0.size) })
+        items.append(styleItem("Background", Self.name(style.background), image: "rectangle.fill") { $0.background = Self.next($0.background) })
+        items.append(styleItem("Color", Self.name(style.color), image: "paintpalette") { $0.color = Self.next($0.color) })
+        items.append(styleItem("Font", Self.name(style.typeface), image: "textformat") { $0.typeface = Self.next($0.typeface) })
 
-        if let message = finder.message {
-            items.append(UIAction(title: message, attributes: .disabled) { _ in })
+        if let message = finder.message { items.append(.header(message)) }
+        var menus = [TVMenu(title: "Subtitles", symbol: "captions.bubble.fill", items: items)]
+        if let builtIn {
+            if builtIn.audioTracks.count > 1 {
+                menus.append(TVMenu(title: "Audio", symbol: "speaker.wave.2.fill", items: builtIn.audioTracks.map { track in
+                    TVMenuItem(title: track.name, isOn: builtIn.currentAudioID == track.id) { [weak self] in
+                        self?.builtIn?.selectAudio(id: track.id)
+                        self?.rebuildMenus()
+                    }
+                }))
+            }
+            menus.append(TVMenu(title: "Speed", symbol: "gauge.with.dots.needle.67percent", items: [Float(0.5), 0.75, 1, 1.25, 1.5, 2].map { rate in
+                TVMenuItem(title: rate == 1 ? "Normal" : String(format: "%g×", rate), isOn: builtIn.rate == rate) { [weak self] in
+                    self?.builtIn?.rate = rate
+                    self?.rebuildMenus()
+                }
+            }))
         }
-        var bar: [UIMenuElement] = [
-            UIMenu(title: "Subtitles", image: UIImage(systemName: "captions.bubble.fill"), children: items),
-            sleepMenu(),
-        ]
+        menus.append(sleepMenu())
         // The movie or show page (closes the player).
         if let item = request.entry.titleItem {
-            bar.append(UIAction(title: item.mediaType == .tv ? "Show Details" : "Movie Details",
-                                image: UIImage(systemName: "info.circle")) { [weak self] _ in
+            menus.append(TVMenu(title: item.mediaType == .tv ? "Show Details" : "Movie Details", symbol: "info.circle") { [weak self] in
                 guard let self else { return }
                 finish()
                 onDetails?(item)
             })
         }
-        controller?.transportBarCustomMenuItems = bar
+        builtInChrome.menus = menus
+        controller?.transportBarCustomMenuItems = menus.map(\.uiElement)
+        // The built-in player learns its tracks after loading: refresh the menus once they're known.
+        if let builtIn, builtIn.embeddedSubtitles.isEmpty || builtIn.audioTracks.isEmpty, !menusRefreshScheduled {
+            menusRefreshScheduled = true
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                self?.menusRefreshScheduled = false
+                if self?.builtIn != nil { self?.rebuildMenus() }
+            }
+        }
     }
 
-    private func header(_ title: String) -> UIAction {
-        UIAction(title: title, attributes: .disabled) { _ in }
-    }
+    private var menusRefreshScheduled = false
 
     /// "Size: Large" — selecting it steps to the next value; the change shows at once and is saved for next time.
-    private func styleAction(_ label: String, _ value: String, image: String, _ change: @escaping (inout SubtitleStyle) -> Void) -> UIAction {
-        UIAction(title: "\(label): \(value)", image: UIImage(systemName: image)) { [weak self] _ in
+    private func styleItem(_ label: String, _ value: String, image: String, _ change: @escaping (inout SubtitleStyle) -> Void) -> TVMenuItem {
+        TVMenuItem(title: "\(label): \(value)", symbol: image) { [weak self] in
             guard let self else { return }
             var style = line.style
             change(&style)

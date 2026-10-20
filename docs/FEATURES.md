@@ -121,7 +121,15 @@ Everything Putio & Chill does, by area. Unless noted, a feature works on iPhone,
 
 - **iPhone / iPad**: Putio & Chill's own controls: scrubber, ±10 s skip (double-tap), speed, fill/fit (pinch), AirPlay,
   Picture in Picture, Now Playing on the Lock Screen.
-- **Apple TV**: Apple's player with Putio & Chill's Subtitles and Sleep Timer menus in the swipe-down bar.
+- **Apple TV**: Apple's player with Putio & Chill's Subtitles and Sleep Timer menus in the swipe-down bar. Videos it
+  can't play go to the built-in player: click plays/pauses, left/right skip 10 s, swipe to scrub, swipe down for
+  Subtitles, Audio and Speed, Menu closes.
+- **Built-in player for videos Apple's can't play** (XviD/DivX, MPEG-2, VC-1, WMV, VP8/VP9 and AV1 without hardware,
+  DTS/TrueHD sound…): the original file plays right away with the same controls, subtitles (plus the file's own
+  tracks, picture subtitles included), audio tracks, resume and next episode, instead of waiting for put.io to convert
+  it. Picture in Picture on iPhone and iPad; AirPlay sends only the sound from it. Apple TV gets its own transport bar
+  and swipe-down menus for it. Not in the Mac app, where put.io still converts such videos. Settings → Playback can
+  switch back to converting with put.io.
 - **Gestures (iPhone/iPad)**: swipe down on the video to close the player; swipe right to go back on any page.
 - **Resume** where you left off, synced with put.io so it continues on any device.
 - **Next episode**: a Next button near the end and optional auto-play when the next episode is in put.io.
@@ -143,6 +151,7 @@ Everything Putio & Chill does, by area. Unless noted, a feature works on iPhone,
 - Downloads include put.io's subtitles, with one switched on.
 - Downloads page with sizes and progress; iOS shows its own download Live Activity.
 - Plays with no connection; "Play from This Device" never falls back to streaming.
+- A video Apple's player can't play downloads as the original file (resumable) and plays in the built-in player.
 
 ## Ratings
 

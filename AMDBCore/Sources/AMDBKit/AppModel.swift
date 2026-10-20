@@ -111,6 +111,8 @@ public final class AppModel {
     public let episodeAlerts: EpisodeAlerts
     /// put.io MP4 conversions of videos Apple devices can't play as they are.
     public let conversions = VideoConversions()
+    /// Which player worked for each file (Apple's or the built-in one), so the next play goes straight there.
+    public let playbackEngines: PlaybackEngineMemory
     /// Recent plays shared with the user's other Apple devices through iCloud Keychain (off in demo mode and tests).
     public let watchLog: WatchLogSync
     @ObservationIgnored private var positionsCheck: Task<Void, Never>?
@@ -146,6 +148,7 @@ public final class AppModel {
         self.tokens = tokens
         watchLog = WatchLogSync(store: watchLogStore, deviceName: deviceName)
         self.userDefaults = defaults
+        playbackEngines = PlaybackEngineMemory(defaults: defaults)
         self.store = store
         self.factory = factory
         let bundled = bundledTMDBToken?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -174,6 +177,19 @@ public final class AppModel {
     }
 
     public var isReady: Bool { putio != nil && catalog != nil }
+
+    /// The routing for one playback (see PlaybackPlan): put.io's codec info and conversion status, the setting, and
+    /// what this device can do.
+    public func playbackPlan(fileID: Int64, builtInAvailable: Bool, hardwareVP9: Bool, hardwareAV1: Bool) -> PlaybackPlan {
+        let putio = putio
+        let conversions = conversions
+        return PlaybackPlan(fileID: fileID,
+                            options: .init(preference: settings.unsupportedVideoPlayer, builtInAvailable: builtInAvailable,
+                                           hardwareVP9: hardwareVP9, hardwareAV1: hardwareAV1),
+                            memory: playbackEngines,
+                            mediaInfo: { id in try? await putio?.mediaInfo(fileID: id) },
+                            needsConversion: { id in await conversions.needsConversion(fileID: id) })
+    }
     public var releaseSearcher: any ReleaseSearching { searcher }
 
     public func token(_ key: TokenKey) -> String? { tokens.read(key) }

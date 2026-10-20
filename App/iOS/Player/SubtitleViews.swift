@@ -2,8 +2,8 @@ import AMDBCore
 import AMDBKit
 import SwiftUI
 
-/// Subtitles drawn on the picture (put.io or OpenSubtitles, picked in the subtitles menu).
-/// Sits near the bottom of the video and moves up while the controls are showing.
+/// Subtitles drawn on the picture (put.io or OpenSubtitles, picked in the subtitles menu; or a track inside the file
+/// on the built-in player). Sits near the bottom of the video and moves up while the controls are showing.
 struct SubtitleOverlayView: View {
     let finder: SubtitleFinder
     let engine: PlayerEngine
@@ -15,18 +15,34 @@ struct SubtitleOverlayView: View {
     var body: some View {
         GeometryReader { proxy in
             let compact = videoRect.height < 400
-            VStack {
-                Spacer()
-                if let text = finder.text(at: engine.position) {
-                    StyledSubtitleText(text: text, style: style, compact: compact)
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, max(proxy.size.height - videoRect.maxY + videoRect.height * 0.06, liftedBy))
-                        .animation(.easeInOut(duration: 0.2), value: liftedBy)
+            if case let .images(images)? = engine.embeddedSubtitle {
+                // Picture subtitles (Blu-ray, DVD) go where the disc placed them on the video.
+                ForEach(images.indices, id: \.self) { index in
+                    let frame = images[index].frame
+                    Image(decorative: images[index].image, scale: 1)
+                        .resizable()
+                        .frame(width: videoRect.width * frame.width, height: videoRect.height * frame.height)
+                        .position(x: videoRect.minX + videoRect.width * frame.midX, y: videoRect.minY + videoRect.height * frame.midY)
                 }
+            } else {
+                VStack {
+                    Spacer()
+                    if let text = currentText {
+                        StyledSubtitleText(text: text, style: style, compact: compact)
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, max(proxy.size.height - videoRect.maxY + videoRect.height * 0.06, liftedBy))
+                            .animation(.easeInOut(duration: 0.2), value: liftedBy)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .allowsHitTesting(false)
+    }
+
+    private var currentText: String? {
+        if case let .text(text)? = engine.embeddedSubtitle { return text }
+        return engine.embeddedSubtitleID == nil ? finder.text(at: engine.position) : nil
     }
 }
 
@@ -41,14 +57,14 @@ struct SubtitleSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                if let engine, engine.audioOptions.count > 1 {
+                if let engine, engine.audioTracks.count > 1 {
                     Section("Audio") {
-                        ForEach(engine.audioOptions, id: \.self) { option in
-                            Button { engine.selectAudio(option) } label: {
+                        ForEach(engine.audioTracks) { track in
+                            Button { engine.selectAudio(id: track.id) } label: {
                                 HStack {
-                                    Text(option.displayName).foregroundStyle(.primary)
+                                    Text(track.name).foregroundStyle(.primary)
                                     Spacer()
-                                    if engine.currentAudio == option {
+                                    if engine.currentAudioID == track.id {
                                         Image(systemName: "checkmark").foregroundStyle(Theme.good).fontWeight(.semibold)
                                     }
                                 }
@@ -93,15 +109,50 @@ struct SubtitleSheet: View {
                             LabeledContent("Style", value: Self.summary(style.wrappedValue))
                         }
                     }
-                    Button { Task { await finder.turnOff(); onPicked() } } label: {
+                    Button { Task { engine?.selectEmbeddedSubtitle(id: nil); await finder.turnOff(); onPicked() } } label: {
                         HStack {
                             Text("Off").foregroundStyle(.primary)
                             Spacer()
-                            if !finder.isShowing { Image(systemName: "checkmark").foregroundStyle(Theme.good).fontWeight(.semibold) }
+                            if !finder.isShowing, engine?.embeddedSubtitleID == nil {
+                                Image(systemName: "checkmark").foregroundStyle(Theme.good).fontWeight(.semibold)
+                            }
                         }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                }
+
+                // Tracks inside the file itself, which the built-in player reads (picture subtitles included).
+                if let engine, !engine.embeddedSubtitles.isEmpty {
+                    Section {
+                        ForEach(engine.embeddedSubtitles) { track in
+                            Button {
+                                Task {
+                                    await finder.turnOff()
+                                    engine.selectEmbeddedSubtitle(id: track.id)
+                                    onPicked()
+                                    dismiss()
+                                }
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(track.name).font(.subheadline).foregroundStyle(.primary)
+                                        if track.isImage {
+                                            Text("Picture subtitles: shown as in the file").font(.caption2).foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    Spacer()
+                                    if engine.embeddedSubtitleID == track.id {
+                                        Image(systemName: "checkmark").foregroundStyle(Theme.good).fontWeight(.semibold)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } header: {
+                        Text("In the File")
+                    }
                 }
 
                 Section {
@@ -157,7 +208,7 @@ struct SubtitleSheet: View {
                     } header: { Text("OpenSubtitles") }
                 }
             }
-            .navigationTitle((engine?.audioOptions.count ?? 0) > 1 ? "Audio & Subtitles" : "Subtitles")
+            .navigationTitle((engine?.audioTracks.count ?? 0) > 1 ? "Audio & Subtitles" : "Subtitles")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
@@ -223,6 +274,7 @@ struct SubtitleSheet: View {
     }
 
     private func pick(_ track: PutioSubtitle) async {
+        engine?.selectEmbeddedSubtitle(id: nil)
         await finder.choose(track)
         if finder.choice?.putioKey == track.key, finder.message == nil {
             onPicked()
@@ -238,6 +290,7 @@ struct SubtitleSheet: View {
     }
 
     private func pick(_ result: SubtitleResult) async {
+        engine?.selectEmbeddedSubtitle(id: nil)
         await finder.choose(result)
         if finder.choice?.subtitleFileID == result.fileID, finder.message == nil {
             onPicked()

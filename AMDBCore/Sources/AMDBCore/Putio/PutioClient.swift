@@ -104,6 +104,12 @@ public struct PutioClient: Sendable {
         try await get("files/\(id)", query: [("mp4_status", "1")], as: FileEnvelope.self).file
     }
 
+    /// The codecs inside the file and whether put.io says it needs converting, to pick a player before playing.
+    public func mediaInfo(fileID: Int64) async throws -> PutioMediaInfo {
+        try await get("files/\(fileID)", query: [("codecs", "1"), ("media_info", "1"), ("video_metadata", "1"), ("mp4_status", "1")],
+                      as: MediaInfoEnvelope.self).file
+    }
+
     public func mp4Status(fileID: Int64) async throws -> PutioMp4Status {
         try await get("files/\(fileID)/mp4", as: Mp4Envelope.self).mp4
     }
@@ -223,4 +229,5 @@ public struct PutioClient: Sendable {
     struct SubtitlesEnvelope: Decodable { let subtitles: [PutioSubtitle] }
     struct SearchEnvelope: Decodable { let files: [PutioFile] }
     struct Mp4Envelope: Decodable { let mp4: PutioMp4Status }
+    struct MediaInfoEnvelope: Decodable { let file: PutioMediaInfo }
 }

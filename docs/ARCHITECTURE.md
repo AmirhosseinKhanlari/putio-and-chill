@@ -69,9 +69,14 @@ Putio & Chill is one Swift package holding all the logic, and thin, platform-nat
 ### Apps
 
 - `App/iOS`: iPhone and iPad. `MainView` hosts one `NavigationStack` per tab; `Router` owns tab, paths and modal
-  state. Player is UIKit (`PlayerViewController` + `AVPlayerLayer`) with SwiftUI controls on top.
+  state. Player is UIKit (`PlayerViewController`) with SwiftUI controls on top; the picture comes from a
+  `PlayerBackend` in `App/PlayerCore`: Apple's player (`AVPlayerBackend`) or the built-in one (`AetherBackend`).
 - `App/tvOS`: Apple TV. `TVRootView` hosts a `TabView`; `TVRouter` owns navigation. Player is `AVPlayerViewController`
-  with custom transport-bar menus.
+  with custom transport-bar menus, or `TVBuiltInPlayerController` (our transport bar and swipe-down menus) when the
+  built-in player plays the video.
+- `App/PlayerCore`: shared by both apps. `PlayerEngine` publishes playback state for our controls whichever player
+  plays; `AetherBackend` wraps AetherEngine (FFmpeg) for videos Apple's player can't play. Not in the Mac app
+  (AetherEngine's FFmpeg build has no Mac Catalyst slice).
 - `App/SharedUI`: artwork loading (`RemoteImage`, `ImagePipeline`), theme, ratings badges, demo mode.
 - `App/Widgets`: Continue Watching widget, transfer Live Activity, Surprise Me control.
 - `App/TopShelf` + `App/TVShared`: Apple TV Top Shelf.
@@ -101,7 +106,12 @@ responses with `StubTransport`.
 4. `TransferMonitor` polls until put.io has a playable file, then emits `.ready`; the UI offers Play.
 
 **Playing**
-1. The player streams put.io's HLS URL (or plays a downloaded copy).
+1. `PlaybackPlan` (AMDBKit) picks the player: Apple's on put.io's HLS stream by default; the built-in player on the
+   original file (`files/{id}/url`) when it worked for that file before, or when put.io says the file needs converting
+   and its codecs (`files/{id}?codecs=1&media_info=1`) are ones Apple's player can't decode. If Apple's player fails
+   (an error, a video it can open but not decode, or no start within 20 s when put.io says it needs converting), the
+   built-in player takes over at the same position; put.io's MP4 conversion is the last resort after that. Downloaded
+   copies play directly.
 2. `PlaybackSession` saves progress locally and to put.io (`start_from`), so resume works on every device.
 3. `SubtitleFinder` restores the file's subtitle choice and draws it in the chosen style.
 
@@ -130,9 +140,11 @@ The iOS app, widgets and the Apple TV app/Top Shelf share the App Group **`group
 
 ## Platform notes
 
-- iOS deployment target 17; newer features are availability-gated: Control Center control and Spotlight indexing
-  (iOS 18), Liquid Glass and Ask Chill (iOS 26).
-- Offline downloads use `AVAssetDownloadURLSession` (HLS). Paths are stored relative to the app container and
-  resolved at use, because the container moves between app updates.
+- iOS deployment target 18 (the built-in player needs it; the Mac app stays on macOS 14); newer features are
+  availability-gated: Liquid Glass and Ask Chill (iOS 26).
+- Offline downloads use `AVAssetDownloadURLSession` (HLS). A video Apple's player can't play is downloaded as the
+  original file instead (`OriginalFileDownloader`, a background `URLSession` that resumes) and plays in the built-in
+  player. Paths are stored relative to the app container and resolved at use, because the container moves between
+  app updates.
 - On Apple TV the stream has no embedded subtitles; the app draws put.io and OpenSubtitles text itself so style and
   timing apply to all of them.

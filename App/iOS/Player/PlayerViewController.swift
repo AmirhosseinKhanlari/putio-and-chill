@@ -2,19 +2,14 @@ import AVKit
 import SwiftUI
 import UIKit
 
-/// A view whose backing layer is the AVPlayerLayer.
-final class PlayerLayerView: UIView {
-    override class var layerClass: AnyClass { AVPlayerLayer.self }
-    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
-}
-
-/// Full-screen player: the video layer, Picture in Picture, and the app's SwiftUI controls on top.
-/// iPhone plays in landscape; iPad follows the device.
+/// Full-screen player: the picture (Apple's player or the built-in one), Picture in Picture, and the app's SwiftUI
+/// controls on top. iPhone plays in landscape; iPad follows the device.
 @MainActor
 final class PlayerViewController: UIViewController, @MainActor AVPictureInPictureControllerDelegate {
     let engine: PlayerEngine
     let chrome: PlayerChrome
-    private let videoView = PlayerLayerView()
+    /// Holds the current player's picture view (it changes when the built-in player takes over).
+    private let videoContainer = UIView()
     private var pip: AVPictureInPictureController?
 
     /// Picture in Picture started (the full-screen player gets out of the way) / ended.
@@ -35,11 +30,10 @@ final class PlayerViewController: UIViewController, @MainActor AVPictureInPictur
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        videoView.frame = view.bounds
-        videoView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        videoView.playerLayer.player = engine.player
-        videoView.playerLayer.videoGravity = .resizeAspect
-        view.addSubview(videoView)
+        videoContainer.frame = view.bounds
+        videoContainer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(videoContainer)
+        showPicture()
 
         let controls = UIHostingController(rootView: PlayerControlsView(engine: engine, chrome: chrome))
         controls.view.backgroundColor = .clear
@@ -51,24 +45,35 @@ final class PlayerViewController: UIViewController, @MainActor AVPictureInPictur
 
         chrome.onSwipeDownChanged = { [weak self] drag in self?.followSwipe(drag) }
         chrome.onSwipeDownEnded = { [weak self] drag, predicted in self?.endSwipe(drag, predicted: predicted) }
+        chrome.onFillChanged = { [weak self] fill in self?.engine.setFill(fill) }
+        chrome.onTogglePiP = { [weak self] in
+            guard let pip = self?.pip else { return }
+            pip.isPictureInPictureActive ? pip.stopPictureInPicture() : pip.startPictureInPicture()
+        }
+        engine.onBackendChanged = { [weak self] in self?.showPicture() }
+        engine.onPictureSourceChanged = { [weak self] in self?.setUpPictureInPicture() }
+    }
 
-        chrome.onFillChanged = { [weak self] fill in
-            CATransaction.begin()
-            CATransaction.setAnimationDuration(0.25)
-            self?.videoView.playerLayer.videoGravity = fill ? .resizeAspectFill : .resizeAspect
-            CATransaction.commit()
-        }
-        if AVPictureInPictureController.isPictureInPictureSupported(),
-           let pip = AVPictureInPictureController(playerLayer: videoView.playerLayer) {
-            pip.canStartPictureInPictureAutomaticallyFromInline = true
-            pip.delegate = self
-            self.pip = pip
-            chrome.pipSupported = true
-            chrome.onTogglePiP = { [weak self] in
-                guard let pip = self?.pip else { return }
-                pip.isPictureInPictureActive ? pip.stopPictureInPicture() : pip.startPictureInPicture()
-            }
-        }
+    /// Puts the current player's picture on screen (again, after the built-in player took over).
+    private func showPicture() {
+        videoContainer.subviews.forEach { $0.removeFromSuperview() }
+        let picture = engine.backend.videoView
+        picture.frame = videoContainer.bounds
+        picture.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        videoContainer.addSubview(picture)
+        engine.setFill(chrome.fillsScreen)
+        setUpPictureInPicture()
+    }
+
+    /// Picture in Picture for whatever draws the picture now. The built-in player's layer only exists once it has
+    /// loaded, so this runs again when it changes.
+    private func setUpPictureInPicture() {
+        guard pip?.isPictureInPictureActive != true else { return }
+        pip?.delegate = nil
+        pip = engine.backend.makePictureInPicture()
+        pip?.canStartPictureInPictureAutomaticallyFromInline = true
+        pip?.delegate = self
+        chrome.pipSupported = pip != nil
     }
 
     // MARK: Swipe down to close
@@ -107,11 +112,13 @@ final class PlayerViewController: UIViewController, @MainActor AVPictureInPictur
     // MARK: Picture in Picture
 
     func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        engine.backend.pictureInPictureChanged(active: true)
         chrome.pipActive = true
         onPiPChanged(true)
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
+        engine.backend.pictureInPictureChanged(active: false)
         chrome.pipActive = false
         onPiPChanged(false)
     }

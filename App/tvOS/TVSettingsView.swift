@@ -46,6 +46,7 @@ struct TVSettingsView: View {
                 }
                 Section {
                     link("Connected Services", "link", .green, value: servicesSummary) { servicesPage }
+                    link("About", "info.circle.fill", .gray, value: nil) { TVOpenSourceView(versionLine: versionLine) }
                 } footer: {
                     Text(versionLine)
                 }
@@ -163,6 +164,14 @@ struct TVSettingsView: View {
                          options: [("Original", String?.none)] + Self.languages.map { ($0.name, String?.some($0.code)) })
             } footer: {
                 Text("When ready: a video you asked for starts as soon as put.io has it. Next episode: a countdown at the end credits.")
+            }
+            Section {
+                TVChoice(title: "Player for unsupported videos", selection: $draft.unsupportedVideoPlayer,
+                         options: [("Built-in (recommended)", UnsupportedVideoPlayer.builtIn), ("Convert with put.io", .convert)])
+            } footer: {
+                Text("Some videos (older formats like XviD or MPEG-2, or DTS and TrueHD sound) don't play in Apple's player. "
+                     + "Built-in plays the original file right away; put.io converts it only if that fails too. Convert with put.io "
+                     + "waits for put.io to make an MP4 first, which can take a while.")
             }
         }
     }

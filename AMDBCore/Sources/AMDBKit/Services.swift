@@ -16,6 +16,7 @@ public protocol PutioService: Sendable {
     func renameFile(id: Int64, name: String) async throws
     func fileStatus(id: Int64) async throws -> PutioFile
     func mp4Status(fileID: Int64) async throws -> PutioMp4Status
+    func mediaInfo(fileID: Int64) async throws -> PutioMediaInfo
     func convertToMp4(fileID: Int64) async throws -> PutioMp4Status
     func copyFile(id: Int64, to parentID: Int64) async throws -> PutioFile
     func searchFiles(_ query: String) async throws -> [PutioFile]

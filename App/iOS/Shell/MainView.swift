@@ -67,6 +67,9 @@ struct MainView: View {
             await app.downloads.load()
             downloader.restore()
             DemoMode.apply(to: router)
+            #if DEBUG
+            if DemoMode.screen == "download-url" { await downloadAndPlayDemoFile() }
+            #endif
             openPendingLink()
             await app.transfers.restore()
             // Before the library update, so it reads the merged folders.
@@ -223,6 +226,25 @@ struct MainView: View {
         }
         PlayerPresenter.present(request, from: seconds, app: app, router: router, localURL: localURL)
     }
+
+    #if DEBUG
+    /// `-demoScreen download-url -demoPlayURL <url>`: downloads the test video for offline viewing (the original file,
+    /// for a video Apple's player can't play), then plays the downloaded copy.
+    private func downloadAndPlayDemoFile() async {
+        guard let file = DemoMode.playFile else { return }
+        router.tab = .library
+        router.libraryPath = [.downloads]
+        await downloader.start(LibraryEntry(file: file, match: nil, folderName: nil))
+        for _ in 0..<120 {
+            if case .done? = app.downloads.record(fileID: file.id)?.state { break }
+            try? await Task.sleep(for: .seconds(1))
+        }
+        try? await Task.sleep(for: .seconds(2))
+        var request = PlayerRequest(file: file, title: file.name, resumeFrom: 0, played: nil, next: nil, exactStart: true)
+        request.source = .device
+        router.player = request
+    }
+    #endif
 
     private func wireEvents() {
         app.library.onUpdated = { [router, app] change in

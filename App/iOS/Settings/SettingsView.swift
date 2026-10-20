@@ -112,6 +112,7 @@ struct SettingsView: View {
                 }
                 Section {
                     link("Connected Services", "link", .green, value: servicesSummary) { servicesPage }
+                    link("About", "info.circle.fill", .gray, value: nil) { OpenSourceView(versionLine: versionLine) }
                 } footer: {
                     Text(versionLine).frame(maxWidth: .infinity).padding(.top, 18)
                 }
@@ -254,6 +255,19 @@ struct SettingsView: View {
                 Picker("Audio language", selection: $draft.audioLanguage) {
                     Text("Original").tag(String?.none)
                     ForEach(Self.languages, id: \.code) { Text($0.name).tag(String?.some($0.code)) }
+                }
+            }
+            if BuiltInPlayer.isAvailable {
+                Section {
+                    Picker("Player for unsupported videos", selection: $draft.unsupportedVideoPlayer) {
+                        Text("Built-in (recommended)").tag(UnsupportedVideoPlayer.builtIn)
+                        Text("Convert with put.io").tag(UnsupportedVideoPlayer.convert)
+                    }
+                } footer: {
+                    Text("Some videos (older formats like XviD or MPEG-2, or DTS and TrueHD sound) don't play in Apple's player. "
+                         + "Built-in plays the original file right away; put.io converts it only if that fails too. Convert with "
+                         + "put.io waits for put.io to make an MP4 first, which can take a while. AirPlay sends only the sound "
+                         + "of videos in the built-in player.")
                 }
             }
         }

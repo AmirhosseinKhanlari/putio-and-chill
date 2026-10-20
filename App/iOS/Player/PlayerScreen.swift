@@ -72,7 +72,14 @@ final class PlayerCoordinator {
     private var gettingNext: Task<Void, Never>?
     private var appliedLanguages = false
     private var inPictureInPicture = false
-    private var triedFallback = false
+    /// Nothing more to try: the failure message is showing.
+    private var gaveUp = false
+    /// Which player to try next when one fails (nil for a file on this device).
+    private let plan: PlaybackPlan?
+    /// Deciding or switching players: no "can't play" handling meanwhile.
+    private var routing = true
+    private var rememberedSuccess = false
+    private var triedOriginalMP4 = false
     /// Waiting for put.io to convert the video (no "can't play" errors meanwhile).
     private var converting = false
     private var conversionTask: Task<Void, Never>?
@@ -94,8 +101,16 @@ final class PlayerCoordinator {
             folderName: nil)
         session = PlaybackSession(fileID: request.file.id, resumeFrom: request.resumeFrom, putio: putio,
                                   library: app.library, store: app.store, entry: entry, watchLog: app.watchLog)
-        // Offline copy when downloaded; otherwise put.io's HLS stream.
-        engine = PlayerEngine(url: localURL ?? session.streamURL)
+        // Offline copy when downloaded; otherwise put.io's HLS stream in Apple's player, unless the routing picks the
+        // built-in player (see start). An original-file download (a video Apple's player can't play) is the built-in
+        // player's from the start.
+        if let localURL, OfflineDownloader.isOriginalFile(localURL),
+           let builtIn = BuiltInPlayer.backend(url: localURL, audioLanguage: app.settings.audioLanguage, refreshURL: nil) {
+            engine = PlayerEngine(backend: builtIn)
+        } else {
+            engine = PlayerEngine(url: localURL ?? session.streamURL)
+        }
+        plan = localURL == nil ? BuiltInPlayer.plan(fileID: request.file.id, app: app) : nil
         let episode = request.season.map { season in request.episode.map { "Season \(season) · Episode \($0)" } ?? "Season \(season)" }
         chrome = PlayerChrome(title: request.played?.title ?? request.title, subtitle: episode,
                               subtitles: app.subtitleFinder(for: request.subtitleContext, fileSize: request.file.size))
@@ -140,8 +155,8 @@ final class PlayerCoordinator {
         // Pausing (or reaching the end) saves the position, for put.io and the other devices.
         engine.onPause = { [weak self] in self?.saveNow() }
         startSeconds = seconds
-        if seconds > 0 { engine.seek(to: Double(seconds)) }
-        presenter.present(controller, animated: true) { [engine] in engine.play() }
+        presenter.present(controller, animated: true)
+        Task { [weak self] in await self?.begin() }
         progressTask = Task { [weak self] in await self?.run() }
         // Leaving the app (Home, the app switcher) can suspend it before the next save: save the position now.
         resignObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification,
@@ -165,20 +180,30 @@ final class PlayerCoordinator {
                 continue
             }
             let status = engine.status
-            chrome.preparing = status != .readyToPlay && !triedFallback
-            if status == .readyToPlay, !appliedLanguages, let item = engine.player.currentItem {
-                appliedLanguages = true
-                await applyLanguagePreferences(to: item)
-            }
-            if status != .readyToPlay { waitedForReady += 1 }
-            // Not playing after 20 s: if put.io says the format needs converting, that's why (it converts it then).
-            if status != .readyToPlay, waitedForReady == 20, !chrome.playingFromDevice, await convertIfNeeded() {
+            chrome.preparing = status != .ready && !gaveUp
+            if routing { continue }
+            if status == .ready {
                 waitedForReady = 0
-                continue
+                if !appliedLanguages, let apple = engine.backend as? AVPlayerBackend {
+                    appliedLanguages = true
+                    await apple.applyLanguagePreferences(audioLanguage: app.settings.audioLanguage)
+                }
+                if !rememberedSuccess {
+                    rememberedSuccess = true
+                    BuiltInPlayer.log.notice("file \(self.request.file.id): playing with \(self.engine.kind.rawValue)")
+                    plan?.succeeded(engine.kind)
+                }
+            } else {
+                waitedForReady += 1
             }
-            if status == .failed || (status != .readyToPlay && waitedForReady >= 60) {
+            // Apple's player not playing after 20 s: if put.io says the format needs converting, that's why.
+            var stuck = false
+            if engine.kind == .apple, waitedForReady == 20, plan != nil {
+                stuck = await app.conversions.needsConversion(fileID: request.file.id)
+            }
+            if status.isFailed || stuck || (status != .ready && waitedForReady >= 60) {
+                waitedForReady = 0
                 await handleUnplayable()
-                waitedForReady = 0
             }
             let position = engine.position
             let total = engine.duration
@@ -192,17 +217,17 @@ final class PlayerCoordinator {
     /// Fades the sound over the last 15 seconds, then pauses. "End of episode" also skips the next-episode countdown.
     private func applySleepTimer(position: Double, duration: Double) {
         guard let timer = chrome.sleepTimer else {
-            if engine.player.volume < 1 { engine.player.volume = 1 }
+            if engine.volume < 1 { engine.volume = 1 }
             chrome.sleepLabel = nil
             return
         }
         let now = Date()
         chrome.sleepLabel = timer.label(now: now, position: position, duration: duration)
-        engine.player.volume = timer.volume(now: now, position: position, duration: duration)
+        engine.volume = timer.volume(now: now, position: position, duration: duration)
         if timer.option == .endOfEpisode { countdownDismissed = true }
         if timer.shouldStop(now: now, position: position, duration: duration) {
             engine.pause()
-            engine.player.volume = 1
+            engine.volume = 1
             chrome.sleepTimer = nil
             chrome.sleepLabel = nil
             chrome.nextUpCard = .hidden
@@ -210,30 +235,98 @@ final class PlayerCoordinator {
         }
     }
 
-    private func handleUnplayable() async {
-        guard !triedFallback else { return }
-        triedFallback = true
-        if chrome.playingFromDevice {
-            chrome.preparing = false
-            chrome.failure = "This download couldn't be played. Remove it and download it again, or stream it from put.io."
-        } else if await convertIfNeeded() {
+    // MARK: Which player
+
+    /// Picks the first player (Apple's on put.io's stream, or the built-in one on the original file when put.io's
+    /// codec info says Apple's can't decode it, or it worked here before), then plays from the start point.
+    private func begin() async {
+        defer { routing = false }
+        guard let plan else {
+            engine.start(at: Double(startSeconds))
             return
-        } else if request.file.contentType == "video/mp4", let original = try? await putio.originalURL(fileID: request.file.id) {
-            engine.replace(with: original)
-        } else {
-            chrome.preparing = false
-            chrome.failure = "This video isn't ready to stream yet. Try again in a few minutes."
+        }
+        let step = await plan.firstStep()
+        BuiltInPlayer.log.notice("file \(self.request.file.id): first \(String(describing: step)), codecs \(String(describing: plan.verdict))")
+        guard !finished else { return }
+        if step == .play(.builtIn), await switchToBuiltIn() { return }
+        engine.start(at: Double(startSeconds))
+    }
+
+    /// The player didn't play the video: the next one. Apple's → the built-in player on the original file → put.io's
+    /// conversion (only when put.io says the format needs it) → a message.
+    private func handleUnplayable() async {
+        guard !gaveUp, !routing else { return }
+        if chrome.playingFromDevice {
+            giveUp("This download couldn't be played. Remove it and download it again, or stream it from put.io.")
+            return
+        }
+        guard let plan else { return }
+        routing = true
+        defer { routing = false }
+        let failed = engine.kind
+        var step = await plan.step(afterFailureOf: failed)
+        BuiltInPlayer.log.notice("file \(self.request.file.id): \(failed.rawValue) failed (\(String(describing: self.engine.status))), next \(String(describing: step))")
+        while !finished {
+            switch step {
+            case let .play(next):
+                let switched = if next == .builtIn { await switchToBuiltIn() } else { switchToApple() }
+                if switched { return }
+                // Couldn't even set it up (no link from put.io): count it as failed too.
+                step = await plan.step(afterFailureOf: next)
+            case .convert:
+                startConversion()
+                return
+            case .fail:
+                await fallBackOrGiveUp()
+                return
+            }
         }
     }
 
-    /// Called when the video doesn't play: if put.io says its format needs converting for Apple devices, has put.io
-    /// convert it (the player shows how far) and then plays from where it was meant to start. Returns whether that's
-    /// the case. Not done up front: put.io also flags videos only web browsers can't play, and those stream fine.
-    /// The wait runs on its own, so closing the player is never held up by it (the conversion carries on at put.io
-    /// and shows again when the video is reopened).
-    private func convertIfNeeded() async -> Bool {
-        if converting { return true }
-        guard await app.conversions.needsConversion(fileID: request.file.id), !finished else { return false }
+    /// The built-in player on the original file (put.io's download link; refreshed when it expires).
+    private func switchToBuiltIn() async -> Bool {
+        let putio = putio, fileID = request.file.id
+        guard let original = try? await putio.originalURL(fileID: fileID), !finished,
+              let builtIn = BuiltInPlayer.backend(url: original, audioLanguage: app.settings.audioLanguage,
+                                                  refreshURL: { try? await putio.originalURL(fileID: fileID) }) else { return false }
+        engine.switchTo(builtIn, at: resumePoint)
+        rememberedSuccess = false
+        chrome.failure = nil
+        return true
+    }
+
+    private func switchToApple() -> Bool {
+        engine.switchTo(AVPlayerBackend(url: session.streamURL), at: resumePoint)
+        appliedLanguages = false
+        rememberedSuccess = false
+        return true
+    }
+
+    /// Where a new player starts: where this one got to, or where playback was meant to start.
+    private var resumePoint: Double { max(engine.position, Double(startSeconds)) }
+
+    /// Nothing else to try. An MP4 put.io doesn't stream yet may still play from the original file in Apple's player.
+    private func fallBackOrGiveUp() async {
+        if !triedOriginalMP4, request.file.contentType == "video/mp4", let original = try? await putio.originalURL(fileID: request.file.id) {
+            triedOriginalMP4 = true
+            engine.switchTo(AVPlayerBackend(url: original), at: resumePoint)
+            return
+        }
+        giveUp("This video isn't ready to stream yet. Try again in a few minutes.")
+    }
+
+    private func giveUp(_ message: String) {
+        gaveUp = true
+        chrome.preparing = false
+        chrome.failure = message
+    }
+
+    /// put.io converts the video for Apple devices (the player shows how far), then Apple's player plays it from where
+    /// it was meant to start. The last resort: only after the built-in player couldn't play it either (or with
+    /// "Convert with put.io" in Settings). The wait runs on its own, so closing the player is never held up by it (the
+    /// conversion carries on at put.io and shows again when the video is reopened).
+    private func startConversion() {
+        guard !converting, !finished else { return }
         converting = true
         engine.pause()
         chrome.preparing = false
@@ -245,7 +338,6 @@ final class PlayerCoordinator {
             guard let self, !self.finished, !Task.isCancelled else { return }
             self.conversionDone(ok)
         }
-        return true
     }
 
     private func conversionDone(_ ok: Bool) {
@@ -253,12 +345,9 @@ final class PlayerCoordinator {
         conversionTask = nil
         chrome.conversion = nil
         if ok {
-            triedFallback = false
-            let resumeAt = max(engine.position, Double(startSeconds))
-            engine.replace(with: session.streamURL)
-            if resumeAt > 0 { engine.seek(to: resumeAt) }
+            _ = switchToApple()
         } else {
-            chrome.failure = "put.io couldn't convert this video for Apple devices. Try another version of it."
+            giveUp("put.io couldn't convert this video for Apple devices. Try another version of it.")
         }
     }
 
@@ -283,19 +372,6 @@ final class PlayerCoordinator {
         guard position > 0 else { return }
         let session = session
         BackgroundSave.run("Save playback position") { await session.finish(seconds: position, duration: duration) }
-    }
-
-    /// Picks the preferred audio track (Settings → Playback). Subtitles are drawn by the app (put.io + OpenSubtitles),
-    /// so any subtitle track inside the stream (older offline copies) stays off.
-    private func applyLanguagePreferences(to item: AVPlayerItem) async {
-        if let group = try? await item.asset.loadMediaSelectionGroup(for: .legible), group.allowsEmptySelection {
-            item.select(nil, in: group)
-        }
-        if let language = app.settings.audioLanguage, let group = try? await item.asset.loadMediaSelectionGroup(for: .audible),
-           let index = LanguageMatcher.bestIndex(available: group.options.map { $0.extendedLanguageTag ?? $0.locale?.identifier },
-                                                 preferred: language) {
-            item.select(group.options[index], in: group)
-        }
     }
 
     // MARK: Next episode (Netflix-style)

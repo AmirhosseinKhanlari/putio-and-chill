@@ -152,6 +152,17 @@ final class FakePutio: PutioService, @unchecked Sendable {
         return PutioFile(id: file.id, name: file.name, fileType: file.fileType, size: file.size,
                          needConvert: lock.withLock { needsMp4.contains(id) }, isMp4Available: done)
     }
+    /// Codecs per file, as put.io's media info reports them (unset: nothing known).
+    var codecs: [Int64: (video: [String], audio: [String])] = [:]
+    private(set) var mediaInfoRequests: [Int64] = []
+    func mediaInfo(fileID: Int64) async throws -> PutioMediaInfo {
+        lock.withLock {
+            mediaInfoRequests.append(fileID)
+            let known = codecs[fileID]
+            return PutioMediaInfo(videoCodecs: known?.video ?? [], audioCodecs: known?.audio ?? [],
+                                  needConvert: needsMp4.contains(fileID), isMp4Available: mp4Progress[fileID]?.first?.status == .completed)
+        }
+    }
     func mp4Status(fileID: Int64) async throws -> PutioMp4Status {
         lock.withLock {
             guard var steps = mp4Progress[fileID], !steps.isEmpty else { return PutioMp4Status(status: .notAvailable) }

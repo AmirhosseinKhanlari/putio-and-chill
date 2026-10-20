@@ -93,6 +93,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
     /// Notify about new episodes of followed shows, on release day at `episodeAlertHour` (0–23, local time).
     public var episodeAlerts = true
     public var episodeAlertHour = 9
+    /// A video Apple's player can't play: the built-in player plays the original file, or put.io converts it.
+    public var unsupportedVideoPlayer = UnsupportedVideoPlayer.builtIn
 
     public init(sources: [SourceConfig], defaultResolution: Int?, autoPlayCountdown: Bool) {
         self.sources = sources; self.defaultResolution = defaultResolution; self.autoPlayCountdown = autoPlayCountdown
@@ -101,7 +103,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case sources, defaultResolution, autoPlayCountdown, autoPlayNextEpisode, oneTapGet, smartGet, audioLanguage, subtitleLanguage
         case autoCleanDays, autoCleanConfirmed, downloadDataSaver, subtitleStyle, libraryAutoUpdate, libraryUpdateMinutes
-        case moviesFolder, tvFolder, seasonFolders, preferDownloads, episodeAlerts, episodeAlertHour
+        case moviesFolder, tvFolder, seasonFolders, preferDownloads, episodeAlerts, episodeAlertHour, unsupportedVideoPlayer
     }
 
     /// Settings saved by older versions keep their values and pick up defaults for new options.
@@ -127,6 +129,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         preferDownloads = try c.decodeIfPresent(Bool.self, forKey: .preferDownloads) ?? true
         episodeAlerts = try c.decodeIfPresent(Bool.self, forKey: .episodeAlerts) ?? true
         episodeAlertHour = min(max(try c.decodeIfPresent(Int.self, forKey: .episodeAlertHour) ?? 9, 0), 23)
+        unsupportedVideoPlayer = (try? c.decodeIfPresent(UnsupportedVideoPlayer.self, forKey: .unsupportedVideoPlayer)) ?? .builtIn
     }
 
     public static let defaults = AppSettings(sources: [

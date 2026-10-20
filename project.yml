@@ -2,7 +2,8 @@ name: AMDB
 options:
   bundleIdPrefix: app.amdb
   deploymentTarget:
-    iOS: "17.0"
+    # iOS 18: the built-in player (AetherEngine 7.x) needs it.
+    iOS: "18.0"
     tvOS: "18.0"
   createIntermediateGroups: true
 settings:
@@ -16,6 +17,11 @@ settings:
 packages:
   AMDBCore:
     path: AMDBCore
+  # The built-in player for videos Apple's can't play (FFmpeg demux + decode). LGPL-3.0 with an App Store
+  # exception; its FFmpeg frameworks are LGPL-2.1 and stay dynamically linked. No optional traits, no SMB product.
+  AetherEngine:
+    url: https://github.com/superuser404notfound/AetherEngine
+    exactVersion: 7.44.0
 configFiles:
   Debug: Config/Base.xcconfig
   Release: Config/Base.xcconfig
@@ -30,6 +36,7 @@ targets:
       - path: App/iOS
       - path: App/Shared
       - path: App/SharedUI
+      - path: App/PlayerCore
     entitlements:
       path: App/iOS/AMDB.entitlements
       properties:
@@ -39,6 +46,10 @@ targets:
         product: AMDBCore
       - package: AMDBCore
         product: AMDBKit
+      # Not in the Mac app: AetherEngine's FFmpeg build has no Mac Catalyst slice (the Mac keeps Apple's player).
+      - package: AetherEngine
+        product: AetherEngine
+        platformFilter: iOS
       - target: AMDBWidgets
     info:
       path: App/iOS/Info.plist
@@ -98,6 +109,8 @@ targets:
         "PRODUCT_NAME[sdk=macosx*]": "Putio & Chill"
         PRODUCT_MODULE_NAME: AMDB
         MACOSX_DEPLOYMENT_TARGET: "14.0"
+        # The Mac app has no built-in player (iOS 18 is only for that), so it keeps running on macOS 14.
+        "IPHONEOS_DEPLOYMENT_TARGET[sdk=macosx*]": "17.0"
   AMDBUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -138,6 +151,7 @@ targets:
         DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
         "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/Widgets/AMDBWidgets-Mac.entitlements
         "ARCHS[sdk=macosx*]": "arm64 x86_64"
+        "IPHONEOS_DEPLOYMENT_TARGET[sdk=macosx*]": "17.0"
   AMDBTV:
     type: application
     platform: tvOS
@@ -148,11 +162,14 @@ targets:
       - path: App/tvOS
       - path: App/SharedUI
       - path: App/TVShared
+      - path: App/PlayerCore
     dependencies:
       - package: AMDBCore
         product: AMDBCore
       - package: AMDBCore
         product: AMDBKit
+      - package: AetherEngine
+        product: AetherEngine
       - target: AMDBTopShelf
     entitlements:
       path: App/tvOS/AMDBTV.entitlements
