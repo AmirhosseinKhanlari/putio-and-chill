@@ -29,34 +29,42 @@ public actor ChillProvider: SourceProvider {
 
     public func releases(for query: MediaQuery) async throws -> [Release] {
         switch query {
-        case .movie, .text:
-            let text = query.searchText
-            let indexers = try await indexers()
-            let releases = try await withThrowingTaskGroup(of: [Release].self) { group in
-                for indexer in indexers {
-                    group.addTask { try await self.search(text, indexerID: indexer.id) }
-                }
-                var all: [Release] = []
-                var lastError: (any Error)?
-                while let result = await group.nextResult() {
-                    switch result {
-                    case let .success(rows): all += rows
-                    case let .failure(error): lastError = error
-                    }
-                }
-                if all.isEmpty, let lastError { throw lastError }
-                return all
-            }
-            return releases.filter { ReleaseRelevance.matches($0.parsed, query) }
-        case let .episode(imdbID, _, season, episode):
+        case let .episode(_, _, season, episode):
+            // The TV endpoints look shows up by IMDb id; a show without one is searched by title like a movie.
+            guard let imdbID = query.imdbID else { return try await searchAll(query) }
             let response: EpisodeResponse = try await call(
                 "GetTVShowEpisodeDownload", EpisodeRequest(imdbId: imdbID, seasonNumber: season, episodeNumber: episode))
             return response.download.map { [Self.release(from: $0)] } ?? []
-        case let .season(imdbID, _, season):
+        case let .season(_, _, season):
+            guard let imdbID = query.imdbID else { return try await searchAll(query) }
             let response: SeasonResponse = try await call(
                 "GetTVShowSeasonDownloads", SeasonRequest(imdbId: imdbID, seasonNumber: season))
             return response.seasonPack.map { [Self.release(from: $0)] } ?? []
+        case .movie, .text:
+            return try await searchAll(query)
         }
+    }
+
+    /// Free-text search on every enabled indexer, kept to what the query asked for. One indexer failing is fine.
+    private func searchAll(_ query: MediaQuery) async throws -> [Release] {
+        let text = query.searchText
+        let indexers = try await indexers()
+        let releases = try await withThrowingTaskGroup(of: [Release].self) { group in
+            for indexer in indexers {
+                group.addTask { try await self.search(text, indexerID: indexer.id) }
+            }
+            var all: [Release] = []
+            var lastError: (any Error)?
+            while let result = await group.nextResult() {
+                switch result {
+                case let .success(rows): all += rows
+                case let .failure(error): lastError = error
+                }
+            }
+            if all.isEmpty, let lastError { throw lastError }
+            return all
+        }
+        return releases.filter { ReleaseRelevance.matches($0.parsed, query) }
     }
 
     private nonisolated func search(_ text: String, indexerID: String) async throws -> [Release] {

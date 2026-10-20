@@ -87,7 +87,8 @@ public enum NextUpFinder {
     @MainActor
     private static func make(tmdbID: Int, detail: TitleDetail, season: Int, episode: Episode, library: LibraryIndex) -> NextUp {
         let item = detail.item
-        let query = detail.imdbID.map { MediaQuery.episode(imdbID: $0, title: item.title, season: season, episode: episode.number) }
+        // Shows without an IMDb id are searched by title.
+        let query = MediaQuery.episode(imdbID: detail.imdbID, title: item.title, season: season, episode: episode.number)
         return NextUp(showTitle: item.title, season: season, episode: episode.number, name: episode.name,
                       overview: episode.overview, stillPath: episode.stillPath ?? item.backdropPath,
                       entry: best(library.matching(tmdbID: tmdbID, season: season, episode: episode.number), library),

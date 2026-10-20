@@ -30,7 +30,12 @@ struct TVVersionsView: View {
                 }
                 if let model {
                     if model.rows.isEmpty, !model.isLoading {
-                        Text("No versions found.").foregroundStyle(TVMetrics.secondaryText)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("No versions found.").font(.system(size: 26, weight: .semibold))
+                            Text([model.failureSummary, model.emptyHint].compactMap { $0 }.joined(separator: " "))
+                                .font(.system(size: 22)).foregroundStyle(TVMetrics.secondaryText)
+                            Button("Search Again") { model.start() }.tvPill().padding(.top, 8)
+                        }
                     }
                     if model.rows.isEmpty, model.isLoading { ProgressView().padding(.top, 30) }
                     ForEach(model.rows) { release in

@@ -86,7 +86,10 @@ struct PrimaryActions: View {
     }
 
     private func openVersions() {
-        guard let query = model.query(season: season, episode: episode) else { return }
+        guard let query = model.query(season: season, episode: episode) else {
+            router.toast = model.queryUnavailableMessage
+            return
+        }
         router.versions = VersionsRequest(query: query, target: model.target(season: season, episode: episode),
                                           playNow: app.library.matching(tmdbID: model.item.tmdbID, season: season, episode: episode))
     }
@@ -284,7 +287,10 @@ struct EpisodeActionButton: View {
     }
 
     private func openVersions() {
-        guard let query = model.query(season: season, episode: episode) else { return }
+        guard let query = model.query(season: season, episode: episode) else {
+            router.toast = model.queryUnavailableMessage
+            return
+        }
         router.versions = VersionsRequest(query: query, target: model.target(season: season, episode: episode),
                                           playNow: app.library.matching(tmdbID: model.item.tmdbID, season: season, episode: episode))
     }

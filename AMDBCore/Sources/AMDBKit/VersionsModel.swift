@@ -27,6 +27,21 @@ public final class VersionsModel {
     public var rows: [Release] { snapshot.releases.filtered(resolution: resolution).sorted(by: sort) }
     public var failures: [ProviderFailure] { snapshot.failures }
 
+    /// What to say when nothing was found.
+    public var emptyHint: String {
+        let advice = "Try again, turn on more sources in Settings, or use a VPN if some sites are blocked where you are."
+        guard query.imdbID == nil, query.title != nil else { return advice }
+        return "This title has no IMDb id yet, so sources were searched by name (\u{201C}\(query.searchText)\u{201D}). \(advice)"
+    }
+
+    /// "knaben and eztv didn't answer." when some sources failed, for screens that don't list each one.
+    public var failureSummary: String? {
+        let names = failures.map(\.providerID)
+        guard !names.isEmpty else { return nil }
+        let list = names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1]
+        return "\(list) didn't answer."
+    }
+
     public var availableResolutions: [Resolution] {
         Set(snapshot.releases.map(\.parsed.resolution)).filter { $0 != .unknown }.sorted(by: >)
     }

@@ -129,6 +129,9 @@ private struct LibraryCardView: View {
                         Button { Task { await downloader.remove(fileID: entry.id) } } label: { Label("Remove download", systemImage: "minus.circle") }
                     }
                 }
+                Button { router.fixMatch = .entries(entries) } label: {
+                    Label("Fix Match…", systemImage: "wand.and.stars")
+                }
                 Button(role: .destructive) { confirmDelete = true } label: {
                     Label(entries.count > 1 ? "Delete \(entries.count) episodes from put.io" : "Delete from put.io", systemImage: "trash")
                 }

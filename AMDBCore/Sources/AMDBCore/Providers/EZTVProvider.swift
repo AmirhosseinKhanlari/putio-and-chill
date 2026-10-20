@@ -14,14 +14,15 @@ public struct EZTVProvider: SourceProvider {
     }
 
     public func releases(for query: MediaQuery) async throws -> [Release] {
-        let imdbID: String
         let season: Int
         let episode: Int?
         switch query {
-        case let .episode(id, _, s, e): imdbID = id; season = s; episode = e
-        case let .season(id, _, s): imdbID = id; season = s; episode = nil
+        case let .episode(_, _, s, e): season = s; episode = e
+        case let .season(_, _, s): season = s; episode = nil
         default: return []
         }
+        // EZTV's API only looks shows up by IMDb id; without one there's nothing to ask (the text sources cover it).
+        guard let imdbID = query.imdbID else { return [] }
         let digits = imdbID.hasPrefix("tt") ? String(imdbID.dropFirst(2)) : imdbID
 
         var torrents: [Torrent] = []

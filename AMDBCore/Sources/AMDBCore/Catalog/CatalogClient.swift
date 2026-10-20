@@ -50,6 +50,11 @@ public struct CatalogClient: Sendable {
         try await page("search/tv", [("query", title)] + (year.map { [("first_air_date_year", String($0))] } ?? []))
     }
 
+    public func seasonCount(tvID: Int) async throws -> Int? {
+        struct Show: Decodable { let numberOfSeasons: Int? }
+        return try await http.decode(Show.self, request("tv/\(tvID)"), decoder: .snakeCase).numberOfSeasons
+    }
+
     public func findByIMDb(_ imdbID: String) async throws -> CatalogItem? {
         struct Found: Decodable { let movieResults: [CatalogItem]?; let tvResults: [CatalogItem]? }
         let found = try await http.decode(Found.self, request("find/\(imdbID)", [("external_source", "imdb_id")]), decoder: .snakeCase)

@@ -160,7 +160,10 @@ struct EpisodeList: View {
 
     private func getSeasonButton(_ season: Int) -> some View {
             Button {
-                guard let query = model.query(season: season) else { return }
+                guard let query = model.query(season: season) else {
+                    router.toast = model.queryUnavailableMessage
+                    return
+                }
                 router.versions = VersionsRequest(query: query, target: model.target(season: season), playNow: [])
             } label: { Label("Get season", systemImage: "square.stack.3d.down.right") }
             .buttonStyle(.glassPill)

@@ -1,25 +1,45 @@
 import Foundation
 
+/// What to look for. The IMDb id is optional: TMDB has shows without one (e.g. "Monster: The Ed Gein Story"), and those
+/// are searched by title. Sources that only work by IMDb id skip such queries or fall back to their text search.
 public enum MediaQuery: Sendable, Hashable {
-    case movie(imdbID: String, title: String, year: Int?)
-    case episode(imdbID: String, title: String, season: Int, episode: Int)
-    case season(imdbID: String, title: String, season: Int)
+    case movie(imdbID: String?, title: String, year: Int?)
+    case episode(imdbID: String?, title: String, season: Int, episode: Int)
+    case season(imdbID: String?, title: String, season: Int)
     case text(String)
 
+    /// What free-text sources are asked: the title without punctuation, then the year or SxxEyy.
     public var searchText: String {
         switch self {
-        case let .movie(_, title, year): year.map { "\(title) \($0)" } ?? title
-        case let .episode(_, title, season, episode): "\(title) S\(twoDigits(season))E\(twoDigits(episode))"
-        case let .season(_, title, season): "\(title) S\(twoDigits(season))"
+        case let .movie(_, title, year): year.map { "\(Self.searchTitle(title)) \($0)" } ?? Self.searchTitle(title)
+        case let .episode(_, title, season, episode): "\(Self.searchTitle(title)) S\(twoDigits(season))E\(twoDigits(episode))"
+        case let .season(_, title, season): "\(Self.searchTitle(title)) S\(twoDigits(season))"
         case let .text(text): text
         }
     }
 
     public var imdbID: String? {
         switch self {
-        case let .movie(id, _, _), let .episode(id, _, _, _), let .season(id, _, _): id
+        case let .movie(id, _, _), let .episode(id, _, _, _), let .season(id, _, _): id.flatMap { $0.isEmpty ? nil : $0 }
         case .text: nil
         }
+    }
+
+    /// The movie or show title asked for (nil for free text).
+    public var title: String? {
+        switch self {
+        case let .movie(_, title, _), let .episode(_, title, _, _), let .season(_, title, _): title
+        case .text: nil
+        }
+    }
+
+    /// Release names leave punctuation out ("Monster: The Ed Gein Story" → "Monster The Ed Gein Story"), and so must
+    /// the search, or sites that match every word find nothing. Apostrophes join ("Grey's" → "Greys").
+    public static func searchTitle(_ title: String) -> String {
+        title.replacingOccurrences(of: #"['’]"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&", with: " and ")
+            .replacingOccurrences(of: #"[^\p{L}\p{N}]+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
     }
 }
 

@@ -22,4 +22,30 @@ final class LibraryCareUITests: XCTestCase {
         shot.lifetime = .keepAlways
         add(shot)
     }
+
+    /// Long-press a Library card → Fix Match: search TMDB, pick the title, apply.
+    func testFixMatchFromLibrary() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-demoScreen", "library"]
+        app.launch()
+        let poster = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Past Lives'")).firstMatch
+        XCTAssertTrue(poster.waitForExistence(timeout: 20))
+        let hittable = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Past Lives'")).allElementsBoundByIndex.first { $0.isHittable }
+        try XCTUnwrap(hittable).press(forDuration: 1.2)
+        let fix = app.buttons["Fix Match…"]
+        XCTAssertTrue(fix.waitForExistence(timeout: 5), "long-press offers Fix Match")
+        fix.tap()
+        XCTAssertTrue(app.textFields["fixmatch.search"].waitForExistence(timeout: 10), "Fix Match opens with a search field")
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Movie · 2023'")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 10), "the file's title is searched right away")
+        result.tap()
+        let apply = app.buttons["fixmatch.apply"]
+        XCTAssertTrue(apply.waitForExistence(timeout: 5))
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "fix-match-chosen"
+        shot.lifetime = .keepAlways
+        add(shot)
+        apply.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Matched to'")).firstMatch.waitForExistence(timeout: 5))
+    }
 }

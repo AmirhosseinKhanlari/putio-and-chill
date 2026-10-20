@@ -64,7 +64,7 @@ struct VersionsSheet: View {
                         } else if model.rows.isEmpty {
                             VStack(spacing: 8) {
                                 Text("No versions found").font(.headline)
-                                Text("Try again, turn on more sources in Settings, or use a VPN if some sites are blocked where you are.")
+                                Text(model.emptyHint)
                                     .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                                 Button("Search again") { model.start() }.buttonStyle(.glassPill)
                             }

@@ -173,6 +173,7 @@ struct TVLibraryView: View {
                 }
                 .contextMenu {
                     Button("Play") { router.play(entry, from: resume) }
+                    Button("Fix Match…") { router.open(.fixMatch(.entries([entry]))) }
                     Button("Delete from put.io", role: .destructive) { doomed = [entry] }
                 }
             }
@@ -180,6 +181,7 @@ struct TVLibraryView: View {
             let item = CatalogItem(tmdbID: tmdbID, mediaType: .tv, title: title, posterPath: posterPath)
             TVPosterButton(item: item, badge: "\(episodes.count) ep") { router.open(item) }
                 .contextMenu {
+                    Button("Fix Match…") { router.open(.fixMatch(.entries(episodes))) }
                     Button(episodes.count == 1 ? "Delete Episode" : "Delete All \(episodes.count) Episodes", role: .destructive) {
                         doomed = episodes
                     }
@@ -196,6 +198,7 @@ struct TVLibraryView: View {
             }
             .buttonStyle(.card)
             .contextMenu {
+                Button("Fix Match…") { router.open(.fixMatch(.entries([entry]))) }
                 Button("Delete from put.io", role: .destructive) { doomed = [entry] }
             }
         }

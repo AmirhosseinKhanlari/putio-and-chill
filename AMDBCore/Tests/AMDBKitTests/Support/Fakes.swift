@@ -278,6 +278,9 @@ struct FakeCatalog: CatalogService {
     var multiPages: [String: [Int: [CatalogItem]]] = [:]
     var multiTotalPages = 1
     var imdb: [String: CatalogItem] = [:]
+    /// Seasons per show id (`number_of_seasons`); unknown when absent.
+    var seasonCounts: [Int: Int] = [:]
+    func seasonCount(tvID: Int) async throws -> Int? { try guarded(seasonCounts[tvID]) }
     func findByIMDb(_ imdbID: String) async throws -> CatalogItem? { try guarded(imdb[imdbID]) }
 
     private func guarded<T>(_ value: T) throws -> T {

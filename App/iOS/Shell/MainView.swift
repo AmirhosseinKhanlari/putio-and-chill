@@ -53,6 +53,7 @@ struct MainView: View {
         }
         .onChange(of: router.tab, initial: true) { _, tab in visited.insert(tab) }
         .sheet(item: $router.versions) { VersionsSheet(request: $0) }
+        .sheet(item: $router.fixMatch) { FixMatchSheet(request: $0) }
         .sheet(isPresented: $router.showSettings) { SettingsView() }
         .fullScreenCover(isPresented: $router.showSurprise) { SurprisePage() }
         .task {

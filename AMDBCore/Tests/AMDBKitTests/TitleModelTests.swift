@@ -64,6 +64,31 @@ import Testing
         #expect(FolderLayout.standard.displayPath(kind: tv.kind, title: tv.title, season: tv.season) == "TV Series/Severance/Season 2")
     }
 
+    /// TMDB has shows without an IMDb id ("Monster: The Ed Gein Story"): Get, Get season and Versions still have a query.
+    @Test func showWithoutIMDbIDIsSearchedByTitle() async {
+        let edGein = show(286801, "Monster: The Ed Gein Story", year: 2025)
+        let catalog = FakeCatalog(details: [286801: TitleDetail(item: edGein, imdbID: nil,
+                                                                seasons: [SeasonSummary(number: 1, name: "Miniseries", episodeCount: 8, posterPath: nil)])],
+                                  seasons: [1: [Episode(number: 1, name: "Mother")]])
+        let store = LocalStore(fileURL: nil)
+        let model = TitleModel(item: edGein, catalog: catalog, library: LibraryIndex(store: store), transfers: TransferMonitor(store: store))
+        #expect(model.query(season: 1, episode: 1) == nil)
+        #expect(model.queryUnavailableMessage.contains("loading"))
+        await model.load()
+        #expect(model.query(season: 1, episode: 1) == .episode(imdbID: nil, title: "Monster: The Ed Gein Story", season: 1, episode: 1))
+        #expect(model.query(season: 1) == .season(imdbID: nil, title: "Monster: The Ed Gein Story", season: 1))
+        #expect(model.query(season: 1)?.searchText == "Monster The Ed Gein Story S01")
+    }
+
+    @Test func movieWithoutIMDbIDIsSearchedByTitle() async {
+        let film = movie(1, "Some Film", year: 2025)
+        let catalog = FakeCatalog(details: [1: TitleDetail(item: film, imdbID: nil)])
+        let store = LocalStore(fileURL: nil)
+        let model = TitleModel(item: film, catalog: catalog, library: LibraryIndex(store: store), transfers: TransferMonitor(store: store))
+        await model.load()
+        #expect(model.query() == .movie(imdbID: nil, title: "Some Film", year: 2025))
+    }
+
     @Test func showOpensOnTheSeasonBeingWatched() async {
         let store = LocalStore(fileURL: nil)
         let library = LibraryIndex(store: store)

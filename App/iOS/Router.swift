@@ -103,6 +103,8 @@ final class Router {
     var upcomingPath: [Route] = []
     var libraryPath: [Route] = []
     var versions: VersionsRequest?
+    /// Fix Match for library files (from a Library card or a Files row).
+    var fixMatch: FixMatchRequest?
     /// Set to start playback; cleared when the player closes.
     var player: PlayerRequest?
     /// Shown before playback when there is a saved position.

@@ -167,6 +167,7 @@ struct TVRootView: View {
                 case .organize: TVOrganizeView()
                 case let .files(folder): TVFilesView(folder: folder)
                 case .trash: TVTrashView()
+                case let .fixMatch(request): TVFixMatchView(request: request)
                 }
     }
 

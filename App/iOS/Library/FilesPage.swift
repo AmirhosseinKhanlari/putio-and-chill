@@ -275,6 +275,12 @@ struct FilesPage: View {
         } else {
             Button { open(file) } label: { Label("Open", systemImage: "arrow.up.forward.app") }
         }
+        if file.isVideo || file.isFolder {
+            // Wrong title (or none) in the Library: pick the right one for this video, or everything in this folder.
+            Button { router.fixMatch = file.isFolder ? .folder(file) : .video(file, folderName: folder.id == 0 ? nil : folder.name) } label: {
+                Label("Fix Match…", systemImage: "wand.and.stars")
+            }
+        }
         Button { newName = file.name; renaming = file } label: { Label("Rename", systemImage: "pencil") }
         Button { destination = DestinationRequest(action: .move, ids: [file.id], source: folder.id) } label: {
             Label("Move", systemImage: "folder")

@@ -103,15 +103,24 @@ public final class TitleModel {
         return aired.allSatisfy { !library.matching(tmdbID: item.tmdbID, season: season, episode: $0.number).isEmpty }
     }
 
+    /// What to search sources for. Needs the title's details (loaded by `load`), not an IMDb id: shows TMDB has no
+    /// IMDb id for are searched by title. nil only before the details arrive, or for a show with no season picked.
     public func query(season: Int? = nil, episode: Int? = nil) -> MediaQuery? {
-        guard let detail, let imdbID = detail.imdbID else { return nil }
-        let title = detail.item.title
+        guard let detail else { return nil }
+        let title = detail.item.title.isEmpty ? item.title : detail.item.title
+        guard !title.isEmpty else { return nil }
+        let imdbID = detail.imdbID
         switch (item.mediaType, season, episode) {
         case (.tv, let season?, let episode?): return .episode(imdbID: imdbID, title: title, season: season, episode: episode)
         case (.tv, let season?, nil): return .season(imdbID: imdbID, title: title, season: season)
         case (.movie, _, _): return .movie(imdbID: imdbID, title: title, year: detail.item.year)
         default: return nil
         }
+    }
+
+    /// What to tell the user when `query` is nil (the page is still loading, or failed to).
+    public var queryUnavailableMessage: String {
+        error == nil ? "Still loading this title. Try again in a moment." : "Couldn't load this title, so there's nothing to search for. Check your connection and try again."
     }
 
     public func target(season: Int? = nil, episode: Int? = nil) -> TransferTarget {

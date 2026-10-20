@@ -123,12 +123,14 @@ public final class LibraryIndex {
     /// The scope the entries on screen were read with.
     private var entriesScope: String?
 
-    private let store: LocalStore
+    let store: LocalStore
     private let cache: LibraryCache
     private let maxFolders: Int
     private let parallelism: Int
     private var putio: (any PutioService)?
-    private var matcher: LibraryMatcher?
+    private(set) var matcher: LibraryMatcher?
+    /// Fix Match choices (a copy of what `LocalState` keeps), applied before automatic matching.
+    public internal(set) var overrides = MatchOverrides()
     /// Files found on put.io that are still being matched to TMDB (not shown yet).
     public private(set) var pendingMatches = 0
     /// Four lookups at a time keeps well under TMDB's rate limit (each file can take two searches).
@@ -175,6 +177,7 @@ public final class LibraryIndex {
 
     /// Shows the library saved last time, instantly, before any network request.
     public func loadCached() async {
+        overrides = await store.snapshot.matchOverrides
         guard entries.isEmpty, let snapshot = await cache.load() else { return }
         entries = Self.sorted(snapshot.entries.map { entry in
             var entry = entry
@@ -250,6 +253,13 @@ public final class LibraryIndex {
             if !repaired.isEmpty {
                 let fixes = repaired
                 await store.update { state in for (id, match) in fixes { state.matches[id] = match } }
+            }
+            // Fix Match choices come first: those files are never looked up.
+            overrides = state.matchOverrides
+            for index in result.indices {
+                if let chosen = override(for: result[index].file) {
+                    result[index].match = chosen.match(fileName: result[index].file.name)
+                }
             }
             lastError = nil
             guard let matcher else {
@@ -437,6 +447,15 @@ public final class LibraryIndex {
         await store.update { state in
             state.finished.removeAll { ids.contains($0.fileID) }
             for id in ids { state.matches[id] = nil }
+        }
+        await persist()
+    }
+
+    /// Sets (or clears) the match of entries on screen, then saves the library. For Fix Match.
+    func setMatches(_ changes: [Int64: LibraryMatch?]) async {
+        guard !changes.isEmpty else { return }
+        for index in entries.indices {
+            if let change = changes[entries[index].id] { entries[index].match = change }
         }
         await persist()
     }

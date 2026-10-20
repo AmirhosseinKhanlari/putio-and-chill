@@ -126,6 +126,11 @@ struct TVFilesView: View {
         .tvRow()
         .contextMenu {
             if file.isVideo { Button("Play") { open(file) } }
+            if file.isVideo || file.isFolder {
+                Button("Fix Match…") {
+                    router.open(.fixMatch(file.isFolder ? .folder(file) : .video(file, folderName: folder.id == 0 ? nil : folder.name)))
+                }
+            }
             Button("Rename") { newName = file.name; renaming = file }
             Button("Move…") { destination = DestinationRequest(action: .move, ids: [file.id], source: folder.id) }
             Button("Copy…") { destination = DestinationRequest(action: .copy, ids: [file.id], source: folder.id) }

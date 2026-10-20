@@ -104,11 +104,13 @@ public struct LocalState: Codable, Sendable, Equatable {
     public var imdbMatches: [String: SavedTitle] = [:]
     /// Shows whose new episodes send a notification.
     public var followedShows: [SavedTitle] = []
+    /// Titles picked with Fix Match (by file, folder or name), applied before automatic matching.
+    public var matchOverrides = MatchOverrides()
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case matches, unmatched, unmatchedAt, pending, recentSearches, lastPlayed, folderIDs, myList, finished, downloads, subtitleChoices
-        case imdbWatchlist, imdbMatches, followedShows
+        case imdbWatchlist, imdbMatches, followedShows, matchOverrides
     }
 
     /// Every field is optional on disk, so files written by older versions keep loading.
@@ -128,6 +130,7 @@ public struct LocalState: Codable, Sendable, Equatable {
         imdbWatchlist = try c.decodeIfPresent([SavedTitle].self, forKey: .imdbWatchlist) ?? []
         imdbMatches = try c.decodeIfPresent([String: SavedTitle].self, forKey: .imdbMatches) ?? [:]
         followedShows = try c.decodeIfPresent([SavedTitle].self, forKey: .followedShows) ?? []
+        matchOverrides = try c.decodeIfPresent(MatchOverrides.self, forKey: .matchOverrides) ?? MatchOverrides()
     }
 }
 

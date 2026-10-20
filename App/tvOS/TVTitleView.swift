@@ -184,7 +184,10 @@ struct TVTitleActions: View {
     }
 
     private func get() async {
-        guard let query = model.query() else { return }
+        guard let query = model.query() else {
+            message = model.queryUnavailableMessage
+            return
+        }
         guard app.settings.oneTapGet else { return openVersions() }
         working = true
         defer { working = false }
@@ -198,7 +201,10 @@ struct TVTitleActions: View {
     }
 
     private func openVersions() {
-        guard let query = model.query() else { return }
+        guard let query = model.query() else {
+            message = model.queryUnavailableMessage
+            return
+        }
         router.open(.versions(TVVersionsRequest(query: query, target: model.target(),
                                                 playNow: app.library.matching(tmdbID: item.tmdbID))))
     }
@@ -351,7 +357,11 @@ struct TVEpisodes: View {
     }
 
     private func get(_ season: Int, _ episode: Int) async {
-        guard let query = model.query(season: season, episode: episode), !searching.contains(episode) else { return }
+        guard !searching.contains(episode) else { return }
+        guard let query = model.query(season: season, episode: episode) else {
+            message = model.queryUnavailableMessage
+            return
+        }
         searching.insert(episode)
         defer { searching.remove(episode) }
         message = nil
@@ -362,7 +372,10 @@ struct TVEpisodes: View {
     }
 
     private func openVersions(_ season: Int, _ episode: Int?) {
-        guard let query = model.query(season: season, episode: episode) else { return }
+        guard let query = model.query(season: season, episode: episode) else {
+            message = model.queryUnavailableMessage
+            return
+        }
         router.open(.versions(TVVersionsRequest(query: query, target: model.target(season: season, episode: episode),
                                                 playNow: app.library.matching(tmdbID: item.tmdbID, season: season, episode: episode))))
     }
