@@ -254,7 +254,7 @@ final class AetherBackend: NSObject, PlayerBackend {
     private func updateAirPlayNotice() {
         let airPlay = AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .airPlay }
         let notice = airPlay || player?.airPlayPictureStaysLocal == true
-            ? "AirPlay plays only the sound of this video. The built-in player keeps the picture on this device."
+            ? "AirPlay plays only the sound of this video. The built-in player keeps the picture and subtitles on this device."
             : nil
         if engine?.airPlayNotice != notice { engine?.airPlayNotice = notice }
     }

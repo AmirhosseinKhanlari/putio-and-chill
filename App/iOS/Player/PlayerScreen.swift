@@ -85,6 +85,8 @@ final class PlayerCoordinator {
     private var conversionTask: Task<Void, Never>?
     private var startSeconds = 0
     private var finished = false
+    /// Subtitles on the TV during AirPlay (the TV plays the stream itself and never sees the app's drawing).
+    private let airPlaySubtitles: AirPlaySubtitleSwitcher
     private var resignObserver: NSObjectProtocol?
 
     init(request: PlayerRequest, putio: any PutioService, app: AppModel, router: Router, localURL: URL? = nil) {
@@ -116,6 +118,9 @@ final class PlayerCoordinator {
                               subtitles: app.subtitleFinder(for: request.subtitleContext, fileSize: request.file.size))
 
         chrome.playingFromDevice = localURL != nil
+        airPlaySubtitles = AirPlaySubtitleSwitcher(engine: engine, finder: chrome.subtitles, putio: putio, fileID: request.file.id,
+                                                   plainStream: localURL == nil ? session.streamURL : nil,
+                                                   fromDevice: localURL != nil)
         chrome.subtitleStyle = app.settings.subtitleStyle
         chrome.failureLink = localURL == nil ? URL(string: "https://app.put.io/files/\(request.file.id)") : nil
         controller = PlayerViewController(engine: engine, chrome: chrome)
@@ -182,6 +187,9 @@ final class PlayerCoordinator {
             let status = engine.status
             chrome.preparing = status != .ready && !gaveUp
             if routing { continue }
+            airPlaySubtitles.update()
+            // A stream switch for AirPlay subtitles handles its own failure (back to the plain stream).
+            if airPlaySubtitles.isSwitching { continue }
             if status == .ready {
                 waitedForReady = 0
                 if !appliedLanguages, let apple = engine.backend as? AVPlayerBackend {
@@ -296,6 +304,7 @@ final class PlayerCoordinator {
     }
 
     private func switchToApple() -> Bool {
+        airPlaySubtitles.plainStream = session.streamURL
         engine.switchTo(AVPlayerBackend(url: session.streamURL), at: resumePoint)
         appliedLanguages = false
         rememberedSuccess = false
@@ -309,6 +318,8 @@ final class PlayerCoordinator {
     private func fallBackOrGiveUp() async {
         if !triedOriginalMP4, request.file.contentType == "video/mp4", let original = try? await putio.originalURL(fileID: request.file.id) {
             triedOriginalMP4 = true
+            // Not an HLS stream: AirPlay plays the file as it is, without subtitles.
+            airPlaySubtitles.plainStream = nil
             engine.switchTo(AVPlayerBackend(url: original), at: resumePoint)
             return
         }
@@ -360,6 +371,7 @@ final class PlayerCoordinator {
         if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
         engine.onPause = nil
         saveNow()
+        airPlaySubtitles.tearDown()
         engine.tearDown()
         if router.player?.id == request.id { router.player = nil }
         if Self.current === self { Self.current = nil }

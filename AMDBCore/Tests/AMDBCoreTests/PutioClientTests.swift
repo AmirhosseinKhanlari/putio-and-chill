@@ -72,6 +72,8 @@ import Testing
         let client = PutioClient(token: "T", transport: StubTransport(json: "{}"))
         #expect(client.hlsURL(fileID: 42).absoluteString == "https://api.put.io/v2/files/42/hls/media.m3u8?subtitle_key=all&oauth_token=T")
         #expect(client.hlsURL(fileID: 42, subtitles: false).absoluteString == "https://api.put.io/v2/files/42/hls/media.m3u8?max_subtitle_count=0&oauth_token=T")
+        // One put.io track (AirPlay), its key form-encoded.
+        #expect(client.hlsURL(fileID: 42, subtitleKey: "a/b+c=").absoluteString == "https://api.put.io/v2/files/42/hls/media.m3u8?subtitle_key=a%2Fb%2Bc%3D&oauth_token=T")
     }
 
     @Test func listsAndDownloadsSubtitles() async throws {

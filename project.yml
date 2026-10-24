@@ -88,6 +88,9 @@ targets:
         TraktClientID: $(TRAKT_CLIENT_ID)
         OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)
         NSSupportsLiveActivities: true
+        # AirPlay subtitles put.io doesn't have are served from this device to the TV (AirPlaySubtitleSwitcher);
+        # the device's own player loads that playlist from its Wi-Fi address too, which counts as local network use.
+        NSLocalNetworkUsageDescription: Lets your TV load the subtitles you picked from this device while you AirPlay a video.
         # Only standard HTTPS: exempt from export compliance, so TestFlight builds don't wait on the question.
         ITSAppUsesNonExemptEncryption: false
         LSApplicationCategoryType: public.app-category.entertainment

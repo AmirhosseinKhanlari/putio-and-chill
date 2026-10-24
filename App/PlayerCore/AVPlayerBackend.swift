@@ -21,6 +21,13 @@ final class AVPlayerBackend: PlayerBackend {
     private var timeObserver: Any?
     private var audioGroup: AVMediaSelectionGroup?
     private var audioOptions: [AVMediaSelectionOption] = []
+    private var routeObserver: NSObjectProtocol?
+    /// The audio track to pick again once a replaced stream is ready.
+    private var pendingAudioIndex: Int?
+
+    /// The subtitle rendition to show from the stream itself (AirPlay: the TV draws it), by name and language.
+    /// Nil keeps the stream's subtitles off, because on the device the app draws its own.
+    var streamSubtitle: (name: String, language: String)?
 
     var videoView: UIView { layerView }
     var volume: Float {
@@ -41,7 +48,17 @@ final class AVPlayerBackend: PlayerBackend {
             let value = player.timeControlStatus
             Task { @MainActor in self?.timeControlChanged(value) }
         }
-        playerObservations = [status]
+        // AirPlay video: the TV fetches and plays the stream itself, so subtitles have to be in it (see
+        // AirPlaySubtitleSwitcher). The route change catches AirPlay ending when the observation lags.
+        let external = player.observe(\.isExternalPlaybackActive, options: [.initial, .new]) { [weak self] player, _ in
+            let value = player.isExternalPlaybackActive
+            Task { @MainActor in self?.externalPlaybackChanged(value) }
+        }
+        playerObservations = [status, external]
+        routeObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil,
+                                                               queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.externalPlaybackChanged(self?.player.isExternalPlaybackActive == true) }
+        }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 10), queue: .main) { [weak self] time in
             MainActor.assumeIsolated { self?.tick(time) }
         }
@@ -54,6 +71,8 @@ final class AVPlayerBackend: PlayerBackend {
         timeObserver = nil
         playerObservations.forEach { $0.invalidate() }
         itemObservations.forEach { $0.invalidate() }
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
+        routeObserver = nil
         engine = nil
     }
 
@@ -100,12 +119,11 @@ final class AVPlayerBackend: PlayerBackend {
     func pictureInPictureChanged(active: Bool) {}
 
     /// Picks the preferred audio track (Settings → Playback). Subtitles are drawn by the app (put.io + OpenSubtitles),
-    /// so any subtitle track inside the stream (older offline copies) stays off.
+    /// so any subtitle track inside the stream (older offline copies) stays off, unless the stream carries one for
+    /// AirPlay (`streamSubtitle`).
     func applyLanguagePreferences(audioLanguage: String?) async {
         guard let item = player.currentItem else { return }
-        if let group = try? await item.asset.loadMediaSelectionGroup(for: .legible), group.allowsEmptySelection {
-            item.select(nil, in: group)
-        }
+        await selectStreamSubtitle()
         if let audioLanguage, let group = try? await item.asset.loadMediaSelectionGroup(for: .audible),
            let index = LanguageMatcher.bestIndex(available: group.options.map { $0.extendedLanguageTag ?? $0.locale?.identifier },
                                                  preferred: audioLanguage) {
@@ -114,12 +132,46 @@ final class AVPlayerBackend: PlayerBackend {
         }
     }
 
-    /// Switches to another URL (the original file when HLS isn't ready, or the converted stream), keeping the position.
-    func replace(with url: URL, at seconds: Double, rate: Float) {
+    /// The stream's subtitle rendition matching `streamSubtitle` (or none). False when the stream has no match.
+    @discardableResult
+    func selectStreamSubtitle() async -> Bool {
+        guard let item = player.currentItem, let group = try? await item.asset.loadMediaSelectionGroup(for: .legible) else {
+            return streamSubtitle == nil
+        }
+        guard let wanted = streamSubtitle else {
+            if group.allowsEmptySelection { item.select(nil, in: group) }
+            return true
+        }
+        let options = group.options.map { option in
+            StreamSubtitleOption(name: option.displayName, language: option.extendedLanguageTag ?? option.locale?.identifier,
+                                 isClosedCaption: option.mediaType == .closedCaption,
+                                 isForcedOnly: option.hasMediaCharacteristic(.containsOnlyForcedSubtitles))
+        }
+        guard let index = StreamSubtitleOption.bestIndex(options, name: wanted.name, language: wanted.language),
+              item === player.currentItem else { return false }
+        item.select(group.options[index], in: group)
+        return true
+    }
+
+    /// The selected subtitle rendition's name (checks and logs).
+    func selectedStreamSubtitleName() async -> String? {
+        guard let item = player.currentItem, let group = try? await item.asset.loadMediaSelectionGroup(for: .legible) else { return nil }
+        return item.currentMediaSelection.selectedMediaOption(in: group)?.displayName
+    }
+
+    /// Switches to another stream of the same video (AirPlay with or without subtitles), keeping the position, the
+    /// audio track and whether it was playing. The TV rebuffers for a moment.
+    func replace(with url: URL, at seconds: Double, rate: Float, playing: Bool) {
+        pendingAudioIndex = engine?.currentAudioID.flatMap { Int($0) }
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
         engine?.status = .loading
         observeItem()
-        start(at: seconds, rate: rate)
+        if seconds > 0 { seek(to: seconds) {} }
+        if playing { play(rate: rate) } else { player.pause() }
+    }
+
+    private func externalPlaybackChanged(_ active: Bool) {
+        if engine?.isExternalPlayback != active { engine?.isExternalPlayback = active }
     }
 
     // MARK: Observation
@@ -176,6 +228,11 @@ final class AVPlayerBackend: PlayerBackend {
         if videoOK, audioOK {
             engine.status = .ready
             await loadAudioOptions()
+            if let index = pendingAudioIndex {
+                pendingAudioIndex = nil
+                selectAudio(id: String(index))
+                engine.currentAudioID = String(index)
+            }
         } else {
             engine.status = .failed(videoOK ? "Apple's player can't decode this video's sound." : "Apple's player can't decode this video.")
         }

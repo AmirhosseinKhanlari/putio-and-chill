@@ -463,6 +463,8 @@ final class DemoPutio: PutioService, @unchecked Sendable {
             ? URL(string: "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8")!
             : URL(string: "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8")!
     }
+    /// Like put.io's stream with one subtitle track: Apple's sample stream, which has an English WebVTT rendition.
+    func hlsURL(fileID: Int64, subtitleKey: String) -> URL { hlsURL(fileID: fileID, subtitles: true) }
     func originalURL(fileID: Int64) async throws -> URL { hlsURL(fileID: fileID) }
     func subtitles(fileID: Int64) async throws -> [PutioSubtitle] {
         [PutioSubtitle(key: "eng-mkv", language: "English", languageCode: "eng", name: "English (from the file)", source: "mkv"),

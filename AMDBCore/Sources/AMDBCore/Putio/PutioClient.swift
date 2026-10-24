@@ -199,6 +199,12 @@ public struct PutioClient: Sendable {
 
     public func hlsURL(fileID: Int64) -> URL { hlsURL(fileID: fileID, subtitles: true) }
 
+    /// The HLS stream with one of put.io's subtitle tracks in it as a WebVTT rendition (put.io's documented
+    /// `subtitle_key`). For AirPlay, where the TV plays the stream itself and never sees the app's own drawing.
+    public func hlsURL(fileID: Int64, subtitleKey: String) -> URL {
+        URL(string: "\(baseURL.absoluteString)/files/\(fileID)/hls/media.m3u8?subtitle_key=\(formEncode(subtitleKey))&oauth_token=\(formEncode(token))")!
+    }
+
     // MARK: Plumbing
 
     private var authHeaders: [String: String] { ["Authorization": "token \(token)"] }

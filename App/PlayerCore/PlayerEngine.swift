@@ -27,8 +27,16 @@ final class PlayerEngine {
     var embeddedSubtitles: [PlayerSubtitleTrack] = []
     var embeddedSubtitleID: Int?
     var embeddedSubtitle: EmbeddedSubtitle?
-    /// Shown while AirPlay is the audio route on the built-in player: only the sound goes to the receiver.
+    /// Shown on the picture while AirPlay can't do everything: the built-in player sends only the sound, or a
+    /// subtitle can't reach the TV.
     var airPlayNotice: String?
+    /// AirPlay video (or a cable to a TV) shows the picture: the TV plays the stream itself, so it never sees the
+    /// subtitles the app draws (Apple's player only).
+    var isExternalPlayback = false
+    /// How subtitles reach the screen now; the app doesn't draw what the TV draws.
+    var airPlaySubtitleRoute: AirPlaySubtitleRoute = .appDrawn
+    /// What the subtitles menu says about AirPlay (the TV's caption style, timing), nil when not on AirPlay.
+    var airPlaySubtitleNote: String?
 
     /// Speed used whenever playback runs.
     var rate: Float = 1 {
@@ -115,6 +123,9 @@ final class PlayerEngine {
         embeddedSubtitleID = nil
         embeddedSubtitle = nil
         airPlayNotice = nil
+        isExternalPlayback = false
+        airPlaySubtitleRoute = .appDrawn
+        airPlaySubtitleNote = nil
         next.attach(to: self)
         next.volume = volume
         onBackendChanged?()

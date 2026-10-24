@@ -42,6 +42,8 @@ struct SubtitleOverlayView: View {
 
     private var currentText: String? {
         if case let .text(text)? = engine.embeddedSubtitle { return text }
+        // On AirPlay the TV draws this subtitle from the stream: not twice.
+        if engine.airPlaySubtitleRoute.drawnByReceiver { return nil }
         return engine.embeddedSubtitleID == nil ? finder.text(at: engine.position) : nil
     }
 }
@@ -57,6 +59,15 @@ struct SubtitleSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                // AirPlay: the TV draws subtitles in its own caption style; what timing does there.
+                if let engine, let note = engine.airPlaySubtitleNote ?? engine.airPlayNotice {
+                    Section {
+                        Label(note, systemImage: "airplayvideo")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    } header: {
+                        Text("AirPlay")
+                    }
+                }
                 if let engine, engine.audioTracks.count > 1 {
                     Section("Audio") {
                         ForEach(engine.audioTracks) { track in

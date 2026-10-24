@@ -28,6 +28,8 @@ public protocol PutioService: Sendable {
     func setStartFrom(fileID: Int64, seconds: Int) async throws
     func resetStartFrom(fileID: Int64) async throws
     func hlsURL(fileID: Int64, subtitles: Bool) -> URL
+    /// The stream carrying one put.io subtitle track (AirPlay: the TV draws it).
+    func hlsURL(fileID: Int64, subtitleKey: String) -> URL
     func originalURL(fileID: Int64) async throws -> URL
     func subtitles(fileID: Int64) async throws -> [PutioSubtitle]
     func subtitleText(fileID: Int64, key: String) async throws -> String

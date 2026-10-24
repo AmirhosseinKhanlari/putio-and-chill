@@ -266,6 +266,7 @@ final class FakePutio: PutioService, @unchecked Sendable {
         }
     }
     func hlsURL(fileID: Int64, subtitles: Bool) -> URL { URL(string: "https://hls.test/\(fileID).m3u8\(subtitles ? "?subs" : "")")! }
+    func hlsURL(fileID: Int64, subtitleKey: String) -> URL { URL(string: "https://hls.test/\(fileID).m3u8?subtitle_key=\(subtitleKey)")! }
     var subtitleTracks: [PutioSubtitle] = []
     func subtitles(fileID: Int64) async throws -> [PutioSubtitle] { subtitleTracks }
     func subtitleText(fileID: Int64, key: String) async throws -> String { "1\n00:00:01,000 --> 00:00:02,000\nput.io \(key)\n" }
