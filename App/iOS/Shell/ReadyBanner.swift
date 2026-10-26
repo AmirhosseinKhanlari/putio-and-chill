@@ -1,3 +1,4 @@
+import AMDBCore
 import AMDBKit
 import SwiftUI
 
@@ -15,7 +16,7 @@ struct ReadyBanner: View {
                     Text(transfer.pending.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                     switch banner {
                     case .ready: Text("Ready to watch").font(.caption).foregroundStyle(.white.opacity(0.7))
-                    case .failed: Text(failureText(transfer)).font(.caption).foregroundStyle(Theme.poor).lineLimit(2)
+                    case .failed: Text(failureText(transfer)).font(.caption).foregroundStyle(Theme.poor).lineLimit(3)
                     }
                 }
                 Spacer(minLength: 8)
@@ -25,6 +26,16 @@ struct ReadyBanner: View {
                         router.banner = nil
                     } label: { Label("Play", systemImage: "play.fill") }
                     .buttonStyle(.primaryPill)
+                } else if transfer.pending.tmdbID > 0 {
+                    // The title page shows what went wrong and opens Versions from there.
+                    Button {
+                        let p = transfer.pending
+                        router.showTitle(CatalogItem(tmdbID: p.tmdbID, mediaType: p.kind, title: p.title,
+                                                     posterPath: p.posterPath, backdropPath: p.backdropPath))
+                        router.banner = nil
+                    } label: { Label("Versions", systemImage: "square.stack.3d.up") }
+                    .buttonStyle(.primaryPill)
+                    .accessibilityLabel("Choose Another Version")
                 }
                 Button { withAnimation { router.banner = nil } } label: {
                     Image(systemName: "xmark").font(.caption.bold()).frame(width: 44, height: 44)

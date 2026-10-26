@@ -55,10 +55,17 @@ struct VersionsSheet: View {
                             .buttonStyle(.plain)
                             .disabled(sendingID != nil)
                         }
+                        if !model.isLoading, model.snapshot.hiddenCount > 0 {
+                            Text(model.snapshot.hiddenCount == 1 ? "1 version that looks fake is hidden."
+                                 : "\(model.snapshot.hiddenCount) versions that look fake are hidden.")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity).padding(.top, 4)
+                        }
                         if model.isLoading {
                             HStack(spacing: 10) {
                                 ProgressView()
-                                Text("Searching \(model.snapshot.pendingProviders.count) sources…").font(.footnote).foregroundStyle(.secondary)
+                                Text(model.snapshot.isCheckingFiles ? "Checking files…" : "Searching \(model.snapshot.pendingProviders.count) sources…")
+                                    .font(.footnote).foregroundStyle(.secondary)
                             }
                             .frame(maxWidth: .infinity).padding(.vertical, 16)
                         } else if model.rows.isEmpty {

@@ -4,11 +4,12 @@ import Foundation
 /// Chooses the release Smart Get sends.
 public enum SmartPicker {
     /// Preferred resolution first, then the nearest lower one, then higher; within a resolution, most seeders.
-    /// Dead (0 seeders) and oversized releases are never picked; unknown sizes are allowed.
+    /// Dead (0 seeders) and oversized releases are never picked; unknown sizes are allowed. Disc images aren't
+    /// either: put.io can't stream them.
     public static func pick(_ releases: [Release], rule: SmartGetRule) -> Release? {
         let cap = rule.maxSizeGB.map { Int64($0 * 1_000_000_000) }
         let live = releases.filter { release in
-            guard (release.seeders ?? 0) > 0 else { return false }
+            guard (release.seeders ?? 0) > 0, !ReleaseSafety.isDiscImage(release.name) else { return false }
             guard let cap, let size = release.sizeBytes else { return true }
             return size <= cap
         }
@@ -23,6 +24,21 @@ public enum SmartPicker {
         return live.min { a, b in
             (priority(a), -(a.seeders ?? 0)) < (priority(b), -(b.seeders ?? 0))
         }
+    }
+}
+
+extension SmartPicker {
+    /// `pick`, then a look at the winner's files (`check`); a fake is set aside and the next best taken, up to
+    /// `attempts` times. Most winners were already checked by the search, so this rarely waits.
+    public static func pickChecked(_ releases: [Release], rule: SmartGetRule, attempts: Int = 4,
+                                   check: @Sendable (Release) async -> ReleaseRejection?) async -> Release? {
+        var pool = releases
+        for _ in 0..<max(attempts, 1) {
+            guard let candidate = pick(pool, rule: rule) else { return nil }
+            guard await check(candidate) != nil else { return candidate }
+            pool.removeAll { $0.id == candidate.id }
+        }
+        return nil
     }
 }
 

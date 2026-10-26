@@ -52,6 +52,18 @@ enum TorrentGalaxyPage {
         return button.flatMap { Magnet.infoHash(from: decodeEntities($0[1])) }
     }
 
+    /// The detail page's "File List" table: one row per file, name then size ("3.1 GB", "584 bytes"). Rows whose
+    /// second cell isn't a size (the page's tracker table uses the same classes) are skipped.
+    static func files(inDetail html: String) -> [TorrentFile] {
+        let cells = #"<td\b[^>]*\bclass="[^"]*\btable_col1\b[^"]*"[^>]*>(.*?)</td>\s*<td\b[^>]*\bclass="[^"]*\btable_col2\b[^"]*"[^>]*>(.*?)</td>"#
+        return captures(cells, in: html).compactMap { row -> TorrentFile? in
+            let name = plainText(row[1])
+            guard !name.isEmpty,
+                  let size = captures(#"^\s*([\d.,]+)\s*([KMGT]i?B|bytes?|B)\s*$"#, in: plainText(row[2])).first else { return nil }
+            return TorrentFile(name: name, sizeBytes: bytes(size[1], unit: size[2]))
+        }
+    }
+
     /// "3.1 GB" → bytes. The site counts in 1024s, as torrent sites do.
     static func bytes(_ number: String, unit: String) -> Int64? {
         guard let value = Double(number.replacingOccurrences(of: ",", with: "")) else { return nil }

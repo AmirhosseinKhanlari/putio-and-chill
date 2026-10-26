@@ -84,7 +84,9 @@ import Testing
         clock.advance(TransferMonitor.fileGrace + 1)
         await monitor.pollOnce()
         guard case .failed? = events.first else { Issue.record("expected a failed event"); return }
-        if case let .failed(message) = monitor.tracked.first?.phase { #expect(message.contains("no video")) }
+        // Files but no video at all: a fake, removed from put.io.
+        #expect(monitor.tracked.first?.phase == .failed(message: DownloadCheck.fakeMessage))
+        #expect(putio.deleted == [80])
         #expect(await store.snapshot.pending.isEmpty)
     }
 

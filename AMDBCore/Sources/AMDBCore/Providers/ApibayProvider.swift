@@ -16,13 +16,26 @@ public struct ApibayProvider: SourceProvider {
         let items = try await http.decode([Item].self, .get(components.url!), decoder: .snakeCase)
         return items.compactMap { item -> Release? in
             guard item.id != "0", let hash = Magnet.normalize(item.infoHash),
-                  hash != String(repeating: "0", count: 40) else { return nil }
+                  hash != String(repeating: "0", count: 40), !Self.isProgramCategory(item.category) else { return nil }
             let parsed = ReleaseNameParser.parse(item.name)
             guard ReleaseRelevance.matches(parsed, query) else { return nil }
             return Release(name: item.name, link: Magnet.make(infoHash: hash, name: item.name), infoHash: hash,
                            sizeBytes: Int64(item.size), seeders: Int(item.seeders),
-                           sources: [SourceTag(.direct, "TPB")], parsed: parsed)
+                           sources: [SourceTag(.direct, "TPB")], parsed: parsed, fileListURL: fileListURL(id: item.id))
         }
+    }
+
+    /// `f.php?id=…` lists a torrent's files; read only for the few releases worth checking.
+    func fileListURL(id: String) -> URL? {
+        var components = URLComponents(url: baseURL.appending(path: "f.php"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "id", value: id)]
+        return components?.url
+    }
+
+    /// The Pirate Bay's 3xx categories are applications and 4xx games: never a movie or an episode, whatever the name.
+    static func isProgramCategory(_ category: String?) -> Bool {
+        guard let code = category.flatMap(Int.init) else { return false }
+        return (300..<500).contains(code)
     }
 
     struct Item: Decodable {
@@ -31,5 +44,6 @@ public struct ApibayProvider: SourceProvider {
         let infoHash: String
         let seeders: String
         let size: String
+        let category: String?
     }
 }

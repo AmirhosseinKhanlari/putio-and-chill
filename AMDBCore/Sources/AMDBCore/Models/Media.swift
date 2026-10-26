@@ -106,9 +106,14 @@ public struct Release: Sendable, Hashable, Identifiable {
     public var seeders: Int?
     public var sources: Set<SourceTag>
     public var parsed: ParsedRelease
+    /// The files inside, when the source listed them with the result (TorrentGalaxy's detail page).
+    public var files: [TorrentFile]?
+    /// Where the file list can be read on request (apibay), for the few releases worth checking.
+    public var fileListURL: URL?
 
     public init(name: String, link: String, infoHash: String? = nil, sizeBytes: Int64? = nil,
-                seeders: Int? = nil, sources: Set<SourceTag>, parsed: ParsedRelease? = nil) {
+                seeders: Int? = nil, sources: Set<SourceTag>, parsed: ParsedRelease? = nil,
+                files: [TorrentFile]? = nil, fileListURL: URL? = nil) {
         self.name = name
         self.link = link
         self.infoHash = infoHash ?? Magnet.infoHash(from: link)
@@ -116,6 +121,8 @@ public struct Release: Sendable, Hashable, Identifiable {
         self.seeders = seeders
         self.sources = sources
         self.parsed = parsed ?? ReleaseNameParser.parse(name)
+        self.files = files
+        self.fileListURL = fileListURL
     }
 
     /// Merge key: infohash when known, otherwise normalized name + size.

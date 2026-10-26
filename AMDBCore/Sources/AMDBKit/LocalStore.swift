@@ -11,14 +11,16 @@ public struct PendingTransfer: Codable, Sendable, Hashable, Identifiable {
     public let season: Int?
     public let episode: Int?
     public let createdAt: Date
+    /// The magnet or torrent link sent, so a download that turns out fake can be remembered (older saves lack it).
+    public let link: String?
 
     public var id: Int64 { transferID }
 
     public init(transferID: Int64, tmdbID: Int, kind: MediaKind, title: String, posterPath: String?,
-                backdropPath: String?, season: Int?, episode: Int?, createdAt: Date) {
+                backdropPath: String?, season: Int?, episode: Int?, createdAt: Date, link: String? = nil) {
         self.transferID = transferID; self.tmdbID = tmdbID; self.kind = kind; self.title = title
         self.posterPath = posterPath; self.backdropPath = backdropPath; self.season = season
-        self.episode = episode; self.createdAt = createdAt
+        self.episode = episode; self.createdAt = createdAt; self.link = link
     }
 }
 
@@ -106,11 +108,13 @@ public struct LocalState: Codable, Sendable, Equatable {
     public var followedShows: [SavedTitle] = []
     /// Titles picked with Fix Match (by file, folder or name), applied before automatic matching.
     public var matchOverrides = MatchOverrides()
+    /// Releases that downloaded as a fake (a program, or no video), by lowercased info-hash or link: never offered again.
+    public var badReleases: Set<String> = []
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case matches, unmatched, unmatchedAt, pending, recentSearches, lastPlayed, folderIDs, myList, finished, downloads, subtitleChoices
-        case imdbWatchlist, imdbMatches, followedShows, matchOverrides
+        case imdbWatchlist, imdbMatches, followedShows, matchOverrides, badReleases
     }
 
     /// Every field is optional on disk, so files written by older versions keep loading.
@@ -131,6 +135,7 @@ public struct LocalState: Codable, Sendable, Equatable {
         imdbMatches = try c.decodeIfPresent([String: SavedTitle].self, forKey: .imdbMatches) ?? [:]
         followedShows = try c.decodeIfPresent([SavedTitle].self, forKey: .followedShows) ?? []
         matchOverrides = try c.decodeIfPresent(MatchOverrides.self, forKey: .matchOverrides) ?? MatchOverrides()
+        badReleases = try c.decodeIfPresent(Set<String>.self, forKey: .badReleases) ?? []
     }
 }
 

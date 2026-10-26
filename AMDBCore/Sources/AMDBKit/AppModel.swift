@@ -15,6 +15,8 @@ public struct ServiceFactory: Sendable {
     /// Latest movie / show lists that need no account (MyMoviz).
     public var latestLists: [any LatestTitlesSource]
     public var imdbLists: any IMDbListService
+    /// Reads torrents' file lists to catch fakes (see `ReleaseAggregator`).
+    public var fileLists: FileListInspector
 
     public init(makePutio: @escaping @Sendable (String) -> any PutioService,
                 makeCatalog: @escaping @Sendable (String) -> any CatalogService,
@@ -35,8 +37,10 @@ public struct ServiceFactory: Sendable {
                 },
                 latestLists: [any LatestTitlesSource] = [MyMovizClient(kind: .movie, transport: URLSessionTransport()),
                                                          MyMovizClient(kind: .tv, transport: URLSessionTransport())],
-                imdbLists: any IMDbListService = IMDbWatchlistClient(transport: URLSessionTransport())) {
+                imdbLists: any IMDbListService = IMDbWatchlistClient(transport: URLSessionTransport()),
+                fileLists: FileListInspector = FileListInspector(transport: URLSessionTransport())) {
         self.imdbLists = imdbLists
+        self.fileLists = fileLists
         self.makePutio = makePutio
         self.makeCatalog = makeCatalog
         self.makeProvider = makeProvider
@@ -355,7 +359,13 @@ public final class AppModel {
             latest = snapshot
             if snapshot.isComplete { break }
         }
-        guard let release = SmartPicker.pick(latest.releases, rule: settings.smartGet) else { return .noMatch }
+        let fileLists = factory.fileLists
+        let bad = await store.snapshot.badReleases
+        let release = await SmartPicker.pickChecked(latest.releases, rule: settings.smartGet) { candidate in
+            if ReleaseAggregator.isBlocked(candidate, bad) { return .knownBad }
+            return await fileLists.rejection(for: candidate)
+        }
+        guard let release else { return .noMatch }
         do {
             try await transfers.send(release, target: target)
             return .sent(release)
@@ -560,7 +570,9 @@ public final class AppModel {
         hasChill = chillToken != nil
         chillCatalog = chillToken.map(factory.makeChillCatalog)
         let providers = settings.sources.filter(\.enabled).compactMap { factory.makeProvider($0, chillToken) }
-        searcher = ReleaseAggregator(providers: providers)
+        searcher = ReleaseAggregator(providers: providers, inspector: factory.fileLists) { [store] in
+            await store.snapshot.badReleases
+        }
         library.configure(putio: putio, catalog: catalog)
         storage.configure(putio: putio)
         conversions.configure(putio: putio)

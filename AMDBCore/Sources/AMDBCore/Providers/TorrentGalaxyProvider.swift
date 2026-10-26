@@ -2,7 +2,7 @@ import Foundation
 
 /// torrentgalaxy.info: `GET {base}/get-posts/keywords:<words>:order:-se/` (HTML, most seeded first). The list has no
 /// info-hashes, so the detail pages of the best few matches are read for theirs, a few at a time. Matches without a
-/// hash are left out: put.io needs a magnet link.
+/// hash are left out: put.io needs a magnet link. The same pages list the files inside, which are kept for the fake check.
 public struct TorrentGalaxyProvider: SourceProvider {
     public let id = "torrentgalaxy"
     private let baseURL: URL
@@ -34,12 +34,14 @@ public struct TorrentGalaxyProvider: SourceProvider {
         let needed = matches.filter { $0.row.infoHash == nil }
             .sorted { ($0.row.seeders ?? -1) > ($1.row.seeders ?? -1) }
             .prefix(detailLimit).map(\.row.detailPath)
-        let fetched = await detailHashes(Array(needed))
+        let fetched = await details(Array(needed))
         return matches.compactMap { match -> Release? in
-            guard let hash = match.row.infoHash ?? fetched[match.row.detailPath] else { return nil }
+            let detail = fetched[match.row.detailPath]
+            guard let hash = match.row.infoHash ?? detail?.hash else { return nil }
             return Release(name: match.row.name, link: Magnet.make(infoHash: hash, name: match.row.name), infoHash: hash,
                            sizeBytes: match.row.sizeBytes, seeders: match.row.seeders,
-                           sources: [SourceTag(.direct, "TorrentGalaxy")], parsed: match.parsed)
+                           sources: [SourceTag(.direct, "TorrentGalaxy")], parsed: match.parsed,
+                           files: detail.map(\.files).flatMap { $0.isEmpty ? nil : $0 })
         }
     }
 
@@ -47,29 +49,33 @@ public struct TorrentGalaxyProvider: SourceProvider {
         baseURL.appending(path: "get-posts/keywords:\(TorrentGalaxyPage.keywords(query.searchText)):order:-se/")
     }
 
-    /// Detail path → info-hash, `parallelDetails` at a time. A page that fails or has no hash is skipped.
-    private func detailHashes(_ paths: [String]) async -> [String: String] {
-        await withTaskGroup(of: (String, String?).self) { group in
+    struct Detail: Sendable { let hash: String; let files: [TorrentFile] }
+
+    /// Detail path → info-hash and files, `parallelDetails` at a time. A page that fails or has no hash is skipped.
+    private func details(_ paths: [String]) async -> [String: Detail] {
+        await withTaskGroup(of: (String, Detail?).self) { group in
             var queue = paths.makeIterator()
             for _ in 0..<parallelDetails {
                 guard let path = queue.next() else { break }
-                group.addTask { (path, await detailHash(path)) }
+                group.addTask { (path, await detail(path)) }
             }
-            var found: [String: String] = [:]
-            for await (path, hash) in group {
-                if let hash { found[path] = hash }
-                if !Task.isCancelled, let next = queue.next() { group.addTask { (next, await detailHash(next)) } }
+            var found: [String: Detail] = [:]
+            for await (path, result) in group {
+                if let result { found[path] = result }
+                if !Task.isCancelled, let next = queue.next() { group.addTask { (next, await detail(next)) } }
             }
             return found
         }
     }
 
-    private func detailHash(_ path: String) async -> String? {
+    private func detail(_ path: String) async -> Detail? {
         guard path.hasPrefix("/post-detail/"), let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else { return nil }
         var request = URLRequest.get(url, headers: Self.headers)
         // One slow page shouldn't use up the whole search's time.
         request.timeoutInterval = 5
         guard let data = try? await http.data(request) else { return nil }
-        return TorrentGalaxyPage.infoHash(inDetail: String(decoding: data, as: UTF8.self))
+        let html = String(decoding: data, as: UTF8.self)
+        guard let hash = TorrentGalaxyPage.infoHash(inDetail: html) else { return nil }
+        return Detail(hash: hash, files: TorrentGalaxyPage.files(inDetail: html))
     }
 }

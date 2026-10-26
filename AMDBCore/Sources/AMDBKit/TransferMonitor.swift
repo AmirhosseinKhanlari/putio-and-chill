@@ -1,6 +1,7 @@
 import AMDBCore
 import Foundation
 import Observation
+import OSLog
 
 public struct TransferTarget: Sendable, Hashable {
     public let tmdbID: Int
@@ -91,7 +92,7 @@ public final class TransferMonitor {
         }
         let pending = PendingTransfer(transferID: transfer.id, tmdbID: target.tmdbID, kind: target.kind, title: target.title,
                                       posterPath: target.posterPath, backdropPath: target.backdropPath,
-                                      season: target.season, episode: target.episode, createdAt: now())
+                                      season: target.season, episode: target.episode, createdAt: now(), link: release.link)
         await store.update { $0.pending.append(pending) }
         tracked.append(TrackedTransfer(pending: pending, transfer: transfer, phase: TransferPhase(transfer)))
         await settle(transfer.id)
@@ -160,6 +161,28 @@ public final class TransferMonitor {
         onEvent?(.failed(failed))
     }
 
+    static let log = Logger(subsystem: "app.amdb", category: "release-safety")
+
+    /// A finished download that holds a program or no video: deleted from put.io (to its trash), its release
+    /// remembered so it's never offered again, and reported as failed so the title offers another version.
+    private func discardFake(_ id: Int64, fileID: Int64, reason: String) async {
+        guard let item = tracked.first(where: { $0.id == id }) else { return }
+        try? await putio?.deleteFiles(ids: [fileID])
+        let keys = DownloadCheck.badReleaseKeys(hash: item.transfer?.hash, link: item.pending.link)
+        #if DEBUG
+        Self.log.debug("Removed fake download \(item.transfer?.name ?? item.pending.title, privacy: .public): \(reason, privacy: .public)")
+        #endif
+        await store.update { state in
+            state.pending.removeAll { $0.transferID == id }
+            state.badReleases.formUnion(keys)
+        }
+        completedSince[id] = nil
+        guard let index = tracked.firstIndex(where: { $0.id == id }) else { return }
+        tracked[index].phase = .failed(message: DownloadCheck.fakeMessage)
+        tracked[index].notified = true
+        onEvent?(.failed(tracked[index]))
+    }
+
     /// The saved file or folder of a finished transfer, by its name in the folder it was saved to.
     static func findSaved(_ transfer: PutioTransfer, putio: any PutioService) async -> Int64? {
         guard let name = transfer.name, !name.isEmpty,
@@ -180,6 +203,18 @@ public final class TransferMonitor {
             guard let fileID = found else {
                 await giveUpIfStuck(id, "Finished on put.io, but its file wasn't found. Look for it in Library → Files.")
                 return
+            }
+            switch await DownloadCheck.inspect(fileID, putio: putio) {
+            case let .program(name):
+                await discardFake(id, fileID: fileID, reason: "contains a program (\(name))")
+                return
+            case .noVideo:
+                let since = completedSince[id] ?? now()
+                completedSince[id] = since
+                if now().timeIntervalSince(since) >= Self.fileGrace { await discardFake(id, fileID: fileID, reason: "no video inside") }
+                return
+            case .video, .unknown:
+                break
             }
             // A whole season: every episode in it goes into the library, and Play starts at the first one.
             var episodes: [(file: PutioFile, match: LibraryMatch)] = []

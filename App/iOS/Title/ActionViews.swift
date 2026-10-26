@@ -47,7 +47,7 @@ struct PrimaryActions: View {
                     Button {
                         app.transfers.dismiss(transfer.id)
                         openVersions()
-                    } label: { Label("Try another version", systemImage: "arrow.triangle.2.circlepath") }
+                    } label: { Label("Choose Another Version", systemImage: "arrow.triangle.2.circlepath") }
                     .buttonStyle(.primaryPill)
                 }
             }
