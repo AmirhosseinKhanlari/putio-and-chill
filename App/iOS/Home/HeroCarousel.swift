@@ -85,9 +85,9 @@ private struct HeroPage: View {
             .padding(.bottom, 44)
         }
         .task(id: item.id) {
-            guard app.hasRatings, let catalog = app.catalog,
-                  let imdbID = try? await catalog.detail(item.mediaType, id: item.tmdbID).imdbID else { return }
-            ratings = await app.ratings(imdbID: imdbID, kind: item.mediaType)
+            guard app.canFetchRatings, let catalog = app.catalog else { return }
+            let imdbID = (try? await catalog.detail(item.mediaType, id: item.tmdbID))?.imdbID
+            ratings = await app.ratings(imdbID: imdbID, tmdbID: item.tmdbID, kind: item.mediaType)
         }
     }
 

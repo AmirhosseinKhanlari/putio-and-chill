@@ -396,15 +396,17 @@ func testDefaults() -> UserDefaults { UserDefaults(suiteName: "amdb.test.\(UUID(
 final class FakeRatings: RatingsService, @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
+    private var asked: [(imdbID: String?, tmdbID: Int?)] = []
     let result: Ratings
     var fail = false
 
     init(result: Ratings = Ratings(imdb: 8.1, tomatoes: 91, popcorn: 88)) { self.result = result }
 
     var calls: Int { lock.withLock { count } }
+    var lookups: [(imdbID: String?, tmdbID: Int?)] { lock.withLock { asked } }
 
-    func ratings(imdbID: String, kind: MediaKind) async throws -> Ratings {
-        lock.withLock { count += 1 }
+    func ratings(imdbID: String?, tmdbID: Int?, kind: MediaKind) async throws -> Ratings {
+        lock.withLock { count += 1; asked.append((imdbID, tmdbID)) }
         if fail { throw AppError.unauthorized(service: "mdblist") }
         return result
     }
@@ -422,7 +424,15 @@ final class TokenLog: @unchecked Sendable {
 final class FakeCharts: ChartsService, @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
+    private var ratingCount = 0
+    /// What `rating(imdbID:tmdbID:kind:)` answers.
+    var traktRating: Double?
     var calls: Int { lock.withLock { count } }
+    var ratingCalls: Int { lock.withLock { ratingCount } }
+    func rating(imdbID: String?, tmdbID: Int?, kind: MediaKind) async throws -> Double? {
+        lock.withLock { ratingCount += 1 }
+        return traktRating
+    }
     func chart(_ chart: IMDbChart) async throws -> [ChartEntry] {
         lock.withLock { count += 1 }
         return [ChartEntry(rank: 1, kind: chart.kind, title: "First", year: 1994, imdbID: "tt1", tmdbID: 278),

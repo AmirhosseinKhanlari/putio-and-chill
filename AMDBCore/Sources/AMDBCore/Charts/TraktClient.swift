@@ -78,6 +78,58 @@ public struct TraktClient: Sendable {
         }
     }
 
+    /// Trakt's community rating (0–10) from `GET /{movies|shows}/{id}/ratings`, by IMDb id, else by the Trakt id
+    /// found for the TMDB id. Nil when Trakt doesn't know the title or nobody has rated it.
+    public func rating(imdbID: String?, tmdbID: Int?, kind: MediaKind) async throws -> Double? {
+        let type = kind == .tv ? "shows" : "movies"
+        if let imdbID = imdbID?.trimmingCharacters(in: .whitespaces), !imdbID.isEmpty,
+           let summary = try await summary(path: "\(type)/\(imdbID)/ratings") {
+            return summary.score
+        }
+        guard let tmdbID, let traktID = try await traktID(tmdbID: tmdbID, kind: kind) else { return nil }
+        return try await summary(path: "\(type)/\(traktID)/ratings")?.score
+    }
+
+    struct RatingSummary: Decodable {
+        let rating: Double?
+        let votes: Int?
+        /// One decimal, nil until someone has rated it.
+        var score: Double? {
+            guard let rating, rating > 0, (votes ?? 0) > 0 else { return nil }
+            return (rating * 10).rounded() / 10
+        }
+    }
+
+    /// Nil when Trakt doesn't know the id: it answers 204 No Content (or 404) rather than an error body.
+    private func summary(path: String) async throws -> RatingSummary? {
+        let body: Data
+        do {
+            body = try await http.data(.get(baseURL.appending(path: path), headers: headers))
+        } catch AppError.http(_, 404) {
+            return nil
+        }
+        guard !body.isEmpty else { return nil }
+        do {
+            return try JSONDecoder().decode(RatingSummary.self, from: body)
+        } catch {
+            throw AppError.decoding(service: "trakt", detail: String(describing: error))
+        }
+    }
+
+    /// `GET /search/tmdb/{id}?type=movie|show`: Trakt's own id for a TMDB title.
+    private func traktID(tmdbID: Int, kind: MediaKind) async throws -> Int? {
+        struct Hit: Decodable { let movie: Ref?; let show: Ref? }
+        struct Ref: Decodable { struct IDs: Decodable { let trakt: Int? }; let ids: IDs }
+        var components = URLComponents(url: baseURL.appending(path: "search/tmdb/\(tmdbID)"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "type", value: kind == .tv ? "show" : "movie")]
+        let hits = try await http.decode([Hit].self, .get(components.url!, headers: headers))
+        return hits.lazy.compactMap { (kind == .tv ? $0.show : $0.movie)?.ids.trakt }.first
+    }
+
+    private var headers: [String: String] {
+        ["trakt-api-key": clientID, "trakt-api-version": "2", "Content-Type": "application/json"]
+    }
+
     struct Item: Decodable {
         let rank: Int
         let type: String

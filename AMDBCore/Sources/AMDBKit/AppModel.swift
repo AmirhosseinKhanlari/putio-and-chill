@@ -373,12 +373,40 @@ public final class AppModel {
         try await factory.makeRatings(key).validate()
     }
 
-    /// IMDb / Rotten Tomatoes scores, served from the on-device cache when fresh. Nil without an MDBList key or on failure.
-    public func ratings(imdbID: String, kind: MediaKind) async -> Ratings? {
+    /// Whether title pages can show any outside scores: MDBList's (with a key) or Trakt's (bundled client ID).
+    public var canFetchRatings: Bool { hasRatings || chartsService != nil }
+
+    /// IMDb / Rotten Tomatoes / Metacritic / Letterboxd scores from MDBList plus Trakt's own, each served from the
+    /// on-device cache when fresh. `imdbID` may be nil (TMDB has none for many shows): lookups then go by TMDB id.
+    /// Nil when neither source is set up or answers.
+    public func ratings(imdbID: String?, tmdbID: Int, kind: MediaKind) async -> Ratings? {
+        async let mdblist = mdblistRatings(imdbID: imdbID, tmdbID: tmdbID, kind: kind)
+        async let trakt = traktRatings(imdbID: imdbID, tmdbID: tmdbID, kind: kind)
+        let (found, traktFound) = await (mdblist, trakt)
+        guard let found else { return traktFound }
+        return traktFound.map { found.merged(with: $0) } ?? found
+    }
+
+    private func mdblistRatings(imdbID: String?, tmdbID: Int, kind: MediaKind) async -> Ratings? {
         guard let ratingsService else { return nil }
-        if let cached = await ratingsCache.fresh(imdbID) { return cached }
-        guard let fetched = try? await ratingsService.ratings(imdbID: imdbID, kind: kind) else { return nil }
-        await ratingsCache.store(fetched, for: imdbID)
+        let key = RatingsCache.key(source: "mdblist", imdbID: imdbID, tmdbID: tmdbID, kind: kind)
+        if let cached = await ratingsCache.fresh(key) { return cached }
+        guard let fetched = try? await ratingsService.ratings(imdbID: imdbID, tmdbID: tmdbID, kind: kind) else { return nil }
+        await ratingsCache.store(fetched, for: key)
+        return fetched
+    }
+
+    private func traktRatings(imdbID: String?, tmdbID: Int, kind: MediaKind) async -> Ratings? {
+        guard let chartsService else { return nil }
+        let key = RatingsCache.key(source: "trakt", imdbID: imdbID, tmdbID: tmdbID, kind: kind)
+        if let cached = await ratingsCache.fresh(key) { return cached }
+        let fetched: Ratings
+        do {
+            fetched = Ratings(trakt: try await chartsService.rating(imdbID: imdbID, tmdbID: tmdbID, kind: kind))
+        } catch {
+            return nil
+        }
+        await ratingsCache.store(fetched, for: key)
         return fetched
     }
 

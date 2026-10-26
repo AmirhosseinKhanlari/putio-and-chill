@@ -89,7 +89,7 @@ public protocol ReleaseSearching: Sendable {
 extension ReleaseAggregator: ReleaseSearching {}
 
 public protocol RatingsService: Sendable {
-    func ratings(imdbID: String, kind: MediaKind) async throws -> Ratings
+    func ratings(imdbID: String?, tmdbID: Int?, kind: MediaKind) async throws -> Ratings
     func validate() async throws
 }
 
@@ -98,10 +98,13 @@ extension RatingsClient: RatingsService {}
 public protocol ChartsService: Sendable {
     func chart(_ chart: IMDbChart) async throws -> [ChartEntry]
     func boxOffice() async throws -> [BoxOfficeEntry]
+    /// Trakt's own 0–10 score for a title.
+    func rating(imdbID: String?, tmdbID: Int?, kind: MediaKind) async throws -> Double?
 }
 
 extension ChartsService {
     public func boxOffice() async throws -> [BoxOfficeEntry] { [] }
+    public func rating(imdbID: String?, tmdbID: Int?, kind: MediaKind) async throws -> Double? { nil }
 }
 
 extension TraktClient: ChartsService {}

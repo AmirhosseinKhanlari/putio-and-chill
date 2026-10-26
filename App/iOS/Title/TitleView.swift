@@ -42,7 +42,7 @@ struct TitleView: View {
         .task {
             guard model == nil, let catalog = app.catalog else { return }
             let title = TitleModel(item: item, catalog: catalog, library: app.library, transfers: app.transfers,
-                                   ratings: { [app] imdbID, kind in await app.ratings(imdbID: imdbID, kind: kind) },
+                                   ratings: { [app] imdbID, tmdbID, kind in await app.ratings(imdbID: imdbID, tmdbID: tmdbID, kind: kind) },
                                    episodeRatings: { [app] imdbID, season in await app.episodeRatings(seriesIMDbID: imdbID, season: season) })
             model = title
             await title.load()

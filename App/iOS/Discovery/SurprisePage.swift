@@ -268,7 +268,7 @@ struct SurprisePage: View {
         guard let pick = model?.pick, let catalog = app.catalog else { return }
         guard let loaded = try? await catalog.detail(pick.mediaType, id: pick.tmdbID), model?.pick?.id == pick.id else { return }
         withAnimation(.easeOut(duration: 0.25)) { detail = loaded }
-        if let imdbID = loaded.imdbID, let fetched = await app.ratings(imdbID: imdbID, kind: pick.mediaType),
+        if let fetched = await app.ratings(imdbID: loaded.imdbID, tmdbID: pick.tmdbID, kind: pick.mediaType),
            model?.pick?.id == pick.id {
             ratings = fetched
         }

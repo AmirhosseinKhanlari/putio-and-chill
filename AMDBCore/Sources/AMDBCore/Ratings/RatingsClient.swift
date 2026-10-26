@@ -11,17 +11,26 @@ public struct Ratings: Sendable, Hashable, Codable {
     public var metacritic: Int?
     /// Letterboxd average, 0–5 stars.
     public var letterboxd: Double?
+    /// Trakt's community average, 0–10 (from Trakt itself, so it shows without an MDBList key).
+    public var trakt: Double?
 
     public init(imdb: Double? = nil, imdbVotes: Int? = nil, tomatoes: Int? = nil, popcorn: Int? = nil, metacritic: Int? = nil,
-                letterboxd: Double? = nil) {
+                letterboxd: Double? = nil, trakt: Double? = nil) {
         self.imdb = imdb; self.imdbVotes = imdbVotes; self.tomatoes = tomatoes; self.popcorn = popcorn; self.metacritic = metacritic
-        self.letterboxd = letterboxd
+        self.letterboxd = letterboxd; self.trakt = trakt
     }
 
-    public var isEmpty: Bool { imdb == nil && tomatoes == nil && popcorn == nil && metacritic == nil && letterboxd == nil }
+    public var isEmpty: Bool { imdb == nil && tomatoes == nil && popcorn == nil && metacritic == nil && letterboxd == nil && trakt == nil }
+
+    /// These scores with any gaps filled from `other`.
+    public func merged(with other: Ratings) -> Ratings {
+        Ratings(imdb: imdb ?? other.imdb, imdbVotes: imdb != nil ? imdbVotes : other.imdbVotes, tomatoes: tomatoes ?? other.tomatoes,
+                popcorn: popcorn ?? other.popcorn, metacritic: metacritic ?? other.metacritic,
+                letterboxd: letterboxd ?? other.letterboxd, trakt: trakt ?? other.trakt)
+    }
 }
 
-/// MDBList: `GET https://api.mdblist.com/imdb/{movie|show}/{imdbID}?apikey=…`.
+/// MDBList: `GET https://api.mdblist.com/{imdb|tmdb}/{movie|show}/{id}?apikey=…`.
 public struct RatingsClient: Sendable {
     private let apiKey: String
     private let baseURL: URL
@@ -33,27 +42,54 @@ public struct RatingsClient: Sendable {
         self.http = HTTPRequester(service: "mdblist", transport: transport)
     }
 
-    public func ratings(imdbID: String, kind: MediaKind) async throws -> Ratings {
+    /// Looks the title up by IMDb id, and by TMDB id when that finds nothing: many shows (and new titles) have no
+    /// IMDb id on TMDB, or one MDBList hasn't rated yet. Empty when neither lookup has a score.
+    public func ratings(imdbID: String?, tmdbID: Int?, kind: MediaKind) async throws -> Ratings {
+        let imdbID = imdbID?.trimmingCharacters(in: .whitespaces)
+        if let imdbID, !imdbID.isEmpty {
+            let found = try await lookup("imdb", imdbID, kind: kind)
+            if !found.isEmpty { return found }
+        }
+        guard let tmdbID else { return Ratings() }
+        return try await lookup("tmdb", String(tmdbID), kind: kind)
+    }
+
+    /// One MDBList lookup. A title MDBList doesn't know (404) has no scores rather than being an error.
+    func lookup(_ provider: String, _ id: String, kind: MediaKind) async throws -> Ratings {
         let type = kind == .tv ? "show" : "movie"
-        var components = URLComponents(url: baseURL.appending(path: "imdb/\(type)/\(imdbID)"), resolvingAgainstBaseURL: false)!
+        var components = URLComponents(url: baseURL.appending(path: "\(provider)/\(type)/\(id)"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "apikey", value: apiKey)]
-        let response = try await http.decode(Response.self, .get(components.url!))
+        do {
+            return Self.parse(try await http.decode(Response.self, .get(components.url!)))
+        } catch AppError.http(_, 404) {
+            return Ratings()
+        }
+    }
+
+    /// MDBList sends each source as `value` (the source's own scale) and `score` (0–100); either may be null.
+    static func parse(_ response: Response) -> Ratings {
         var ratings = Ratings()
         for entry in response.ratings ?? [] {
-            let percent = entry.value?.value.map { Int($0.rounded()) } ?? entry.score?.value.map(Int.init)
-            switch entry.source.lowercased() {
+            let value = entry.value?.value
+            let score = entry.score?.value
+            let percent = (value ?? score).map { Int($0.rounded()) }
+            switch entry.source?.lowercased() {
             case "imdb":
-                ratings.imdb = entry.value?.value
-                ratings.imdbVotes = entry.votes?.value.map(Int.init)
-            case "tomatoes": ratings.tomatoes = percent
-            case "popcorn", "tomatoesaudience": ratings.popcorn = percent
-            case "metacritic": ratings.metacritic = percent
+                if let value, value > 0, value <= 10 {
+                    ratings.imdb = value
+                } else if let score, score > 0 {
+                    ratings.imdb = score.rounded() / 10
+                }
+                if ratings.imdb != nil { ratings.imdbVotes = entry.votes?.value.map { Int($0) } }
+            case "tomatoes", "rtomatoes", "rottentomatoes": ratings.tomatoes = percent ?? ratings.tomatoes
+            case "popcorn", "tomatoesaudience", "audience", "rtaudience": ratings.popcorn = percent ?? ratings.popcorn
+            case "metacritic": ratings.metacritic = percent ?? ratings.metacritic
             case "letterboxd":
                 // Stars out of 5; fall back to MDBList's 0–100 score if the value is missing.
-                if let stars = entry.value?.value, stars > 0, stars <= 5 {
-                    ratings.letterboxd = stars
-                } else if let score = entry.score?.value, score > 0 {
-                    ratings.letterboxd = (Double(score) / 20 * 10).rounded() / 10
+                if let value, value > 0, value <= 5 {
+                    ratings.letterboxd = value
+                } else if let score, score > 0 {
+                    ratings.letterboxd = (score / 20 * 10).rounded() / 10
                 }
             default: break
             }
@@ -63,15 +99,15 @@ public struct RatingsClient: Sendable {
 
     /// Cheap call used to check a key before saving it.
     public func validate() async throws {
-        _ = try await ratings(imdbID: "tt0816692", kind: .movie)
+        _ = try await lookup("imdb", "tt0816692", kind: .movie)
     }
 
     struct Response: Decodable { let ratings: [Entry]? }
     struct Entry: Decodable {
-        let source: String
+        let source: String?
         let value: LossyDouble?
-        let score: LossyInt64?
-        let votes: LossyInt64?
+        let score: LossyDouble?
+        let votes: LossyDouble?
     }
 }
 

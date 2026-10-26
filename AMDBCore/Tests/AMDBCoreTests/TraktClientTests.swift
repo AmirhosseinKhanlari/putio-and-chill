@@ -28,6 +28,52 @@ import Testing
         #expect(request.value(forHTTPHeaderField: "trakt-api-version") == "2")
     }
 
+    @Test func ratingByIMDbID() async throws {
+        let stub = StubTransport(json: #"{"rating":9.3174,"votes":74145,"distribution":{"10":47301}}"#)
+        let rating = try await TraktClient(clientID: "CID", transport: stub).rating(imdbID: "tt0903747", tmdbID: 1396, kind: .tv)
+        #expect(rating == 9.3)
+        #expect(stub.requests.map(\.url?.path) == ["/shows/tt0903747/ratings"])
+        #expect(stub.requests.first?.value(forHTTPHeaderField: "trakt-api-key") == "CID")
+    }
+
+    @Test func ratingWithoutIMDbIDFindsTraktIDFromTMDB() async throws {
+        let stub = StubTransport { request in
+            let path = request.url?.path ?? ""
+            if path.hasPrefix("/search/") {
+                return (200, Data(#"""
+                [{"show":{"ids":{"imdb":null,"slug":"monster-the-ed-gein-story","tmdb":286801,"trakt":279819},
+                  "year":2025,"title":"Monster: The Ed Gein Story"},"type":"show","score":100}]
+                """#.utf8))
+            }
+            return (200, Data(#"{"rating":7.04,"votes":900}"#.utf8))
+        }
+        let rating = try await TraktClient(clientID: "CID", transport: stub).rating(imdbID: nil, tmdbID: 286801, kind: .tv)
+        #expect(rating == 7.0)
+        #expect(stub.requests.map(\.url?.path) == ["/search/tmdb/286801", "/shows/279819/ratings"])
+        #expect(stub.requests.first?.queryItems["type"] == "show")
+    }
+
+    /// Trakt answers an IMDb id it doesn't know with 204 and no body; the TMDB id is tried next.
+    @Test func unknownIMDbIDFallsBackToTMDB() async throws {
+        let stub = StubTransport { request in
+            let path = request.url?.path ?? ""
+            if path.hasPrefix("/search/") { return (200, Data(#"[{"type":"show","show":{"ids":{"trakt":1388}}}]"#.utf8)) }
+            if path == "/shows/1388/ratings" { return (200, Data(#"{"rating":9.3174,"votes":74145}"#.utf8)) }
+            return (204, Data())
+        }
+        let rating = try await TraktClient(clientID: "CID", transport: stub).rating(imdbID: "tt0000000999", tmdbID: 1396, kind: .tv)
+        #expect(rating == 9.3)
+        #expect(stub.requests.map(\.url?.path) == ["/shows/tt0000000999/ratings", "/search/tmdb/1396", "/shows/1388/ratings"])
+    }
+
+    @Test func unratedOrUnknownIsNil() async throws {
+        let unrated = StubTransport(json: #"{"rating":0,"votes":0}"#)
+        #expect(try await TraktClient(clientID: "CID", transport: unrated).rating(imdbID: "tt1", tmdbID: nil, kind: .movie) == nil)
+        let unknown = StubTransport(json: "[]")
+        #expect(try await TraktClient(clientID: "CID", transport: unknown).rating(imdbID: nil, tmdbID: 5, kind: .movie) == nil)
+        #expect(unknown.requests.first?.queryItems["type"] == "movie")
+    }
+
     @Test func chartListsAreKnown() {
         #expect(IMDbChart.top250Movies.list == "imdb-top-rated-movies")
         #expect(IMDbChart.top250TV.list == "imdb-top-rated-tv-shows")

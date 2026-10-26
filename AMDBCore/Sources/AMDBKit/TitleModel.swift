@@ -24,11 +24,12 @@ public final class TitleModel {
     private let catalog: any CatalogService
     private let library: LibraryIndex
     private let transfers: TransferMonitor
-    private let ratingsProvider: (@MainActor (String, MediaKind) async -> Ratings?)?
+    /// (IMDb id if TMDB has one, TMDB id, kind) → scores.
+    private let ratingsProvider: (@MainActor (String?, Int, MediaKind) async -> Ratings?)?
     private let episodeRatingsProvider: (@MainActor (String, Int) async -> [Int: EpisodeRating])?
 
     public init(item: CatalogItem, catalog: any CatalogService, library: LibraryIndex, transfers: TransferMonitor,
-                ratings: (@MainActor (String, MediaKind) async -> Ratings?)? = nil,
+                ratings: (@MainActor (String?, Int, MediaKind) async -> Ratings?)? = nil,
                 episodeRatings: (@MainActor (String, Int) async -> [Int: EpisodeRating])? = nil) {
         self.item = item
         self.catalog = catalog
@@ -43,8 +44,9 @@ public final class TitleModel {
             let loaded = try await catalog.detail(item.mediaType, id: item.tmdbID)
             detail = loaded
             error = nil
-            if let ratingsProvider, let imdbID = loaded.imdbID {
-                ratings = await ratingsProvider(imdbID, item.mediaType)
+            if let ratingsProvider {
+                // Without an IMDb id (common for newer shows) the lookup goes by TMDB id instead.
+                ratings = await ratingsProvider(loaded.imdbID, item.tmdbID, item.mediaType)
             }
             if item.mediaType == .tv, let first = loaded.seasons.first?.number {
                 // The season of the episode being watched (the latest started one), else the first.

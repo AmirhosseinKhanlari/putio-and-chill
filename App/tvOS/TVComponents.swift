@@ -169,7 +169,7 @@ struct TVMetaLine: View {
     }
 }
 
-/// "IMDb 8.5   Rotten Tomatoes 92%   Metacritic 79   Letterboxd 4.4   TMDB 74%" — plain text, no boxes.
+/// "IMDb 8.5   Rotten Tomatoes 92%   Metacritic 79   Letterboxd 4.4   Trakt 8.4   TMDB 74%" — plain text, no boxes.
 struct TVRatingsLine: View {
     var ratings: Ratings?
     var tmdb: Double?
@@ -195,6 +195,7 @@ struct TVRatingsLine: View {
         if let popcorn = ratings?.popcorn { parts.append(("Audience", "\(popcorn)%")) }
         if let metacritic = ratings?.metacritic { parts.append(("Metacritic", "\(metacritic)")) }
         if let letterboxd = ratings?.letterboxd { parts.append(("Letterboxd", String(format: "%.1f", letterboxd))) }
+        if let trakt = ratings?.trakt { parts.append(("Trakt", String(format: "%.1f", trakt))) }
         if ratings?.imdb == nil, let tmdb, tmdb > 0 { parts.append(("TMDB", "\(Int((tmdb * 10).rounded()))%")) }
         return parts
     }

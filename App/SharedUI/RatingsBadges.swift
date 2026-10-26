@@ -20,7 +20,7 @@ struct IMDbScore: View {
 }
 
 /// Every score we have for a title: IMDb, Rotten Tomatoes critics (🍅 fresh / 🤢 rotten) and audience (🍿),
-/// Metacritic, and TMDB's user score. Wraps onto more lines when space runs out.
+/// Metacritic, Letterboxd, Trakt, and TMDB's user score. Wraps onto more lines when space runs out.
 struct RatingsBadges: View {
     var ratings: Ratings?
     /// TMDB vote average (0–10), from the catalog — shown even without MDBList.
@@ -47,6 +47,7 @@ struct RatingsBadges: View {
             }
             if let metascore = ratings?.metacritic { MetacriticScore(score: metascore) }
             if let stars = ratings?.letterboxd { LetterboxdScore(stars: stars) }
+            if let trakt = ratings?.trakt { TraktScore(rating: trakt) }
             if let tmdb, tmdb > 0 { TMDBScore(rating: tmdb) }
         }
     }
@@ -97,6 +98,20 @@ struct LetterboxdScore: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Letterboxd \(String(format: "%.1f", stars)) out of 5")
+    }
+}
+
+/// "Trakt 8.4" in plain text: Trakt has no well-known badge to borrow.
+struct TraktScore: View {
+    let rating: Double
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text("Trakt").font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.6))
+            Text(String(format: "%.1f", rating))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Trakt \(String(format: "%.1f", rating))")
     }
 }
 

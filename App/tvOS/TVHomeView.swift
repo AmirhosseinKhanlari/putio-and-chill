@@ -127,7 +127,7 @@ struct TVFeatured: View {
             guard let catalog = app.catalog else { return }
             if model?.item.id != item.id { model = nil }
             let title = TitleModel(item: item, catalog: catalog, library: app.library, transfers: app.transfers,
-                                   ratings: { [app] imdbID, kind in await app.ratings(imdbID: imdbID, kind: kind) })
+                                   ratings: { [app] imdbID, tmdbID, kind in await app.ratings(imdbID: imdbID, tmdbID: tmdbID, kind: kind) })
             model = title
             await title.load()
         }
