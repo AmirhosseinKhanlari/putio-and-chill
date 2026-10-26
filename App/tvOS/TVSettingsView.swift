@@ -292,8 +292,10 @@ struct TVSettingsView: View {
                 Text("IMDb")
             }
             Section {
-                LabeledContent("MDBList", value: app.hasRatings ? "Connected" : "Not connected")
-                if app.hasRatings {
+                LabeledContent("MDBList", value: app.usesBundledMDBList ? "Built in" : app.hasRatings ? "Connected" : "Not connected")
+                if app.usesBundledMDBList {
+                    EmptyView()
+                } else if app.hasRatings {
                     Button("Remove MDBList Key", role: .destructive) { app.setToken(nil, for: .mdblist) }
                 } else {
                     TextField("MDBList API key", text: $mdblistKey)
@@ -305,7 +307,9 @@ struct TVSettingsView: View {
             } header: {
                 Text("Ratings")
             } footer: {
-                Text("Keys you added on your iPhone appear here by themselves when both devices use the same Apple Account with iCloud Keychain on.")
+                Text(app.usesBundledMDBList
+                     ? "IMDb, Rotten Tomatoes, Metacritic and Letterboxd scores on title pages."
+                     : "Keys you added on your iPhone appear here by themselves when both devices use the same Apple Account with iCloud Keychain on.")
             }
             Section("Catalog & Releases") {
                 LabeledContent("TMDB", value: app.catalog == nil ? "Not connected" : (app.usesBundledTMDB ? "Built in" : "Connected"))

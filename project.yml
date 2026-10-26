@@ -87,6 +87,7 @@ targets:
         TMDBReadToken: $(TMDB_READ_TOKEN)
         TraktClientID: $(TRAKT_CLIENT_ID)
         OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)
+        MDBListAPIKey: $(MDBLIST_API_KEY)
         NSSupportsLiveActivities: true
         # AirPlay subtitles put.io doesn't have are served from this device to the TV (AirPlaySubtitleSwitcher);
         # the device's own player loads that playlist from its Wi-Fi address too, which counts as local network use.
@@ -194,6 +195,7 @@ targets:
         TMDBReadToken: $(TMDB_READ_TOKEN)
         TraktClientID: $(TRAKT_CLIENT_ID)
         OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)
+        MDBListAPIKey: $(MDBLIST_API_KEY)
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:

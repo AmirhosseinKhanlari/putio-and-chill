@@ -46,16 +46,37 @@ import Testing
 @MainActor @Suite struct AppRatingsTests {
     func makeModel(_ tokens: [TokenKey: String], bundledTMDB: String? = nil, ratings: FakeRatings = FakeRatings(),
                    catalogTokens: TokenLog = TokenLog(), trakt: FakeCharts? = nil,
-                   cache: RatingsCache = RatingsCache(fileURL: nil)) -> AppModel {
+                   cache: RatingsCache = RatingsCache(fileURL: nil),
+                   bundledMDBList: String? = nil, ratingsKeys: TokenLog = TokenLog()) -> AppModel {
         let factory = ServiceFactory(
             makePutio: { _ in FakePutio() },
             makeCatalog: { token in catalogTokens.record(token); return FakeCatalog() },
             makeProvider: { config, _ in FakeProvider(id: config.id) },
-            makeRatings: { _ in ratings },
+            makeRatings: { key in ratingsKeys.record(key); return ratings },
             makeCharts: { _ in trakt ?? FakeCharts() })
         return AppModel(tokens: InMemoryTokenStore(tokens), defaults: testDefaults(), store: LocalStore(fileURL: nil),
                         factory: factory, bundledTMDBToken: bundledTMDB, ratingsCache: cache,
-                        bundledTraktClientID: trakt == nil ? nil : "CID")
+                        bundledTraktClientID: trakt == nil ? nil : "CID", bundledMDBListKey: bundledMDBList)
+    }
+
+    @Test func bundledMDBListKeyGivesRatingsWithoutAKey() {
+        let keys = TokenLog()
+        let model = makeModel([.putio: "p", .tmdb: "t"], bundledMDBList: " BUNDLED\n", ratingsKeys: keys)
+        #expect(model.hasRatings)
+        #expect(model.usesBundledMDBList)
+        #expect(keys.all.last == "BUNDLED")
+    }
+
+    @Test func savedMDBListKeyWinsOverBundled() {
+        let keys = TokenLog()
+        _ = makeModel([.putio: "p", .tmdb: "t", .mdblist: "MINE"], bundledMDBList: "BUNDLED", ratingsKeys: keys)
+        #expect(keys.all.last == "MINE")
+    }
+
+    @Test func emptyBundledMDBListKeyIsIgnored() {
+        let model = makeModel([.putio: "p", .tmdb: "t"], bundledMDBList: "")
+        #expect(!model.hasRatings)
+        #expect(!model.usesBundledMDBList)
     }
 
     @Test func bundledTMDBTokenMakesCatalogReady() {

@@ -56,18 +56,20 @@ struct OnboardingView: View {
 
                 }
 
-                StepCard(number: app.usesBundledTMDB ? 2 : 3, title: "IMDb & Rotten Tomatoes scores (optional)", done: app.hasRatings) {
-                    Text("Free key: mdblist.com → sign in → Preferences → **API key**.")
-                        .font(.footnote).foregroundStyle(.white.opacity(0.7))
-                    HStack {
-                        SecureField("MDBList API key", text: $mdblistKey).textFieldStyle(.roundedBorder)
-                        Button { Task { await saveMDBList() } } label: { busy ? AnyView(ProgressView()) : AnyView(Text("Verify")) }
-                            .buttonStyle(.glassPill)
-                            .disabled(mdblistKey.isEmpty || busy)
+                if !app.usesBundledMDBList {
+                    StepCard(number: app.usesBundledTMDB ? 2 : 3, title: "IMDb & Rotten Tomatoes scores (optional)", done: app.hasRatings) {
+                        Text("Free key: mdblist.com → sign in → Preferences → **API key**.")
+                            .font(.footnote).foregroundStyle(.white.opacity(0.7))
+                        HStack {
+                            SecureField("MDBList API key", text: $mdblistKey).textFieldStyle(.roundedBorder)
+                            Button { Task { await saveMDBList() } } label: { busy ? AnyView(ProgressView()) : AnyView(Text("Verify")) }
+                                .buttonStyle(.glassPill)
+                                .disabled(mdblistKey.isEmpty || busy)
+                        }
                     }
                 }
 
-                StepCard(number: app.usesBundledTMDB ? 3 : 4, title: "Connect chill (optional)", done: app.hasChill) {
+                StepCard(number: 2 + (app.usesBundledTMDB ? 0 : 1) + (app.usesBundledMDBList ? 0 : 1), title: "Connect chill (optional)", done: app.hasChill) {
                     Text("Adds chill's eight indexers to every search. You can do this later in Settings.")
                         .font(.footnote).foregroundStyle(.white.opacity(0.7))
                     Button("Connect chill") { showChill = true }.buttonStyle(.glassPill)

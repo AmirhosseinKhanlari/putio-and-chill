@@ -92,6 +92,8 @@ public final class AppModel {
     public private(set) var hasSubtitleSearch = false
     /// True when the app ships an OpenSubtitles API key.
     public let usesBundledOpenSubtitles: Bool
+    /// True when the app ships an MDBList API key, so nobody has to add one.
+    public let usesBundledMDBList: Bool
     /// Signed-in OpenSubtitles username, if any.
     public private(set) var openSubtitlesUser: String?
     /// Account level and daily limit from the last sign-in this session.
@@ -141,12 +143,13 @@ public final class AppModel {
     @ObservationIgnored private var subtitleService: (any SubtitleService)?
     @ObservationIgnored private var chillCatalog: (any ChillCatalogService)?
     @ObservationIgnored private let bundledOpenSubtitlesKey: String?
+    @ObservationIgnored private let bundledMDBListKey: String?
     @ObservationIgnored private var openSubtitlesLogin: OpenSubtitlesLogin?
     @ObservationIgnored private let subtitleCache: SubtitleFileCache
 
     public init(tokens: any TokenStore, defaults: UserDefaults = .standard, store: LocalStore, factory: ServiceFactory = .live,
                 bundledTMDBToken: String? = nil, ratingsCache: RatingsCache = RatingsCache(fileURL: nil),
-                bundledTraktClientID: String? = nil, bundledOpenSubtitlesKey: String? = nil,
+                bundledTraktClientID: String? = nil, bundledOpenSubtitlesKey: String? = nil, bundledMDBListKey: String? = nil,
                 subtitleCache: SubtitleFileCache = SubtitleFileCache(directory: nil),
                 libraryCache: LibraryCache = LibraryCache(fileURL: nil), chillFeedURL: URL? = nil,
                 watchLogStore: (any WatchLogStore)? = nil, deviceName: String = "This device") {
@@ -163,6 +166,9 @@ public final class AppModel {
         let subtitlesKey = bundledOpenSubtitlesKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.bundledOpenSubtitlesKey = (subtitlesKey?.isEmpty ?? true) ? nil : subtitlesKey
         self.usesBundledOpenSubtitles = self.bundledOpenSubtitlesKey != nil
+        let mdblistKey = bundledMDBListKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.bundledMDBListKey = (mdblistKey?.isEmpty ?? true) ? nil : mdblistKey
+        self.usesBundledMDBList = self.bundledMDBListKey != nil
         self.subtitleCache = subtitleCache
         let trakt = bundledTraktClientID?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.chartsService = (trakt?.isEmpty ?? true) ? nil : trakt.map(factory.makeCharts)
@@ -574,7 +580,7 @@ public final class AppModel {
         lastTokens = currentTokens()
         putio = tokens.read(.putio).map(factory.makePutio)
         catalog = (tokens.read(.tmdb) ?? bundledTMDBToken).map(factory.makeCatalog)
-        ratingsService = tokens.read(.mdblist).map(factory.makeRatings)
+        ratingsService = (tokens.read(.mdblist) ?? bundledMDBListKey).map(factory.makeRatings)
         subtitleService = (tokens.read(.opensubtitles) ?? bundledOpenSubtitlesKey).map(factory.makeSubtitles)
         hasSubtitleSearch = subtitleService != nil
         openSubtitlesUser = tokens.read(.opensubtitlesUsername)

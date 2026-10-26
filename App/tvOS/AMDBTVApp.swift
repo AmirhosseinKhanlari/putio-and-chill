@@ -19,6 +19,7 @@ struct AMDBTVApp: App {
             ratingsCache: RatingsCache(fileURL: RatingsCache.defaultURL()),
             bundledTraktClientID: info.object(forInfoDictionaryKey: "TraktClientID") as? String,
             bundledOpenSubtitlesKey: info.object(forInfoDictionaryKey: "OpenSubtitlesAPIKey") as? String,
+            bundledMDBListKey: info.object(forInfoDictionaryKey: "MDBListAPIKey") as? String,
             subtitleCache: SubtitleFileCache(directory: SubtitleFileCache.defaultDirectory()),
             libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL()), chillFeedURL: ChillFeed.defaultURL(),
             watchLogStore: KeychainWatchLogStore(), deviceName: UIDevice.current.name))

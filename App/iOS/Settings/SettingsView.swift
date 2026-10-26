@@ -537,8 +537,10 @@ struct SettingsView: View {
                 Text("Titles, artwork, cast and recommendations.")
             }
             Section {
-                LabeledContent("MDBList", value: app.hasRatings ? "Connected" : "Not connected")
-                if app.hasRatings {
+                LabeledContent("MDBList", value: app.usesBundledMDBList ? "Built in" : app.hasRatings ? "Connected" : "Not connected")
+                if app.usesBundledMDBList {
+                    EmptyView()
+                } else if app.hasRatings {
                     Button("Remove MDBList key", role: .destructive) { app.setToken(nil, for: .mdblist) }
                 } else {
                     HStack {
