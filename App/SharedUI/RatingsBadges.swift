@@ -1,17 +1,29 @@
 import AMDBCore
 import SwiftUI
 
+/// Badge geometry: the same badges drawn about twice as big on Apple TV, read from across the room.
+/// Text sizes follow the platform's own caption fonts; this scales the tags, dots and squares around them.
+private enum Badge {
+    #if os(tvOS)
+    static let scale: CGFloat = 2
+    static let spacing: CGFloat = 30
+    #else
+    static let scale: CGFloat = 1
+    static let spacing: CGFloat = 10
+    #endif
+}
+
 /// IMDb's yellow tag followed by the score.
 struct IMDbScore: View {
     let rating: Double
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 5 * Badge.scale) {
             Text("IMDb")
                 .font(.caption2.weight(.heavy))
                 .foregroundStyle(.black)
-                .padding(.horizontal, 4).padding(.vertical, 1)
-                .background(Color(red: 0.96, green: 0.77, blue: 0.09), in: RoundedRectangle(cornerRadius: 3))
+                .padding(.horizontal, 4 * Badge.scale).padding(.vertical, Badge.scale)
+                .background(Color(red: 0.96, green: 0.77, blue: 0.09), in: RoundedRectangle(cornerRadius: 3 * Badge.scale))
             Text(String(format: "%.1f", rating))
         }
         .accessibilityElement(children: .ignore)
@@ -27,10 +39,10 @@ struct RatingsBadges: View {
     var tmdb: Double?
 
     var body: some View {
-        FlowLayout(spacing: 10) {
+        FlowLayout(spacing: Badge.spacing) {
             if let imdb = ratings?.imdb { IMDbScore(rating: imdb) }
             if let critics = ratings?.tomatoes {
-                HStack(spacing: 3) {
+                HStack(spacing: 3 * Badge.scale) {
                     Text(critics >= 60 ? "🍅" : "🤢")
                     Text("\(critics)%")
                 }
@@ -38,7 +50,7 @@ struct RatingsBadges: View {
                 .accessibilityLabel("Rotten Tomatoes critics \(critics) percent")
             }
             if let audience = ratings?.popcorn {
-                HStack(spacing: 3) {
+                HStack(spacing: 3 * Badge.scale) {
                     Text("🍿")
                     Text("\(audience)%")
                 }
@@ -62,12 +74,12 @@ struct MetacriticScore: View {
     let score: Int
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 5 * Badge.scale) {
             Text("\(score)")
                 .font(.caption.weight(.heavy).monospacedDigit())
                 .foregroundStyle(score >= 40 && score < 61 ? .black : .white)
-                .frame(minWidth: 22, minHeight: 18)
-                .background(color, in: RoundedRectangle(cornerRadius: 4))
+                .frame(minWidth: 22 * Badge.scale, minHeight: 18 * Badge.scale)
+                .background(color, in: RoundedRectangle(cornerRadius: 4 * Badge.scale))
             Text("Metacritic").font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.6))
         }
         .accessibilityElement(children: .ignore)
@@ -86,13 +98,13 @@ struct LetterboxdScore: View {
     let stars: Double
 
     var body: some View {
-        HStack(spacing: 5) {
-            HStack(spacing: -3) {
+        HStack(spacing: 5 * Badge.scale) {
+            HStack(spacing: -3 * Badge.scale) {
                 Circle().fill(Color(red: 1.0, green: 0.50, blue: 0.0))
                 Circle().fill(Color(red: 0.0, green: 0.88, blue: 0.33)).blendMode(.screen)
                 Circle().fill(Color(red: 0.25, green: 0.74, blue: 0.96)).blendMode(.screen)
             }
-            .frame(width: 26, height: 10)
+            .frame(width: 26 * Badge.scale, height: 10 * Badge.scale)
             .compositingGroup()
             Text(String(format: "%.1f", stars))
         }
@@ -106,7 +118,7 @@ struct TraktScore: View {
     let rating: Double
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 5 * Badge.scale) {
             Text("Trakt").font(.caption2.weight(.semibold)).foregroundStyle(.white.opacity(0.6))
             Text(String(format: "%.1f", rating))
         }
@@ -121,14 +133,14 @@ struct TMDBScore: View {
 
     var body: some View {
         let percent = Int((rating * 10).rounded())
-        HStack(spacing: 5) {
+        HStack(spacing: 5 * Badge.scale) {
             Text("TMDB")
                 .font(.caption2.weight(.heavy))
                 .foregroundStyle(Color(red: 0.05, green: 0.15, blue: 0.25))
-                .padding(.horizontal, 4).padding(.vertical, 1)
+                .padding(.horizontal, 4 * Badge.scale).padding(.vertical, Badge.scale)
                 .background(LinearGradient(colors: [Color(red: 0.56, green: 0.81, blue: 0.63), Color(red: 0.0, green: 0.71, blue: 0.89)],
                                            startPoint: .leading, endPoint: .trailing),
-                            in: RoundedRectangle(cornerRadius: 3))
+                            in: RoundedRectangle(cornerRadius: 3 * Badge.scale))
             Text("\(percent)%")
         }
         .accessibilityElement(children: .ignore)

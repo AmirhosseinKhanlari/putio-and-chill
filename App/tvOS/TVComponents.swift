@@ -169,35 +169,19 @@ struct TVMetaLine: View {
     }
 }
 
-/// "IMDb 8.5   Rotten Tomatoes 92%   Metacritic 79   Letterboxd 4.4   Trakt 8.4   TMDB 74%" — plain text, no boxes.
+/// The same rating badges as iPhone and iPad (IMDb tag, 🍅, 🍿, Metacritic square, Letterboxd dots), sized for the TV.
 struct TVRatingsLine: View {
     var ratings: Ratings?
     var tmdb: Double?
 
     var body: some View {
-        let parts = Self.parts(ratings, tmdb: tmdb)
-        if !parts.isEmpty {
-            HStack(spacing: 30) {
-                ForEach(parts, id: \.0) { part in
-                    (Text(part.0 + " ").fontWeight(.semibold).foregroundStyle(.white.opacity(0.92))
-                     + Text(part.1).fontWeight(.medium).foregroundStyle(TVMetrics.secondaryText))
-                }
-            }
-            .font(.system(size: 23))
-            .accessibilityElement(children: .combine)
+        // TMDB's user score only stands in when there's no IMDb rating: one crowd score is enough on the TV.
+        let tmdb = ratings?.imdb == nil ? tmdb : nil
+        if RatingsBadges.hasAny(ratings, tmdb: tmdb) {
+            RatingsBadges(ratings: ratings, tmdb: tmdb)
+                .font(.system(size: 25, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
         }
-    }
-
-    static func parts(_ ratings: Ratings?, tmdb: Double?) -> [(String, String)] {
-        var parts: [(String, String)] = []
-        if let imdb = ratings?.imdb { parts.append(("IMDb", String(format: "%.1f", imdb))) }
-        if let tomatoes = ratings?.tomatoes { parts.append(("Rotten Tomatoes", "\(tomatoes)%")) }
-        if let popcorn = ratings?.popcorn { parts.append(("Audience", "\(popcorn)%")) }
-        if let metacritic = ratings?.metacritic { parts.append(("Metacritic", "\(metacritic)")) }
-        if let letterboxd = ratings?.letterboxd { parts.append(("Letterboxd", String(format: "%.1f", letterboxd))) }
-        if let trakt = ratings?.trakt { parts.append(("Trakt", String(format: "%.1f", trakt))) }
-        if ratings?.imdb == nil, let tmdb, tmdb > 0 { parts.append(("TMDB", "\(Int((tmdb * 10).rounded()))%")) }
-        return parts
     }
 }
 
