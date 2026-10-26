@@ -11,6 +11,8 @@ struct TVVersionsView: View {
     @State private var model: VersionsModel?
     @State private var sending: String?
     @State private var message: String?
+    /// A version that doesn't fit in put.io: what could be deleted to make room for it.
+    @State private var roomOffer: RoomOffer?
 
     var body: some View {
         ScrollView(.vertical) {
@@ -60,6 +62,15 @@ struct TVVersionsView: View {
             versions.start()
         }
         .onDisappear { model?.cancel() }
+        .fullScreenCover(item: $roomOffer) { offer in
+            TVMakeRoomView(offer: offer) { result in
+                guard let result else { return }
+                router.notice = result
+                dismiss()
+            }
+            .environment(app)
+            .environment(router)
+        }
     }
 
     static func queryText(_ query: MediaQuery) -> String {
@@ -111,6 +122,9 @@ struct TVVersionsView: View {
                 posterPath: nil, backdropPath: nil, season: release.parsed.season, episode: release.parsed.episode)
             try await app.transfers.send(release, target: target)
             dismiss()
+        } catch let refusal as NotEnoughSpace {
+            message = refusal.offer.headline + "."
+            roomOffer = refusal.offer
         } catch {
             message = "Couldn't send that to put.io. Try another version."
         }

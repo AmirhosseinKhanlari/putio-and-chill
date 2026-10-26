@@ -83,6 +83,8 @@ import Testing
         good.sizeBytes = 2_000_000_000
         done.releases = [makeRelease("a", seeders: 5, name: "X.2024.720p.WEB"), good]
         let putio = FakePutio()
+        // Room for it on put.io (a release that doesn't fit isn't sent: MakeRoomFlowTests).
+        putio.disk = .init(avail: 100_000_000_000, size: 1_000_000_000_000, used: 900_000_000_000)
         let model = app(snapshots: [done], putio: putio)
         let result = await model.smartGet(.movie(imdbID: "tt1", title: "X", year: 2024), target: target)
         model.transfers.stop()

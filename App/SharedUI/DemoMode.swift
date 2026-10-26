@@ -9,6 +9,9 @@ enum DemoMode {
 
     static var screen: String? { value(after: "-demoScreen") }
 
+    /// `-demoFull`: put.io has only 1.5 GB free and a Movies folder with two movies, so Get & Watch offers to make room.
+    static var isFull: Bool { ProcessInfo.processInfo.arguments.contains("-demoFull") }
+
     /// `-demoPlayURL <url>` (with `-demoScreen player-url`): a test video (e.g. from a local server) played through
     /// the app's player routing as a demo file: put.io's "stream" and its original file are both this URL, so a file
     /// Apple's player can't play falls back to the built-in player. `-demoCodecs mpeg4,mp3` makes put.io report its
@@ -274,7 +277,7 @@ final class DemoPutio: PutioService, @unchecked Sendable {
 
     /// The rest of the demo put.io: a couple of folders with non-video files, for the file manager.
     private lazy var tree: [Int64: [PutioFile]] = [
-        0: rootFiles + [PutioFile(id: 50, name: "Downloads", fileType: "FOLDER", size: 52_000_000, parentId: 0,
+        0: rootFiles + DemoPutio.fullRoot + [PutioFile(id: 50, name: "Downloads", fileType: "FOLDER", size: 52_000_000, parentId: 0,
                                   createdAt: "2026-09-12T10:00:00"),
                         PutioFile(id: 51, name: "Archive", fileType: "FOLDER", size: 0, parentId: 0, createdAt: "2026-06-02T10:00:00")],
         50: [PutioFile(id: 52, name: "Severance.Poster.jpg", fileType: "IMAGE", size: 2_400_000, parentId: 50,
@@ -283,14 +286,38 @@ final class DemoPutio: PutioService, @unchecked Sendable {
              PutioFile(id: 54, name: "Soundtrack.zip", fileType: "ARCHIVE", size: 49_600_000, parentId: 50,
                        createdAt: "2026-09-14T10:00:00")],
         51: [],
-    ]
+    ].merging(DemoPutio.fullTree) { first, _ in first }
+
+    /// `-demoFull`'s Movies folder: Arrival in its own folder, Oppenheimer loose.
+    private static var fullRoot: [PutioFile] {
+        DemoMode.isFull ? [PutioFile(id: 70, name: "Movies", fileType: "FOLDER", size: 6_500_000_000, parentId: 0,
+                                     createdAt: "2026-01-01T10:00:00")] : []
+    }
+    private static var fullTree: [Int64: [PutioFile]] {
+        guard DemoMode.isFull else { return [:] }
+        return [
+            70: [PutioFile(id: 71, name: "Arrival (2016)", fileType: "FOLDER", size: 4_000_000_000, parentId: 70,
+                           createdAt: "2026-05-01T10:00:00"),
+                 PutioFile(id: 73, name: "Oppenheimer.2023.1080p.BluRay.mkv", fileType: "VIDEO", size: 2_500_000_000, parentId: 70,
+                           createdAt: "2026-06-01T10:00:00")],
+            71: [PutioFile(id: 72, name: "Arrival.2016.1080p.BluRay.mkv", fileType: "VIDEO", size: 4_000_000_000, parentId: 71,
+                           createdAt: "2026-05-01T10:00:00")],
+        ]
+    }
+    /// What `-demoFull` deletions freed.
+    private var freed: Int64 = 0
     private var trashed: [PutioTrashFile] = [
         PutioTrashFile(id: 60, name: "Old.Movie.2001.720p.mkv", fileType: "VIDEO", size: 4_200_000_000,
                        deletedAt: "2026-10-12T10:00:00", expirationDate: "2026-11-11T10:00:00"),
     ]
 
     func accountInfo() async throws -> PutioAccount {
-        let trash = lock.withLock { trashed.reduce(0) { $0 + ($1.size ?? 0) } }
+        let (trash, freed) = lock.withLock { (trashed.reduce(0) { $0 + ($1.size ?? 0) }, freed) }
+        if DemoMode.isFull {
+            let avail = 1_500_000_000 + freed
+            return PutioAccount(username: "demo", disk: .init(avail: avail, size: 1_000_000_000_000, used: 1_000_000_000_000 - avail),
+                                trashSize: trash)
+        }
         return PutioAccount(username: "demo", disk: .init(avail: 640_000_000_000, size: 1_000_000_000_000, used: 360_000_000_000),
                             trashSize: trash)
     }
@@ -299,6 +326,7 @@ final class DemoPutio: PutioService, @unchecked Sendable {
         lock.withLock {
             for (parent, files) in tree {
                 for file in files where ids.contains(file.id) {
+                    if DemoMode.isFull { freed += file.size ?? 0 }
                     trashed.insert(PutioTrashFile(id: file.id, name: file.name, fileType: file.fileType, size: file.size,
                                                   deletedAt: "2026-10-14T10:00:00", expirationDate: "2026-11-13T10:00:00"), at: 0)
                 }

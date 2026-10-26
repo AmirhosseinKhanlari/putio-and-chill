@@ -27,6 +27,7 @@ struct AMDBTVApp: App {
     var body: some Scene {
         WindowGroup {
             TVRootView()
+                .tvMakeRoomCover(model, router: router)
                 .environment(model)
                 .environment(router)
                 .environment(ambient)

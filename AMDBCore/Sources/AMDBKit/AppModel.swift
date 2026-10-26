@@ -594,6 +594,7 @@ public final class AppModel {
         imdbWatchlist.configure(link: tokens.read(.imdb), service: factory.imdbLists, catalog: catalog)
         transfers.configure(putio: putio, library: library)
         transfers.layout = FolderLayout(settings: settings)
+        transfers.room.isEnabled = settings.makeRoom
         library.scope = LibraryScope(layout: transfers.layout)
     }
 }

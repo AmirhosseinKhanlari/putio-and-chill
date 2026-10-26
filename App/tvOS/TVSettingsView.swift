@@ -204,6 +204,11 @@ struct TVSettingsView: View {
             } footer: {
                 Text("Get & Watch sends the release with the most seeders that matches. Versions is always one click away.")
             }
+            Section {
+                Toggle("Make room on put.io when a download doesn't fit", isOn: $draft.makeRoom)
+            } footer: {
+                Text("Offers to delete the oldest titles in Movies and TV Series, watched ones first, and always asks first.")
+            }
         }
     }
 

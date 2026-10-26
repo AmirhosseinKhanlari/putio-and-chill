@@ -193,6 +193,7 @@ struct TVTitleActions: View {
             TVTransferStatus(transfer: transfer)
             Button("Cancel") { Task { try? await app.transfers.cancel(transfer.id) } }.tvPill()
         case let .failed(transfer):
+            if OutOfSpace.matches(transfer) { TVMakeRoomRetryButton(transfer: transfer) }
             Button {
                 app.transfers.dismiss(transfer.id)
                 openVersions()
@@ -210,9 +211,12 @@ struct TVTitleActions: View {
         guard app.settings.oneTapGet else { return openVersions(season: season, episode: episode) }
         working = true
         defer { working = false }
-        switch await app.smartGet(query, target: model.target(season: season, episode: episode)) {
+        let target = model.target(season: season, episode: episode)
+        switch await app.smartGet(query, target: target) {
         case .sent: message = "Sent to put.io. It'll play here as soon as it's ready."
         case .noMatch: openVersions(season: season, episode: episode)
+        case .failed where app.transfers.room.presentRefusal(for: target):
+            message = "Not enough space on put.io."
         case .failed:
             message = "Couldn't send it to put.io. Pick a version instead."
             openVersions(season: season, episode: episode)
@@ -386,8 +390,10 @@ struct TVEpisodes: View {
         searching.insert(episode)
         defer { searching.remove(episode) }
         message = nil
-        switch await app.smartGet(query, target: model.target(season: season, episode: episode)) {
+        let target = model.target(season: season, episode: episode)
+        switch await app.smartGet(query, target: target) {
         case .sent: break
+        case .failed where app.transfers.room.presentRefusal(for: target): break
         case .noMatch, .failed: openVersions(season, episode)
         }
     }

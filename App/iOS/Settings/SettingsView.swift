@@ -357,6 +357,13 @@ struct SettingsView: View {
                     Text("720p").tag(Int?.some(720))
                 }
             }
+            Section {
+                Toggle("Make room on put.io when a download doesn't fit", isOn: $draft.makeRoom)
+                    .accessibilityIdentifier("settings.makeRoom")
+            } footer: {
+                Text("Offers to delete the oldest titles in Movies and TV Series, watched ones first, and always asks first. "
+                     + "Nothing you're watching or saved to My List is ever offered. Off: just says there isn't enough space.")
+            }
         }
     }
 

@@ -50,16 +50,28 @@ public final class TransferMonitor {
     @ObservationIgnored private weak var library: LibraryIndex?
     private var detectors: [Int64: StallDetector] = [:]
     private var loop: Task<Void, Never>?
+    /// Makes room on put.io when a download doesn't fit (`RoomKeeper`).
+    @ObservationIgnored public let room: RoomKeeper
 
     public init(store: LocalStore, pollInterval: Duration = .seconds(2), now: @escaping @Sendable () -> Date = { Date() }) {
         self.store = store
         self.pollInterval = pollInterval
         self.now = now
+        room = RoomKeeper(store: store, now: now)
+        room.busyFolders = { [weak self] in self?.busyFolders ?? [] }
+        room.perform = { [weak self] action in
+            guard let self else { return }
+            switch action {
+            case let .send(release, target): try await self.send(release, target: target, checkingSpace: false)
+            case let .retry(id): try await self.retry(id)
+            }
+        }
     }
 
     public func configure(putio: (any PutioService)?, library: LibraryIndex?) {
         self.putio = putio
         self.library = library
+        room.configure(putio: putio, library: library)
         if putio == nil {
             stop()
             tracked = []
@@ -75,9 +87,12 @@ public final class TransferMonitor {
         startIfNeeded()
     }
 
+    /// Sends a release to put.io. First checks it fits (`checkingSpace`): when it doesn't, throws `NotEnoughSpace`
+    /// with what could be deleted to make room, and nothing is sent.
     @discardableResult
-    public func send(_ release: Release, target: TransferTarget) async throws -> TrackedTransfer {
+    public func send(_ release: Release, target: TransferTarget, checkingSpace: Bool = true) async throws -> TrackedTransfer {
         guard let putio else { throw AppError.unauthorized(service: "putio") }
+        if checkingSpace { try await room.check(release, target: target) }
         let transfer: PutioTransfer
         do {
             let folder = try await layout.destinationID(kind: target.kind, title: target.title, season: target.season,
@@ -112,6 +127,33 @@ public final class TransferMonitor {
             detectors[id] = detector
             await settle(id)
         }
+    }
+
+    /// Retries a failed transfer on put.io (after making room) and follows it again.
+    public func retry(_ id: Int64) async throws {
+        guard let putio else { throw AppError.unauthorized(service: "putio") }
+        let transfer = try await putio.retryTransfer(id: id)
+        guard let old = tracked.first(where: { $0.id == id })?.pending else { return }
+        let pending = PendingTransfer(transferID: transfer.id, tmdbID: old.tmdbID, kind: old.kind, title: old.title,
+                                      posterPath: old.posterPath, backdropPath: old.backdropPath, season: old.season,
+                                      episode: old.episode, createdAt: now(), link: old.link)
+        // put.io may still report the old error for a moment: it's queued again either way.
+        var phase = TransferPhase(transfer)
+        if case .failed = phase { phase = .queued }
+        tracked.removeAll { $0.id == id || $0.id == transfer.id }
+        tracked.append(TrackedTransfer(pending: pending, transfer: transfer, phase: phase))
+        detectors[id] = nil
+        completedSince[id] = nil
+        await store.update { state in
+            state.pending.removeAll { $0.transferID == id || $0.transferID == pending.transferID }
+            state.pending.append(pending)
+        }
+        startIfNeeded()
+    }
+
+    /// Folders running downloads save into (making room never deletes them).
+    var busyFolders: Set<Int64> {
+        Set(tracked.filter { !$0.notified }.compactMap { $0.transfer?.saveParentId })
     }
 
     public func cancel(_ id: Int64) async throws {

@@ -26,6 +26,8 @@ struct ReadyBanner: View {
                         router.banner = nil
                     } label: { Label("Play", systemImage: "play.fill") }
                     .buttonStyle(.primaryPill)
+                } else if OutOfSpace.matches(transfer) {
+                    MakeRoomRetryButton(transfer: transfer)
                 } else if transfer.pending.tmdbID > 0 {
                     // The title page shows what went wrong and opens Versions from there.
                     Button {

@@ -11,6 +11,8 @@ struct VersionsSheet: View {
     @State private var model: VersionsModel?
     @State private var sendingID: String?
     @State private var errorText: String?
+    /// A version that doesn't fit in put.io: what could be deleted to make room for it.
+    @State private var roomOffer: RoomOffer?
 
     var body: some View {
         NavigationStack {
@@ -95,6 +97,13 @@ struct VersionsSheet: View {
             .alert("Couldn't send to put.io", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(errorText ?? "") }
+            .sheet(item: $roomOffer) { offer in
+                MakeRoomSheet(offer: offer) { message in
+                    guard let message else { return }
+                    router.toast = message
+                    dismiss()
+                }
+            }
         }
         .presentationDetents(sizeClass == .compact ? [.medium, .large] : [.large])
         .presentationBackground(Theme.sheet)
@@ -121,6 +130,9 @@ struct VersionsSheet: View {
             do {
                 try await app.transfers.send(release, target: target)
                 dismiss()
+            } catch let refusal as NotEnoughSpace {
+                roomOffer = refusal.offer
+                sendingID = nil
             } catch {
                 errorText = String(describing: error)
                 sendingID = nil

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppModel.self) private var app
+    @Environment(Router.self) private var router
     @AppStorage("amdb.onboarded") private var onboarded = false
 
     var body: some View {
@@ -14,5 +15,6 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: app.isReady && onboarded)
+        .makeRoomSheet(app, router: router)
     }
 }

@@ -95,6 +95,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var episodeAlertHour = 9
     /// A video Apple's player can't play: the built-in player plays the original file, or put.io converts it.
     public var unsupportedVideoPlayer = UnsupportedVideoPlayer.builtIn
+    /// A download that doesn't fit in put.io offers to delete the oldest titles in Movies and TV Series (always
+    /// asking first). Off: just says there isn't enough space.
+    public var makeRoom = true
 
     public init(sources: [SourceConfig], defaultResolution: Int?, autoPlayCountdown: Bool) {
         self.sources = sources; self.defaultResolution = defaultResolution; self.autoPlayCountdown = autoPlayCountdown
@@ -104,6 +107,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case sources, defaultResolution, autoPlayCountdown, autoPlayNextEpisode, oneTapGet, smartGet, audioLanguage, subtitleLanguage
         case autoCleanDays, autoCleanConfirmed, downloadDataSaver, subtitleStyle, libraryAutoUpdate, libraryUpdateMinutes
         case moviesFolder, tvFolder, seasonFolders, preferDownloads, episodeAlerts, episodeAlertHour, unsupportedVideoPlayer
+        case makeRoom
     }
 
     /// Settings saved by older versions keep their values and pick up defaults for new options.
@@ -130,6 +134,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         episodeAlerts = try c.decodeIfPresent(Bool.self, forKey: .episodeAlerts) ?? true
         episodeAlertHour = min(max(try c.decodeIfPresent(Int.self, forKey: .episodeAlertHour) ?? 9, 0), 23)
         unsupportedVideoPlayer = (try? c.decodeIfPresent(UnsupportedVideoPlayer.self, forKey: .unsupportedVideoPlayer)) ?? .builtIn
+        makeRoom = try c.decodeIfPresent(Bool.self, forKey: .makeRoom) ?? true
     }
 
     public static let defaults = AppSettings(sources: [

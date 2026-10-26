@@ -44,6 +44,7 @@ struct PrimaryActions: View {
             case let .failed(transfer):
                 VStack(alignment: .leading, spacing: 8) {
                     Text(failure(transfer)).font(.footnote).foregroundStyle(Theme.poor)
+                    if OutOfSpace.matches(transfer) { MakeRoomRetryButton(transfer: transfer) }
                     Button {
                         app.transfers.dismiss(transfer.id)
                         openVersions()
@@ -71,10 +72,13 @@ struct PrimaryActions: View {
         }
         finding = true
         defer { finding = false }
-        switch await app.smartGet(query, target: model.target(season: season, episode: episode)) {
+        let target = model.target(season: season, episode: episode)
+        switch await app.smartGet(query, target: target) {
         case .sent: break
         case .noMatch: openVersions()
         case let .failed(error):
+            // Not enough space on put.io: the make-room question instead.
+            if app.transfers.room.presentRefusal(for: target) { return }
             smartError = String(describing: error)
             openVersions()
         }
@@ -274,8 +278,10 @@ struct EpisodeActionButton: View {
         }
         finding = true
         defer { finding = false }
-        switch await app.smartGet(query, target: model.target(season: season, episode: episode)) {
+        let target = model.target(season: season, episode: episode)
+        switch await app.smartGet(query, target: target) {
         case .sent: break
+        case .failed where app.transfers.room.presentRefusal(for: target): break
         case .noMatch, .failed: openVersions()
         }
     }
