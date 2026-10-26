@@ -20,8 +20,8 @@ struct HomeView: View {
                 if LibraryLoadingRow.isShowing(app.library) {
                     LibraryLoadingRow(title: "Your put.io", cardSize: CGSize(width: Metrics.poster(sizeClass), height: Metrics.poster(sizeClass) * 1.5),
                                       gutter: Metrics.gutter(sizeClass))
-                } else if !app.library.continueWatching.isEmpty {
-                    EntryRowView(title: "Continue Watching", entries: app.library.continueWatching)
+                } else if !app.library.continueWatchingCards.isEmpty {
+                    ContinueWatchingRow(cards: app.library.continueWatchingCards)
                 }
                 if !app.myList.items.isEmpty {
                     CatalogRowView(row: CatalogRow(id: "mylist", title: "My List", items: app.myList.items.map(\.catalogItem))) {

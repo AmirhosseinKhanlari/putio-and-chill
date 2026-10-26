@@ -40,6 +40,7 @@ struct EpisodeList: View {
             ForEach(model.episodes) { episode in
                 if let season = model.selectedSeason {
                     EpisodeRow(model: model, season: season, episode: episode, next: nextEpisode(after: episode.number, in: season))
+                        .id(EpisodeKey(tmdbID: model.item.tmdbID, season: season, episode: episode.number))
                 }
             }
         }
@@ -188,9 +189,11 @@ private struct EpisodeRow: View {
     var body: some View {
         let regular = sizeClass != .compact
         let library = app.library
-        let watched = library.matching(tmdbID: model.item.tmdbID, season: season, episode: episode.number)
-            .max { library.resumeSeconds(for: $0) < library.resumeSeconds(for: $1) }
+        let files = library.matching(tmdbID: model.item.tmdbID, season: season, episode: episode.number)
+        let watched = files.max { library.resumeSeconds(for: $0) < library.resumeSeconds(for: $1) }
         let resume = watched.map { library.resumeSeconds(for: $0) } ?? 0
+        // Watched to the end (and not started again): a ✓ and a full bar.
+        let finished = resume < 30 && files.contains(where: library.isWatched)
         let estimate = episode.runtimeMinutes.map { $0 * 60 }
         let fraction = watched.flatMap { library.watchedFraction(for: $0, estimatedLength: estimate) }
         let left = watched.flatMap { library.remainingSeconds(for: $0, estimatedLength: estimate) }
@@ -204,12 +207,16 @@ private struct EpisodeRow: View {
                             Label(left.map(Format.left) ?? "Resume \(Format.clock(resume))", systemImage: "play.fill")
                                 .font(.caption2.weight(.bold)).lineLimit(1)
                                 .padding(.horizontal, 6).padding(.vertical, 3).background(.black.opacity(0.6), in: Capsule()).padding(6)
+                        } else if finished {
+                            WatchedBadge().padding(6)
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(alignment: .topTrailing) { if !regular { downloadBadge } }
                 if let fraction {
                     WatchedBar(fraction: fraction, height: regular ? 4 : 3).frame(width: regular ? 220 : 104)
+                } else if finished {
+                    WatchedBar(fraction: 1, height: regular ? 4 : 3).frame(width: regular ? 220 : 104)
                 }
             }
             VStack(alignment: .leading, spacing: 4) {

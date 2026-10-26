@@ -1,7 +1,7 @@
 import AMDBCore
 import Foundation
 
-/// Bridges the player to put.io's `start_from`: periodic saves, and a reset once the video is basically over.
+/// Bridges the player to put.io's `start_from`: periodic saves, and a reset once the video is watched (`Watched`).
 /// Each save is noted in the library first (stamped, so the newest position wins everywhere), then sent to put.io;
 /// a save put.io didn't get stays pending in the library and is sent at the next chance.
 @MainActor
@@ -23,6 +23,8 @@ public final class PlaybackSession {
     private var loggedEnd = false
     /// When the newest save happened: an older one doesn't retry over it.
     private var latestSave: Date?
+    /// The user moved on (Next Episode, its countdown): watched wherever playback stopped.
+    private var markedWatched = false
 
     public init(fileID: Int64, resumeFrom: Int, putio: any PutioService, library: LibraryIndex?,
                 store: LocalStore? = nil, saveEvery: Int = 10, entry: LibraryEntry? = nil, watchLog: WatchLogSync? = nil,
@@ -56,15 +58,23 @@ public final class PlaybackSession {
         await save(Int(seconds), duration: duration, checkpoint: true)
     }
 
+    /// Marks the video watched and saves it: the next episode was asked for (its button, or the countdown ran out).
+    public func markWatched(seconds: Double, duration: Double) async {
+        markedWatched = true
+        await save(Int(seconds.isFinite ? seconds : 0), duration: duration, checkpoint: true)
+    }
+
     private func save(_ position: Int, duration: Double, checkpoint: Bool) async {
         lastSaved = position
-        let watchedToEnd = duration > 0 && Double(position) >= duration * 0.95
+        let watchedToEnd = markedWatched || Watched.isReached(position: Double(position), duration: duration)
+        // Opening a watched video for a few seconds doesn't un-mark it (`Watched.rewatchSeconds`), here or in put.io.
+        if !watchedToEnd, position < Watched.rewatchSeconds, library?.isWatched(fileID: fileID) == true { return }
         let value = watchedToEnd ? 0 : position
         let at = Date()
         latestSave = at
         if duration.isFinite, duration > 0 { library?.noteDuration(fileID: fileID, seconds: Int(duration)) }
-        if let entry, value >= 30 { library?.notePlayed(entry) }
-        library?.noteProgress(fileID: fileID, seconds: value, now: at)
+        if let entry, value >= 30 || watchedToEnd { library?.notePlayed(entry) }
+        library?.noteProgress(fileID: fileID, seconds: value, now: at, watched: watchedToEnd)
         if watchedToEnd, let store {
             let id = fileID
             await store.update { state in
@@ -73,7 +83,7 @@ public final class PlaybackSession {
         }
         if checkpoint || (watchedToEnd && !loggedEnd) {
             loggedEnd = watchedToEnd
-            watchLog?.record(logEntry(seconds: value, duration: duration, at: at))
+            watchLog?.record(logEntry(seconds: value, duration: duration, at: at, watched: watchedToEnd))
         }
         if await send(value, savedAt: at) {
             library?.markSent(fileID: fileID, at: at)
@@ -97,11 +107,12 @@ public final class PlaybackSession {
         return false
     }
 
-    private func logEntry(seconds: Int, duration: Double, at: Date) -> WatchLogEntry {
+    private func logEntry(seconds: Int, duration: Double, at: Date, watched: Bool) -> WatchLogEntry {
         let match = entry?.match
         return WatchLogEntry(fileID: fileID, name: entry?.file.name, tmdbID: match?.tmdbID, kind: match?.mediaType,
                              season: match?.season, episode: match?.episode, title: match?.title,
                              posterPath: match?.posterPath, seconds: seconds,
-                             duration: duration.isFinite && duration > 0 ? Int(duration) : nil, at: at)
+                             duration: duration.isFinite && duration > 0 ? Int(duration) : nil, at: at,
+                             watched: watched ? true : nil)
     }
 }

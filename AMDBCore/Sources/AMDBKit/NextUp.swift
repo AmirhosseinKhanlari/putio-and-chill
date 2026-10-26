@@ -40,28 +40,47 @@ public struct NextUp: Sendable, Equatable {
     }
 }
 
+/// What TMDB says comes after an episode.
+public enum NextUpLookup: Sendable, Equatable {
+    case next(NextUp)
+    /// It's the last episode that has aired (so far).
+    case none
+    /// TMDB couldn't be reached: nothing is known.
+    case unknown
+}
+
 public enum NextUpFinder {
     /// The next episode: the following one this season, else episode 1 of the next season (specials skipped).
     /// Only episodes that have aired. Falls back to put.io alone when TMDB can't be reached.
     @MainActor
     public static func find(tmdbID: Int, season: Int, episode: Int, catalog: (any CatalogService)?,
                             library: LibraryIndex, today: Date = Date()) async -> NextUp? {
-        if let catalog, let detail = try? await catalog.detail(.tv, id: tmdbID) {
-            let seasons = detail.seasons.map(\.number)
-            var candidates: [(Int, Episode)] = []
-            if let current = try? await catalog.season(tvID: tmdbID, number: season) {
-                candidates += current.map { (season, $0) }
-            }
-            if let following = seasons.filter({ $0 > season && $0 > 0 }).min(),
-               let next = try? await catalog.season(tvID: tmdbID, number: following) {
-                candidates += next.map { (following, $0) }
-            }
-            if let (s, e) = pick(after: (season, episode), from: candidates, today: today) {
-                return make(tmdbID: tmdbID, detail: detail, season: s, episode: e, library: library)
-            }
-            return nil
+        switch await lookup(tmdbID: tmdbID, season: season, episode: episode, catalog: catalog, library: library, today: today) {
+        case let .next(next): return next
+        case .none: return nil
+        case .unknown: return inLibrary(tmdbID: tmdbID, season: season, episode: episode, library: library)
         }
-        // TMDB unreachable: the next file in put.io, if any.
+    }
+
+    /// The next aired episode from TMDB alone, telling "there's none (yet)" apart from "TMDB didn't answer".
+    @MainActor
+    public static func lookup(tmdbID: Int, season: Int, episode: Int, catalog: (any CatalogService)?,
+                              library: LibraryIndex, today: Date = Date()) async -> NextUpLookup {
+        guard let catalog, let detail = try? await catalog.detail(.tv, id: tmdbID),
+              let current = try? await catalog.season(tvID: tmdbID, number: season) else { return .unknown }
+        var candidates = current.map { (season, $0) }
+        if pick(after: (season, episode), from: candidates, today: today) == nil,
+           let following = detail.seasons.map(\.number).filter({ $0 > season && $0 > 0 }).min() {
+            guard let next = try? await catalog.season(tvID: tmdbID, number: following) else { return .unknown }
+            candidates += next.map { (following, $0) }
+        }
+        guard let (s, e) = pick(after: (season, episode), from: candidates, today: today) else { return .none }
+        return .next(make(tmdbID: tmdbID, detail: detail, season: s, episode: e, library: library))
+    }
+
+    /// TMDB unreachable: the next file in put.io, if any.
+    @MainActor
+    static func inLibrary(tmdbID: Int, season: Int, episode: Int, library: LibraryIndex) -> NextUp? {
         for (s, e) in [(season, episode + 1), (season + 1, 1)] {
             if let entry = best(library.matching(tmdbID: tmdbID, season: s, episode: e), library) {
                 let title = entry.match?.title ?? entry.displayTitle

@@ -430,6 +430,11 @@ final class PlayerCoordinator {
 
     private func playNext() {
         guard let next = chrome.nextUp else { return }
+        // From the Next Episode card (the credits, or its countdown): this one is watched, wherever it stopped.
+        if chrome.nextUpCard != .hidden {
+            let session = session, position = engine.position, duration = engine.duration
+            BackgroundSave.run("Save playback position") { await session.markWatched(seconds: position, duration: duration) }
+        }
         if let entry = next.entry {
             let app = app, router = router
             controller.dismiss(animated: true) {

@@ -32,6 +32,8 @@ enum AppTab: String, CaseIterable, Identifiable {
 /// Screens that can be pushed onto a tab's navigation stack.
 enum Route: Hashable {
     case title(CatalogItem)
+    /// A show's page on one episode (an Up Next card for an episode that isn't in put.io).
+    case episode(CatalogItem, EpisodeKey)
     case chart(IMDbChart)
     case person(Int)
     case collection(Int)
@@ -186,6 +188,15 @@ final class Router {
         let played = entry.match.map { PlayedTitle(tmdbID: $0.tmdbID, kind: $0.mediaType, title: $0.title) }
         player = PlayerRequest(file: entry.file, title: entry.displayTitle, resumeFrom: resumeFrom, played: played, next: next,
                                season: entry.match?.season, episode: entry.match?.episode, source: source, exactStart: exactStart)
+    }
+
+    /// An Up Next card: plays the episode from the start, or opens the show on it when it isn't in put.io.
+    func open(_ card: UpNextCard) {
+        if let entry = card.entry {
+            play(entry, resumeFrom: 0, exactStart: true)
+        } else {
+            push(.episode(card.titleItem, EpisodeKey(tmdbID: card.tmdbID, season: card.season, episode: card.episode)))
+        }
     }
 
     func play(_ transfer: TrackedTransfer) {

@@ -6,22 +6,44 @@ import AMDBKit
 import UIKit
 import WidgetKit
 
-/// Writes Continue Watching (titles + poster files) into the App Group for the Home Screen widget.
+/// Writes Continue Watching (titles + poster files) into the App Group for the Home Screen widget, Up Next cards
+/// included: they play the next episode, or open the show when it isn't in put.io.
 @MainActor
 enum WidgetPublisher {
+    /// Changes whenever the widget's cards would: a card added or gone, or a position moved.
+    static func signature(_ library: LibraryIndex) -> [String] {
+        library.continueWatchingCards.map { card in
+            switch card {
+            case let .resume(entry): "\(card.id):\(library.resumeSeconds(for: entry))"
+            case let .upNext(next): "\(card.id):\(next.label):\(next.name ?? "")"
+            }
+        }
+    }
+
     static func publish(_ library: LibraryIndex) async {
         guard let container = AppGroup.container else { return }
         var items: [WidgetItem] = []
         var keep: Set<String> = []
-        for entry in library.continueWatching.prefix(6) {
-            let seconds = library.resumeSeconds(for: entry)
-            let poster = await save(entry.match?.posterPath, size: "w342", as: "poster-\(entry.id)-w342.jpg", in: container)
-            let backdrop = await save(entry.match?.backdropPath, size: "w780", as: "backdrop-\(entry.id)-w780.jpg", in: container)
-            keep.formUnion([poster, backdrop].compactMap { $0 })
-            items.append(WidgetItem(id: String(entry.id), title: entry.match?.title ?? entry.displayTitle,
-                                    subtitle: "Resume \(Format.clock(seconds))", caption: caption(entry.match),
-                                    imageFile: poster, backdropFile: backdrop,
-                                    link: DeepLink.play(fileID: entry.id).url))
+        for card in library.continueWatchingCards.prefix(6) {
+            switch card {
+            case let .resume(entry):
+                let seconds = library.resumeSeconds(for: entry)
+                let poster = await save(entry.match?.posterPath, size: "w342", as: "poster-\(entry.id)-w342.jpg", in: container)
+                let backdrop = await save(entry.match?.backdropPath, size: "w780", as: "backdrop-\(entry.id)-w780.jpg", in: container)
+                keep.formUnion([poster, backdrop].compactMap { $0 })
+                items.append(WidgetItem(id: String(entry.id), title: entry.match?.title ?? entry.displayTitle,
+                                        subtitle: "Resume \(Format.clock(seconds))", caption: caption(entry.match),
+                                        imageFile: poster, backdropFile: backdrop,
+                                        link: DeepLink.play(fileID: entry.id).url))
+            case let .upNext(next):
+                let poster = await save(next.posterPath, size: "w342", as: "poster-\(next.id)-w342.jpg", in: container)
+                let backdrop = await save(next.backdropPath, size: "w780", as: "backdrop-\(next.id)-w780.jpg", in: container)
+                keep.formUnion([poster, backdrop].compactMap { $0 })
+                let link = next.entry.map { DeepLink.play(fileID: $0.id) } ?? .title(tmdbID: next.tmdbID, kind: .tv)
+                items.append(WidgetItem(id: next.id, title: next.showTitle, subtitle: next.label,
+                                        caption: "S\(next.season) · E\(next.episode)", imageFile: poster, backdropFile: backdrop,
+                                        link: link.url))
+            }
         }
         WidgetSnapshot(continueWatching: items, updatedAt: .now).save()
         removeStaleArtwork(in: container, keeping: keep)

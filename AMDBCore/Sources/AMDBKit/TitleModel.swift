@@ -28,10 +28,15 @@ public final class TitleModel {
     private let ratingsProvider: (@MainActor (String?, Int, MediaKind) async -> Ratings?)?
     private let episodeRatingsProvider: (@MainActor (String, Int) async -> [Int: EpisodeRating])?
 
+    /// The episode the page was opened for (an Up Next card): its season is shown first.
+    public let focus: EpisodeKey?
+
     public init(item: CatalogItem, catalog: any CatalogService, library: LibraryIndex, transfers: TransferMonitor,
+                focus: EpisodeKey? = nil,
                 ratings: (@MainActor (String?, Int, MediaKind) async -> Ratings?)? = nil,
                 episodeRatings: (@MainActor (String, Int) async -> [Int: EpisodeRating])? = nil) {
         self.item = item
+        self.focus = focus
         self.catalog = catalog
         self.library = library
         self.transfers = transfers
@@ -49,12 +54,14 @@ public final class TitleModel {
                 ratings = await ratingsProvider(loaded.imdbID, item.tmdbID, item.mediaType)
             }
             if item.mediaType == .tv, let first = loaded.seasons.first?.number {
-                // The season of the episode being watched (the latest started one), else the first.
-                let watching = library.matching(tmdbID: item.tmdbID)
-                    .filter { library.resumeSeconds(for: $0) >= 30 }
-                    .compactMap { entry in entry.match?.season.map { ($0, entry.match?.episode ?? 0) } }
-                    .max { $0 < $1 }?.0
-                let start = watching.flatMap { season in loaded.seasons.contains { $0.number == season } ? season : nil } ?? first
+                // The season asked for (an Up Next card), else the one being watched or up next, else the first.
+                let watching: Int? = switch library.watchingCard(tmdbID: item.tmdbID) {
+                case let .resume(entry)?: entry.match?.season
+                case let .upNext(card)?: card.season
+                case nil: nil
+                }
+                let wanted = [focus?.season, watching].compactMap { $0 }
+                let start = wanted.first { season in loaded.seasons.contains { $0.number == season } } ?? first
                 await selectSeason(start)
             }
         } catch let failure as AppError {

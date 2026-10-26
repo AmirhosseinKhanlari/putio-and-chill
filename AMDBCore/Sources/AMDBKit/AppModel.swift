@@ -121,6 +121,7 @@ public final class AppModel {
     public let watchLog: WatchLogSync
     @ObservationIgnored private var positionsCheck: Task<Void, Never>?
     @ObservationIgnored private var lastPositionsCheck: Date?
+    @ObservationIgnored private var upNextLookups: Set<EpisodeKey> = []
     @ObservationIgnored private var filesChangedRefresh: Task<Void, Never>?
     /// Whether the one-time merge of the old AMDB folders runs (off in demo mode, which has no real put.io).
     @ObservationIgnored public var mergesOldFolders = true
@@ -304,10 +305,23 @@ public final class AppModel {
             await library.sendPending()
             await syncWatchLog()
             await library.checkPositions(library.positionCandidates(log: watchLog.entries))
+            await findUpNext(now: now)
         }
         positionsCheck = task
         await task.value
         positionsCheck = nil
+    }
+
+    /// Asks TMDB what comes after each show's just-watched episode, for Continue Watching's Up Next cards (until it
+    /// answers, the next file in put.io stands in). Episodes already being looked up are skipped.
+    public func findUpNext(now: Date = Date()) async {
+        for key in library.upNextToFind(now: now) where !upNextLookups.contains(key) {
+            upNextLookups.insert(key)
+            let found = await NextUpFinder.lookup(tmdbID: key.tmdbID, season: key.season, episode: key.episode,
+                                                  catalog: catalog, library: library, today: now)
+            upNextLookups.remove(key)
+            library.noteUpNext(found, after: key, now: now)
+        }
     }
 
     /// Reads the shared list of recent plays (and writes back what only this device had). It's kept per put.io

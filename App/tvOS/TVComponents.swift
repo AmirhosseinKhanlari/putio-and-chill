@@ -389,6 +389,42 @@ struct TVEntryShelf: View {
     }
 }
 
+/// Continue Watching: videos to resume, and each show's next episode after a watched one (Up Next), which plays from
+/// the start, or opens the show when it isn't in put.io.
+struct TVContinueWatchingShelf: View {
+    let cards: [WatchingCard]
+    @Environment(AppModel.self) private var app
+    @Environment(TVRouter.self) private var router
+
+    var body: some View {
+        TVShelf(title: "Continue Watching") {
+            ForEach(cards) { card in
+                switch card {
+                case let .resume(entry):
+                    let resume = app.library.resumeSeconds(for: entry)
+                    TVWideCard(title: entry.match?.title ?? entry.displayTitle,
+                               subtitle: TVEntryShelf.caption(entry, resume: resume, left: app.library.remainingSeconds(for: entry)),
+                               imagePath: entry.match?.backdropPath ?? entry.match?.posterPath,
+                               progress: app.library.watchedFraction(for: entry),
+                               details: entry.titleItem.map { item in
+                                   (item.mediaType == .tv ? "Go to Show" : "Go to Movie", { router.showTitle(item) })
+                               }) {
+                        router.play(entry, from: resume)
+                    }
+                case let .upNext(next):
+                    TVWideCard(title: next.showTitle, subtitle: ([next.label] + [next.name].compactMap { $0 }).joined(separator: " · "),
+                               imagePath: next.backdropPath ?? next.posterPath,
+                               details: next.isInPutio ? ("Go to Show", { router.showTitle(next.titleItem) }) : nil) {
+                        if let entry = next.entry { router.play(entry, from: 0, exactStart: true) } else { router.showTitle(next.titleItem) }
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("shelf.Continue Watching")
+    }
+}
+
 /// Round cast photo with name and role; opens the person.
 struct TVCastCircle: View {
     let member: CastMember

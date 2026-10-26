@@ -4,13 +4,26 @@ import SwiftUI
 
 struct TitleView: View {
     let item: CatalogItem
+    /// An episode to open the page on (an Up Next card): its season is shown, scrolled to it.
+    var focus: EpisodeKey?
     @Environment(AppModel.self) private var app
     @Environment(Router.self) private var router
     @Environment(AmbientController.self) private var ambient
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var model: TitleModel?
+    @State private var scrolledToFocus = false
 
     var body: some View {
+        ScrollViewReader { proxy in
+            page.onChange(of: model?.episodes.count ?? 0) { _, count in
+                guard let focus, !scrolledToFocus, count > 0, model?.selectedSeason == focus.season else { return }
+                scrolledToFocus = true
+                withAnimation { proxy.scrollTo(focus, anchor: .center) }
+            }
+        }
+    }
+
+    private var page: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 30) {
                 TitleHeader(item: item, model: model)
@@ -41,7 +54,7 @@ struct TitleView: View {
         .onDisappear { if router.activeTitle == item.tmdbID { router.activeTitle = nil } }
         .task {
             guard model == nil, let catalog = app.catalog else { return }
-            let title = TitleModel(item: item, catalog: catalog, library: app.library, transfers: app.transfers,
+            let title = TitleModel(item: item, catalog: catalog, library: app.library, transfers: app.transfers, focus: focus,
                                    ratings: { [app] imdbID, tmdbID, kind in await app.ratings(imdbID: imdbID, tmdbID: tmdbID, kind: kind) },
                                    episodeRatings: { [app] imdbID, season in await app.episodeRatings(seriesIMDbID: imdbID, season: season) })
             model = title
@@ -111,6 +124,8 @@ private struct TitleHeader: View {
     @ViewBuilder private var primaryActions: some View {
         if let model, item.mediaType == .movie {
             PrimaryActions(model: model, season: nil, episode: nil)
+        } else if let model, item.mediaType == .tv {
+            ShowPrimaryActions(model: model)
         }
     }
 

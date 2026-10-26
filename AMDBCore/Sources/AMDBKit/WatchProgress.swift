@@ -20,19 +20,33 @@ public struct WatchProgress: Codable, Sendable, Equatable {
     public var watchedAt: Date?
     /// Saved here but put.io doesn't have it yet: it's sent at the next chance, and put.io's older value can't replace it.
     public var pending: Bool
+    /// When it was watched (`Watched`) on any device; nil when it wasn't, or a later play un-marked it (a rewatch).
+    /// `seconds` is 0 then. Absent in older caches.
+    public var finishedAt: Date?
 
-    public init(seconds: Int, at: Date, source: Source, watchedAt: Date? = nil, pending: Bool = false) {
+    public init(seconds: Int, at: Date, source: Source, watchedAt: Date? = nil, pending: Bool = false,
+                finishedAt: Date? = nil) {
         self.seconds = seconds; self.at = at; self.source = source; self.watchedAt = watchedAt; self.pending = pending
+        self.finishedAt = finishedAt
     }
+
+    public var isWatched: Bool { finishedAt != nil }
 
     /// What to keep when `incoming` arrives while `current` is known.
     /// - A save on this device always wins (it's the newest thing that happened).
     /// - Another device's position wins when it's newer.
     /// - put.io's value replaces one this device already sent, if it was read after that was saved. It never replaces
     ///   a position put.io hasn't been sent yet. The same value just confirms put.io has it.
+    /// - Watched stays watched until a newer play of at least `Watched.rewatchSeconds` (a rewatch); put.io's 0 after
+    ///   it changes nothing. put.io going from a started position to 0 means it was watched elsewhere (as of the read).
     public static func merged(_ current: WatchProgress?, _ incoming: WatchProgress) -> WatchProgress {
         guard let current else { return incoming }
         let watched = latest(current.watchedAt, incoming.watchedAt)
+        if current.isWatched, !incoming.isWatched, incoming.seconds < Watched.rewatchSeconds,
+           incoming.source != .putio || incoming.seconds > 0 {
+            // A peek at a watched video: still watched.
+            return current
+        }
         switch incoming.source {
         case .device:
             var kept = incoming
@@ -52,6 +66,10 @@ public struct WatchProgress: Codable, Sendable, Equatable {
             if current.pending || current.at >= incoming.at { return current }
             var kept = incoming
             kept.watchedAt = watched
+            if incoming.seconds == 0, current.seconds >= Watched.rewatchSeconds {
+                kept.finishedAt = incoming.at
+                kept.watchedAt = latest(watched, incoming.at)
+            }
             return kept
         }
     }

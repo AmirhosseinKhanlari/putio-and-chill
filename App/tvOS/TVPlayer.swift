@@ -519,6 +519,11 @@ final class TVPlaybackCoordinator {
 
     private func playNext() {
         guard let entry = nextUp?.entry, !finished else { return }
+        // Next Episode (or its countdown): this one is watched, wherever it stopped.
+        if let session, atStart {
+            let position = currentSeconds, duration = currentDuration
+            BackgroundSave.run("Save playback position") { await session.markWatched(seconds: position, duration: duration) }
+        }
         finish()
         onNext?(entry)
     }

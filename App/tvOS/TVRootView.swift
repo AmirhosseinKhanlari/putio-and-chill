@@ -34,10 +34,12 @@ struct TVRootView: View {
                 .task { await startUp() }
                 .task(id: app.putio == nil) { username = try? await app.putio?.accountInfo().username }
                 .onChange(of: app.library.entries) { _, _ in TVTopShelfPublisher.publish(app.library) }
-                // Also when only a position changed (e.g. watched further on the iPhone).
-                .onChange(of: app.library.continueWatching.map { "\($0.id):\(app.library.resumeSeconds(for: $0))" }) { _, _ in
+                // Also when only a position changed (e.g. watched further on the iPhone), or an Up Next card did.
+                .onChange(of: TVTopShelfPublisher.signature(app.library)) { _, _ in
                     TVTopShelfPublisher.publish(app.library)
                 }
+                // A show's episode was just watched (here or elsewhere): what comes next, from TMDB, for its Up Next card.
+                .task(id: app.library.upNextToFind()) { await app.findUpNext() }
             }
         }
         .preferredColorScheme(.dark)

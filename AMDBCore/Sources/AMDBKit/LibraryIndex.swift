@@ -148,6 +148,8 @@ public final class LibraryIndex {
     private var playedOutside: [Int64: LibraryEntry] = [:]
     /// Files put.io says no longer exist (asked for their position): never brought back from another device's list.
     var goneFiles: Set<Int64> = []
+    /// What TMDB said comes after each show's watched episode (`ContinueWatching`); kept for this session.
+    var upNextFound: [EpisodeKey: UpNextFound] = [:]
     /// put.io, for reading and sending positions (`LibraryIndex+Positions`).
     var putioService: (any PutioService)? { putio }
 
@@ -166,6 +168,7 @@ public final class LibraryIndex {
             entries = []
             playedOutside = [:]
             positions = [:]
+            upNextFound = [:]
             touchedOrder = [:]
             lastUpdated = nil
             entriesScope = nil
@@ -331,22 +334,18 @@ public final class LibraryIndex {
         }
     }
 
-    /// In-progress files, most recently watched first, one per title: a movie with several versions,
-    /// or a show with several started episodes, appears once at whichever was watched last.
-    /// "Watched last" is when it was watched on any device (this one, another through iCloud, or a change put.io
-    /// reported), then the order of this session, then put.io's change date.
-    public var continueWatching: [LibraryEntry] {
-        let started = entries.filter { resumeSeconds(for: $0) >= 30 }.sorted { a, b in
-            let wa = positions[a.id]?.watchedAt, wb = positions[b.id]?.watchedAt
-            if wa != wb, wa != nil || wb != nil { return (wa ?? .distantPast) > (wb ?? .distantPast) }
-            let ta = touchedOrder[a.id], tb = touchedOrder[b.id]
-            if ta != nil || tb != nil { return (ta ?? -1) > (tb ?? -1) }
-            return (a.file.updatedAt ?? "") > (b.file.updatedAt ?? "")
-        }
-        var seen: Set<String> = []
-        return started.filter { entry in
-            seen.insert(entry.match.map { "\($0.mediaType.rawValue)-\($0.tmdbID)" } ?? "file-\(entry.id)").inserted
-        }
+    /// In-progress files of Continue Watching (`continueWatchingCards` without its Up Next cards), most recently
+    /// watched first, one per title.
+    public var continueWatching: [LibraryEntry] { continueWatchingCards.compactMap(\.resumeEntry) }
+
+    /// Whether `a` was watched more recently than `b`: when it was watched on any device (this one, another through
+    /// iCloud, or a change put.io reported), then the order of this session, then put.io's change date.
+    func watchedLater(_ a: LibraryEntry, _ b: LibraryEntry) -> Bool {
+        let wa = positions[a.id]?.watchedAt, wb = positions[b.id]?.watchedAt
+        if wa != wb, wa != nil || wb != nil { return (wa ?? .distantPast) > (wb ?? .distantPast) }
+        let ta = touchedOrder[a.id], tb = touchedOrder[b.id]
+        if ta != nil || tb != nil { return (ta ?? -1) > (tb ?? -1) }
+        return (a.file.updatedAt ?? "") > (b.file.updatedAt ?? "")
     }
 
     public var recentlyAdded: [LibraryEntry] { Array(entries.prefix(20)) }
@@ -400,10 +399,12 @@ public final class LibraryIndex {
         return length - position
     }
 
-    /// A position saved on this device: the newest there is, waiting to reach put.io (`markSent`).
-    public func noteProgress(fileID: Int64, seconds: Int, now: Date = Date()) {
+    /// A position saved on this device: the newest there is, waiting to reach put.io (`markSent`). `watched`: it
+    /// reached the end (`Watched`; `seconds` is 0 then).
+    public func noteProgress(fileID: Int64, seconds: Int, now: Date = Date(), watched: Bool = false) {
         positions[fileID] = WatchProgress.merged(positions[fileID], WatchProgress(seconds: seconds, at: now, source: .device,
-                                                                                  watchedAt: now, pending: true))
+                                                                                  watchedAt: now, pending: true,
+                                                                                  finishedAt: watched ? now : nil))
         touchCount += 1
         touchedOrder[fileID] = touchCount
         Task { await persist() }

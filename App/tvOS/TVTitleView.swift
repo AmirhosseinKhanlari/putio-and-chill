@@ -132,14 +132,32 @@ struct TVTitleActions: View {
         .fullScreenCover(item: $trailer) { TVTrailerPlayer(url: $0.url).ignoresSafeArea() }
     }
 
-    /// Shows: resume where you left off, else the first episode you have in put.io.
+    /// Shows: resume where you left off, or play the episode up next after a watched one (get it when it isn't in
+    /// put.io), else the first episode you have in put.io.
     @ViewBuilder private var showPrimary: some View {
-        if let entry = app.library.continueWatching.first(where: { $0.match?.tmdbID == item.tmdbID }) {
+        let card = app.library.watchingCard(tmdbID: item.tmdbID)
+        if let entry = card?.resumeEntry {
             let seconds = app.library.resumeSeconds(for: entry)
             Button { router.play(entry, from: seconds) } label: {
                 Label("Resume \(Self.episodeLabel(entry))", systemImage: "play.fill")
             }
             .tvPill().focused($primaryFocused)
+        } else if let next = card?.upNext {
+            if let entry = next.entry {
+                Button { router.play(entry, from: 0, exactStart: true) } label: {
+                    Label("Play \(next.episodeLabel)", systemImage: "play.fill")
+                }
+                .tvPill().focused($primaryFocused)
+            } else if case let .downloading(transfer) = model.action(season: next.season, episode: next.episode) {
+                TVTransferStatus(transfer: transfer)
+            } else {
+                Button { Task { await get(season: next.season, episode: next.episode) } } label: {
+                    if working { Label("Finding the best version…", systemImage: "hourglass") } else {
+                        Label("Get \(next.episodeLabel)", systemImage: "icloud.and.arrow.down")
+                    }
+                }
+                .tvPill().disabled(working).focused($primaryFocused)
+            }
         } else if let first = app.library.matching(tmdbID: item.tmdbID).min(by: Self.episodeOrder) {
             Button { router.play(first, from: 0) } label: { Label("Play \(Self.episodeLabel(first))", systemImage: "play.fill") }
                 .tvPill().focused($primaryFocused)
@@ -183,30 +201,31 @@ struct TVTitleActions: View {
         }
     }
 
-    private func get() async {
-        guard let query = model.query() else {
+    /// The movie, or one episode (a show's Up Next).
+    private func get(season: Int? = nil, episode: Int? = nil) async {
+        guard let query = model.query(season: season, episode: episode) else {
             message = model.queryUnavailableMessage
             return
         }
-        guard app.settings.oneTapGet else { return openVersions() }
+        guard app.settings.oneTapGet else { return openVersions(season: season, episode: episode) }
         working = true
         defer { working = false }
-        switch await app.smartGet(query, target: model.target()) {
+        switch await app.smartGet(query, target: model.target(season: season, episode: episode)) {
         case .sent: message = "Sent to put.io. It'll play here as soon as it's ready."
-        case .noMatch: openVersions()
+        case .noMatch: openVersions(season: season, episode: episode)
         case .failed:
             message = "Couldn't send it to put.io. Pick a version instead."
-            openVersions()
+            openVersions(season: season, episode: episode)
         }
     }
 
-    private func openVersions() {
-        guard let query = model.query() else {
+    private func openVersions(season: Int? = nil, episode: Int? = nil) {
+        guard let query = model.query(season: season, episode: episode) else {
             message = model.queryUnavailableMessage
             return
         }
-        router.open(.versions(TVVersionsRequest(query: query, target: model.target(),
-                                                playNow: app.library.matching(tmdbID: item.tmdbID))))
+        router.open(.versions(TVVersionsRequest(query: query, target: model.target(season: season, episode: episode),
+                                                playNow: app.library.matching(tmdbID: item.tmdbID, season: season, episode: episode))))
     }
 
     private func playTrailer(_ imdbID: String) async {
@@ -266,11 +285,13 @@ struct TVEpisodes: View {
                         let entries = app.library.matching(tmdbID: item.tmdbID, season: season, episode: episode.number)
                         let resume = entries.map { app.library.resumeSeconds(for: $0) }.max() ?? 0
                         let action = model.action(season: season, episode: episode.number)
+                        // Watched to the end (and not started again): "Watched" and a full bar.
+                        let finished = resume < 30 && entries.contains(where: app.library.isWatched)
                         TVEpisodeCard(title: "\(episode.number). \(episode.name)",
-                                      subtitle: subtitle(episode, action: action, resume: resume),
+                                      subtitle: subtitle(episode, action: action, resume: resume, finished: finished),
                                       imagePath: episode.stillPath ?? item.backdropPath,
                                       state: cardState(action, searching: searching.contains(episode.number)),
-                                      watched: episode.runtimeMinutes.map { Double(resume) / Double($0 * 60) }) {
+                                      watched: finished ? 1 : episode.runtimeMinutes.map { Double(resume) / Double($0 * 60) }) {
                             tap(action, season: season, episode: episode.number)
                         } menu: {
                             menu(action, season: season, episode: episode.number, entries: entries)
@@ -291,11 +312,11 @@ struct TVEpisodes: View {
         }
     }
 
-    private func subtitle(_ episode: Episode, action: TitleAction, resume: Int) -> String {
+    private func subtitle(_ episode: Episode, action: TitleAction, resume: Int, finished: Bool) -> String {
         var parts: [String] = []
         switch action {
         case .resume: parts.append("Resume \(Format.clock(resume))")
-        case .play: parts.append("In put.io")
+        case .play: parts.append(finished ? "Watched" : "In put.io")
         case let .downloading(transfer): parts.append("Getting · \(transfer.percent)%")
         case .failed: parts.append("Didn't download · choose another version")
         case .get: break

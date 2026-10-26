@@ -154,7 +154,8 @@ private struct LibraryCardView: View {
             let resume = app.library.resumeSeconds(for: entry)
             Button { router.play(entry, resumeFrom: resume) } label: {
                 LibraryPoster(entry: entry, width: width, resumeSeconds: resume,
-                          watched: app.library.watchedFraction(for: entry), left: app.library.remainingSeconds(for: entry))
+                          watched: app.library.watchedFraction(for: entry), left: app.library.remainingSeconds(for: entry),
+                          isWatched: app.library.isWatched(entry))
             }
             .buttonStyle(.lift)
         case let .show(tmdbID, title, posterPath, episodes):
@@ -170,7 +171,12 @@ private struct LibraryCardView: View {
                                 .background(.black.opacity(0.6), in: Capsule()).padding(6)
                         }
                         .overlay(alignment: .bottomLeading) {
-                            if posterPath == nil { Text(title).font(.caption.weight(.bold)).padding(8) }
+                            VStack(alignment: .leading, spacing: 4) {
+                                if posterPath == nil { Text(title).font(.caption.weight(.bold)) }
+                                // Every episode in put.io watched.
+                                if !episodes.isEmpty, episodes.allSatisfy(app.library.isWatched) { WatchedBadge() }
+                            }
+                            .padding(8)
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     Text(title).font(.caption).foregroundStyle(.white.opacity(0.75)).lineLimit(1).frame(width: width, alignment: .leading)

@@ -30,6 +30,8 @@ struct LibraryPoster: View {
     /// How much is watched and how long is left, when the video's length is known.
     var watched: Double?
     var left: Int?
+    /// Watched to the end (`Watched`): a ✓ and a full bar.
+    var isWatched = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -45,13 +47,19 @@ struct LibraryPoster: View {
                                 .font(.caption2.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8)
                                 .padding(.horizontal, 7).padding(.vertical, 4)
                                 .background(.black.opacity(0.6), in: Capsule())
+                        } else if isWatched {
+                            WatchedBadge()
                         }
                     }
                     .padding(8)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
-            if let watched, resumeSeconds >= 30 { WatchedBar(fraction: watched, height: 3).frame(width: width) }
+            if let watched, resumeSeconds >= 30 {
+                WatchedBar(fraction: watched, height: 3).frame(width: width)
+            } else if isWatched {
+                WatchedBar(fraction: 1, height: 3).frame(width: width)
+            }
             Text(subtitle).font(.caption).foregroundStyle(.white.opacity(0.75)).lineLimit(1).frame(width: width, alignment: .leading)
         }
         .hoverEffect(.lift)
@@ -62,5 +70,15 @@ struct LibraryPoster: View {
             return "\(match.title) · S\(season)\(match.episode.map { " E\($0)" } ?? "")"
         }
         return entry.displayTitle
+    }
+}
+
+/// "✓ Watched" on a poster or an episode's picture.
+struct WatchedBadge: View {
+    var body: some View {
+        Label("Watched", systemImage: "checkmark")
+            .font(.caption2.weight(.bold)).lineLimit(1)
+            .padding(.horizontal, 7).padding(.vertical, 4)
+            .background(.black.opacity(0.6), in: Capsule())
     }
 }

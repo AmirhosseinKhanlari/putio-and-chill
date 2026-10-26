@@ -108,9 +108,16 @@ struct PlayTitleIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         if app.library.entries.isEmpty { await app.library.loadCached() }
         let entries = app.library.matching(tmdbID: target.tmdbID)
-        let resumable = app.library.continueWatching.first { $0.match?.tmdbID == target.tmdbID }
+        // Where you are in it: the episode to resume, or the one up next after a watched one.
+        let card = app.library.watchingCard(tmdbID: target.tmdbID)
+        if let next = card?.upNext {
+            if !next.isInPutio { router.tab = .home }
+            router.open(next)
+            return .result(dialog: next.isInPutio ? "Playing \(target.title), \(next.episodeLabel)."
+                : "\(target.title) \(next.episodeLabel) isn't in your put.io yet. I opened it so you can get it.")
+        }
         let first = entries.min { ($0.match?.season ?? 0, $0.match?.episode ?? 0) < ($1.match?.season ?? 0, $1.match?.episode ?? 0) }
-        guard let entry = resumable ?? first else {
+        guard let entry = card?.resumeEntry ?? first else {
             router.tab = .home
             router.open(target.item)
             return .result(dialog: "\(target.title) isn't in your put.io yet. I opened it so you can get it.")

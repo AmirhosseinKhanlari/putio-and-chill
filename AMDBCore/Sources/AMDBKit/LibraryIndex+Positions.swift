@@ -10,6 +10,10 @@ extension LibraryIndex {
     /// When the file was last watched anywhere, if known.
     public func watchedAt(fileID: Int64) -> Date? { positions[fileID]?.watchedAt }
 
+    /// Watched to the end (`Watched`) on any device, and not rewatched since.
+    public func isWatched(fileID: Int64) -> Bool { positions[fileID]?.isWatched ?? false }
+    public func isWatched(_ entry: LibraryEntry) -> Bool { isWatched(fileID: entry.id) }
+
     /// Positions in put.io's file list. That field isn't documented, so only a started position counts: a missing or
     /// zero value never removes one (the file's own start-from, read by `checkPositions`, does that).
     func notePutioList(_ files: [PutioFile], readAt: Date, firstRead: Bool) {
@@ -39,11 +43,14 @@ extension LibraryIndex {
     public func noteOtherDevices(_ log: [WatchLogEntry]) {
         guard !log.isEmpty else { return }
         for item in log {
-            let incoming = WatchProgress(seconds: item.seconds, at: item.at, source: .otherDevice, watchedAt: item.at)
+            let incoming = WatchProgress(seconds: item.seconds, at: item.at, source: .otherDevice, watchedAt: item.at,
+                                         finishedAt: item.isWatched ? item.at : nil)
             let merged = WatchProgress.merged(positions[item.fileID], incoming)
             if merged != positions[item.fileID] { positions[item.fileID] = merged }
             if let duration = item.duration, duration > 0, durations[item.fileID] == nil { durations[item.fileID] = duration }
-            if merged.seconds >= 30, !goneFiles.contains(item.fileID), !entries.contains(where: { $0.id == item.fileID }) {
+            // A watched episode too: its show's next one is up next.
+            if merged.seconds >= 30 || merged.isWatched, !goneFiles.contains(item.fileID),
+               !entries.contains(where: { $0.id == item.fileID }) {
                 notePlayed(item.entry)
             }
         }
@@ -138,15 +145,16 @@ extension LibraryIndex {
     }
 
     /// Files whose position is worth asking put.io about, newest first: what any device played lately (`log`), files
-    /// with a position (most recently watched first), then put.io's most recently changed videos. `recentSlots` are
-    /// kept for those last ones, so a long list of started files can't crowd out one started elsewhere just now.
+    /// with a position or watched (most recently watched first: a rewatch elsewhere brings one back), then put.io's
+    /// most recently changed videos. `recentSlots` are kept for those last ones, so a long list of started files can't
+    /// crowd out one started elsewhere just now.
     public func positionCandidates(log: [WatchLogEntry], limit: Int = 30, recentSlots: Int = 10) -> [Int64] {
         var ids: [Int64] = []
         var seen: Set<Int64> = []
         func add(_ id: Int64, upTo cap: Int) { if ids.count < cap, seen.insert(id).inserted { ids.append(id) } }
         let known = max(limit - recentSlots, 0)
-        for item in log.sorted(by: { $0.at > $1.at }) where item.seconds >= 30 { add(item.fileID, upTo: known) }
-        let started = entries.filter { resumeSeconds(for: $0) >= 30 }.sorted { a, b in
+        for item in log.sorted(by: { $0.at > $1.at }) where item.seconds >= 30 || item.isWatched { add(item.fileID, upTo: known) }
+        let started = entries.filter { resumeSeconds(for: $0) >= 30 || isWatched($0) }.sorted { a, b in
             let wa = positions[a.id]?.watchedAt ?? .distantPast, wb = positions[b.id]?.watchedAt ?? .distantPast
             return wa != wb ? wa > wb : (a.file.updatedAt ?? "") > (b.file.updatedAt ?? "")
         }

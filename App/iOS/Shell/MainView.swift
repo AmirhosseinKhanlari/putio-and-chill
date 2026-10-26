@@ -88,10 +88,12 @@ struct MainView: View {
             }
         }
         .onChange(of: app.transfers.tracked) { _, tracked in liveActivities.sync(tracked) }
-        // Also when only a position changed (e.g. watched further on another device).
-        .onChange(of: app.library.continueWatching.map { "\($0.id):\(app.library.resumeSeconds(for: $0))" }) { _, _ in
+        // Also when only a position changed (e.g. watched further on another device), or an Up Next card did.
+        .onChange(of: WidgetPublisher.signature(app.library)) { _, _ in
             Task { await WidgetPublisher.publish(app.library) }
         }
+        // A show's episode was just watched (here or elsewhere): what comes next, from TMDB, for its Up Next card.
+        .task(id: app.library.upNextToFind()) { await app.findUpNext() }
         // Downloads saved by earlier builds pick up what the library now knows (e.g. a season-pack episode's number).
         .onChange(of: app.library.lastUpdated) { _, _ in Task { await app.downloads.adopt(app.library.entries) } }
         // Siri and Spotlight know your put.io and My List titles.
@@ -291,6 +293,7 @@ private struct TabStack: View {
                 .navigationDestination(for: Route.self) { route in
                     switch route {
                     case let .title(item): TitleView(item: item)
+                    case let .episode(item, key): TitleView(item: item, focus: key)
                     case let .chart(chart): ChartPage(chart: chart)
                     case let .person(id): PersonPage(personID: id)
                     case let .collection(id): CollectionPage(collectionID: id)

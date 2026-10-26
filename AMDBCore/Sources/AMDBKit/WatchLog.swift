@@ -18,14 +18,18 @@ public struct WatchLogEntry: Codable, Sendable, Equatable {
     public var duration: Int?
     public var at: Date
     public var device: String?
+    /// Watched (`Watched`) at `at`: a show's next episode is up next on every device. Absent from older builds.
+    public var watched: Bool?
 
     public init(fileID: Int64, name: String? = nil, tmdbID: Int? = nil, kind: MediaKind? = nil, season: Int? = nil,
                 episode: Int? = nil, title: String? = nil, posterPath: String? = nil, seconds: Int, duration: Int? = nil,
-                at: Date, device: String? = nil) {
+                at: Date, device: String? = nil, watched: Bool? = nil) {
         self.fileID = fileID; self.name = name; self.tmdbID = tmdbID; self.kind = kind; self.season = season
         self.episode = episode; self.title = title; self.posterPath = posterPath; self.seconds = seconds
-        self.duration = duration; self.at = at; self.device = device
+        self.duration = duration; self.at = at; self.device = device; self.watched = watched
     }
+
+    public var isWatched: Bool { watched == true }
 
     /// The library entry it stands for, from what the log knows.
     var entry: LibraryEntry {

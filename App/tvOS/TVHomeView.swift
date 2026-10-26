@@ -18,8 +18,8 @@ struct TVHomeView: View {
                 if LibraryLoadingRow.isShowing(app.library) {
                     LibraryLoadingRow(title: "Your put.io", cardSize: TVMetrics.wide, gutter: TVMetrics.edge,
                                       titleFont: .system(size: 30, weight: .semibold))
-                } else if !app.library.continueWatching.isEmpty {
-                    TVEntryShelf(title: "Continue Watching", entries: app.library.continueWatching)
+                } else if !app.library.continueWatchingCards.isEmpty {
+                    TVContinueWatchingShelf(cards: app.library.continueWatchingCards)
                 }
                 TVShelf(title: "Can't decide?") {
                     Button { router.open(.surprise) } label: {

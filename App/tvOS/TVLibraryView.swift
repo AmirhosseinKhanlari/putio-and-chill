@@ -168,7 +168,9 @@ struct TVLibraryView: View {
         case let .movie(entry):
             if let match = entry.match {
                 let resume = app.library.resumeSeconds(for: entry)
-                TVPosterButton(item: TVEntryShelf.item(match), badge: resume >= 30 ? app.library.remainingSeconds(for: entry).map(Format.left) ?? "Resume \(Format.clock(resume))" : nil) {
+                let badge = resume >= 30 ? app.library.remainingSeconds(for: entry).map(Format.left) ?? "Resume \(Format.clock(resume))"
+                    : app.library.isWatched(entry) ? "✓ Watched" : nil
+                TVPosterButton(item: TVEntryShelf.item(match), badge: badge) {
                     router.open(TVEntryShelf.item(match))
                 }
                 .contextMenu {
@@ -179,7 +181,9 @@ struct TVLibraryView: View {
             }
         case let .show(tmdbID, title, posterPath, episodes):
             let item = CatalogItem(tmdbID: tmdbID, mediaType: .tv, title: title, posterPath: posterPath)
-            TVPosterButton(item: item, badge: "\(episodes.count) ep") { router.open(item) }
+            // Every episode in put.io watched: ✓.
+            let watched = !episodes.isEmpty && episodes.allSatisfy(app.library.isWatched)
+            TVPosterButton(item: item, badge: "\(episodes.count) ep" + (watched ? " · ✓" : "")) { router.open(item) }
                 .contextMenu {
                     Button("Fix Match…") { router.open(.fixMatch(.entries(episodes))) }
                     Button(episodes.count == 1 ? "Delete Episode" : "Delete All \(episodes.count) Episodes", role: .destructive) {

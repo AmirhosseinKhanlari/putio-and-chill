@@ -47,8 +47,10 @@ struct ContinueWatchingIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         if app.library.entries.isEmpty { await app.library.refresh() }
-        if let entry = app.library.continueWatching.first {
-            router.play(entry, resumeFrom: app.library.resumeSeconds(for: entry))
+        switch app.library.continueWatchingCards.first {
+        case let .resume(entry)?: router.play(entry, resumeFrom: app.library.resumeSeconds(for: entry))
+        case let .upNext(card)?: router.open(card)
+        case nil: break
         }
         return .result()
     }
