@@ -1,0 +1,5 @@
+Build 33
+
+• Versions and Get & Watch show only releases of the movie you picked. Wildwood listed Wellwood's releases before, and Get & Watch could send the wrong movie to put.io.
+
+Please try: open Versions on a few movies, including ones whose name has a subtitle (Glass Onion, Dune: Part Two), and check every release is that movie and none are missing.
