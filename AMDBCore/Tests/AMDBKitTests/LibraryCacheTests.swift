@@ -54,7 +54,8 @@ import Testing
         await library.refresh()
         library.configure(putio: nil, catalog: nil)
         #expect(library.entries.isEmpty)
-        try? await Task.sleep(for: .milliseconds(50))
+        // The cache is cleared in the background: wait for it (a fixed short wait failed under a busy test run).
+        for _ in 0..<200 where await cache.load() != nil { try? await Task.sleep(for: .milliseconds(10)) }
         #expect(await cache.load() == nil)
     }
 
