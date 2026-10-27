@@ -29,6 +29,16 @@ import Testing
         #expect(stub.requests.first?.queryItems["parent_id"] == "0")
     }
 
+    /// Lengths come with the listing (`video_metadata=1`, as put.io's own apps ask), so a video started anywhere
+    /// shows how much is left.
+    @Test func listFilesAsksForVideoLengths() async throws {
+        let json = #"{"status":"OK","files":[{"id":2,"name":"a.mkv","file_type":"VIDEO","video_metadata":{"codec":"h264","duration":5872.36,"height":1080,"width":1920}},{"id":3,"name":"b.mkv","file_type":"VIDEO","video_metadata":{"duration":0}},{"id":4,"name":"c.mkv","file_type":"VIDEO"}]}"#
+        let stub = StubTransport(json: json)
+        let list = try await PutioClient(token: "T", transport: stub).listFiles(parentID: 0)
+        #expect(stub.requests.first?.queryItems["video_metadata"] == "1")
+        #expect(list.files.map(\.duration) == [5872, nil, nil])
+    }
+
     /// put.io's documented calls (as its official SDK uses them): GET and POST files/{id}/start-from, and
     /// POST files/{id}/start-from/delete to reset.
     @Test func startFromRoundTrip() async throws {

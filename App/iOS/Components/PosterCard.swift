@@ -55,11 +55,18 @@ struct LibraryPoster: View {
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.08)))
-            if let watched, resumeSeconds >= 30 {
-                WatchedBar(fraction: watched, height: 3).frame(width: width)
-            } else if isWatched {
-                WatchedBar(fraction: 1, height: 3).frame(width: width)
+            // The bar's row is always there (empty when there's nothing to show), so every card in a row is the same
+            // height and the title under one with a bar isn't pushed down and cut off.
+            Group {
+                if let watched, resumeSeconds >= 30 {
+                    WatchedBar(fraction: watched, height: 3)
+                } else if isWatched {
+                    WatchedBar(fraction: 1, height: 3)
+                } else {
+                    Color.clear
+                }
             }
+            .frame(width: width, height: 3)
             Text(subtitle).font(.caption).foregroundStyle(.white.opacity(0.75)).lineLimit(1).frame(width: width, alignment: .leading)
         }
         .hoverEffect(.lift)

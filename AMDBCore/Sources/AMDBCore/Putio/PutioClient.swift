@@ -82,7 +82,9 @@ public struct PutioClient: Sendable {
     // MARK: Files
 
     public func listFiles(parentID: Int64) async throws -> PutioFileList {
-        try await get("files/list", query: [("parent_id", String(parentID)), ("per_page", "1000")], as: PutioFileList.self)
+        // video_metadata: each video's length, for the bar and the time left on cards (as put.io's own apps ask).
+        try await get("files/list", query: [("parent_id", String(parentID)), ("per_page", "1000"), ("video_metadata", "1")],
+                      as: PutioFileList.self)
     }
 
     public func file(id: Int64) async throws -> PutioFile {

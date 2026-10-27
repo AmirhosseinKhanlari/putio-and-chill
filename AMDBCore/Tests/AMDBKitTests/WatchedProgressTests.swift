@@ -30,6 +30,18 @@ import Testing
         #expect(next.remainingSeconds(for: next.entries.first { $0.id == 11 }!) == 322)
     }
 
+    /// Started on put.io's site or another app: put.io's own length gives the bar and the time left.
+    @Test func putioLengthWhenThePlayerNeverSawIt() {
+        let library = LibraryIndex(store: LocalStore(fileURL: nil))
+        let file = PutioFile(id: 3, name: "Extremely.Wicked.2019.mkv", fileType: "VIDEO", startFrom: 6000,
+                             videoMetadata: PutioFile.VideoMetadata(duration: 6420.4))
+        let entry = LibraryEntry(file: file, match: nil, folderName: nil)
+        #expect(library.remainingSeconds(for: entry) == 420)
+        #expect(library.watchedFraction(for: entry, estimatedLength: 9999) == 6000.0 / 6420.0, "put.io's length beats TMDB's")
+        library.noteDuration(fileID: 3, seconds: 6500)
+        #expect(library.remainingSeconds(for: entry) == 500, "the player's own length wins")
+    }
+
     @Test func estimateWhenThePlayerNeverSawIt() {
         let library = LibraryIndex(store: LocalStore(fileURL: nil))
         let file = PutioFile(id: 3, name: "Vision.S01E01.mkv", fileType: "VIDEO", startFrom: 2978)

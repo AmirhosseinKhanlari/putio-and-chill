@@ -384,18 +384,18 @@ public final class LibraryIndex {
         durations[fileID] = seconds
     }
 
-    /// How far into the video (0…1), shown as a bar on its card. Uses the length the player saw, else
-    /// `estimatedLength` (TMDB's runtime). nil when it hasn't been started, or the length isn't known.
+    /// How far into the video (0…1), shown as a bar on its card. Uses the length the player saw, else put.io's,
+    /// else `estimatedLength` (TMDB's runtime). nil when it hasn't been started, or the length isn't known.
     public func watchedFraction(for entry: LibraryEntry, estimatedLength: Int? = nil) -> Double? {
         let position = resumeSeconds(for: entry)
-        guard position >= 30, let length = durations[entry.id] ?? estimatedLength, length > 0 else { return nil }
+        guard position >= 30, let length = durations[entry.id] ?? entry.file.duration ?? estimatedLength, length > 0 else { return nil }
         return min(1, Double(position) / Double(length))
     }
 
     /// Seconds left to watch, when the length is known (see `watchedFraction`).
     public func remainingSeconds(for entry: LibraryEntry, estimatedLength: Int? = nil) -> Int? {
         let position = resumeSeconds(for: entry)
-        guard position >= 30, let length = durations[entry.id] ?? estimatedLength, length > position else { return nil }
+        guard position >= 30, let length = durations[entry.id] ?? entry.file.duration ?? estimatedLength, length > position else { return nil }
         return length - position
     }
 

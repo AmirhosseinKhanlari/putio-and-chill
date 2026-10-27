@@ -86,15 +86,29 @@ public struct PutioFile: Codable, Sendable, Hashable, Identifiable {
     /// put.io can't stream it to Apple devices as it is; an MP4 conversion is needed (only sent when asked for).
     public let needConvert: Bool?
     public let isMp4Available: Bool?
+    /// What put.io found in a video (sent when the listing asks for `video_metadata`).
+    public let videoMetadata: VideoMetadata?
+
+    public struct VideoMetadata: Codable, Sendable, Hashable {
+        /// Seconds.
+        public let duration: Double?
+        public init(duration: Double?) { self.duration = duration }
+    }
 
     public init(id: Int64, name: String, fileType: String? = nil, contentType: String? = nil, size: Int64? = nil,
                 parentId: Int64? = nil, createdAt: String? = nil, updatedAt: String? = nil,
                 firstAccessedAt: String? = nil, startFrom: Int? = nil, screenshot: String? = nil,
-                needConvert: Bool? = nil, isMp4Available: Bool? = nil) {
+                needConvert: Bool? = nil, isMp4Available: Bool? = nil, videoMetadata: VideoMetadata? = nil) {
         self.id = id; self.name = name; self.fileType = fileType; self.contentType = contentType; self.size = size
         self.parentId = parentId; self.createdAt = createdAt; self.updatedAt = updatedAt
         self.firstAccessedAt = firstAccessedAt; self.startFrom = startFrom; self.screenshot = screenshot
-        self.needConvert = needConvert; self.isMp4Available = isMp4Available
+        self.needConvert = needConvert; self.isMp4Available = isMp4Available; self.videoMetadata = videoMetadata
+    }
+
+    /// The video's length in whole seconds, as put.io measured it; nil when it hasn't (or says 0).
+    public var duration: Int? {
+        guard let seconds = videoMetadata?.duration, seconds.isFinite, seconds >= 1 else { return nil }
+        return Int(seconds.rounded())
     }
 
     public var isFolder: Bool { fileType == "FOLDER" }
