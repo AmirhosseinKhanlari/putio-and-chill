@@ -1,0 +1,7 @@
+Build 34
+
+• MDBList on Movies and TV: Top 10 on Streaming Today (JustWatch's daily US chart, with how far each title moved since yesterday), Trending and Most Anticipated rows.
+• A Lists row at the bottom of Movies and TV: MDBList's other charts plus popular and curated lists. See All shows them all; a list opens as a grid that loads more as you scroll.
+• My List is now the same on all your devices signed in to the same iCloud (needs iCloud Keychain). Lists saved on each device before this are merged.
+
+Please try: open a few lists and charts on iPhone, iPad and Apple TV; save or remove a title in My List on one device, then open the app on another and check it followed.
