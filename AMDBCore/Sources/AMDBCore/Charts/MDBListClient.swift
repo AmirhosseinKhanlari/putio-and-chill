@@ -96,7 +96,13 @@ public struct MDBListClient: Sendable {
     public func chart(_ chart: MDBListChart, kind: MediaKind) async throws -> [MDBListTitle] {
         let get = request("lists/official/\(chart.rawValue)/items", ["limit": "\(chart.size * 2)", "append_to_response": "poster"])
         let response = try await http.decode(Items.self, get, decoder: .snakeCase)
-        return Array(((kind == .tv ? response.shows : response.movies) ?? []).compactMap(\.parsed).prefix(chart.size))
+        let rows = (kind == .tv ? response.shows : response.movies) ?? []
+        // Some charts count from 0 (Most Watched This Week); every chart shows #1 first.
+        let shift = rows.contains { $0.rank == 0 } ? 1 : 0
+        return Array(rows.compactMap(\.parsed).prefix(chart.size)).map { title in
+            MDBListTitle(tmdbID: title.tmdbID, kind: title.kind, title: title.title, year: title.year, posterPath: title.posterPath,
+                         rank: title.rank.map { $0 + shift }, rankChange: title.rankChange)
+        }
     }
 
     /// `GET /lists/top`: the most liked lists.

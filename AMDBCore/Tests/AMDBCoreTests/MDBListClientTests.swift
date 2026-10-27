@@ -29,6 +29,15 @@ import Testing
         #expect(request.queryItems["apikey"] == "k")
     }
 
+    @Test func chartsCountingFromZeroStartAtOne() async throws {
+        let stub = StubTransport(json: #"""
+        {"movies":[{"mediatype":"movie","ids":{"tmdb":1},"title":"Spider-Man: Brand New Day","adult":0,"rank":0},
+                   {"mediatype":"movie","ids":{"tmdb":2},"title":"Tenzing","adult":0,"rank":1}],"shows":[]}
+        """#)
+        let movies = try await MDBListClient(apiKey: "k", transport: stub).chart(.mostWatchedWeek, kind: .movie)
+        #expect(movies.map(\.rank) == [1, 2])
+    }
+
     @Test func listsKeepPublicOnesWithTheirKind() async throws {
         let stub = StubTransport(json: #"""
         [{"id":2194,"user_id":1230,"user_name":"garycrawfordgc","name":"Latest TV Shows","slug":"latest-tv-shows","description":"","mediatype":"show","items":300,"likes":2878,"private":false},

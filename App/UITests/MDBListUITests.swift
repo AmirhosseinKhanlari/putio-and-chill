@@ -10,14 +10,14 @@ final class MDBListUITests: XCTestCase {
 
         for tab in ["Movies", "TV"] {
             ChartUITests.open(tab, app)
-            let top10 = hittable(app.staticTexts["Top 10 on Streaming Today"], timeout: 30)
+            let top10 = hittable(app.staticTexts.matching(identifier: "Top 10 on Streaming Today"), timeout: 30)
             XCTAssertNotNil(top10, "\(tab): Top 10 row should load")
             shot("\(tab.lowercased())-top")
         }
 
         ChartUITests.open("Movies", app)
-        let seeAllLists = app.buttons["See all lists"]
-        for _ in 0..<12 where !seeAllLists.isHittable { app.swipeUp() }
+        let seeAllLists = app.buttons.matching(identifier: "See all lists")
+        for _ in 0..<12 where hittable(seeAllLists, timeout: 0) == nil { app.swipeUp() }
         shot("movies-lists-row")
         try XCTUnwrap(hittable(seeAllLists, timeout: 20), "Lists row should load").tap()
         XCTAssertTrue(app.staticTexts["Movie Lists"].waitForExistence(timeout: 10))
@@ -32,19 +32,20 @@ final class MDBListUITests: XCTestCase {
         shot("list-page")
         app.buttons["Back"].tap()
 
-        let chart = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Most Watched This Week'")).firstMatch
+        let chart = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Most Watched This Week'"))
         try XCTUnwrap(hittable(chart, timeout: 10), "chart card").tap()
         XCTAssertTrue(app.staticTexts["MDBLIST CHART"].waitForExistence(timeout: 10))
         sleep(4)
         shot("chart-page")
     }
 
-    private func hittable(_ element: XCUIElement, timeout: TimeInterval) -> XCUIElement? {
+    /// The first match the user can tap: the other tab stays alive (faded out) with the same labels.
+    private func hittable(_ query: XCUIElementQuery, timeout: TimeInterval) -> XCUIElement? {
         let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if element.exists && element.isHittable { return element }
-            sleep(1)
-        }
+        repeat {
+            if let element = query.allElementsBoundByIndex.first(where: { $0.isHittable }) { return element }
+            if timeout > 0 { sleep(1) }
+        } while Date() < deadline
         return nil
     }
 
