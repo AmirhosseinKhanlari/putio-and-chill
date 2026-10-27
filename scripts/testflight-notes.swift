@@ -1,16 +1,18 @@
 // Puts a build's "What to Test" (the changelog testers see in TestFlight) on every platform's copy of that build.
 // Waits until App Store Connect has processed the upload, then sets the en-US text.
 //
-//   swift scripts/testflight-notes.swift <bundle id> <build number> <notes file>
+//   swift scripts/testflight-notes.swift <bundle id> <build number> <notes file> [copies]
 //
+// `copies` is how many platforms the build was uploaded for (2 for iPhone/iPad and Apple TV, the default): each copy
+// shows up in App Store Connect separately, minutes apart, so it waits for all of them.
 // Signs in with the App Store Connect API key in the repo root (AuthKey_62289X2HZR.p8, gitignored); ASC_KEY_PATH,
 // ASC_KEY_ID and ASC_ISSUER_ID override it.
 import CryptoKit
 import Foundation
 
 let args = CommandLine.arguments
-guard args.count == 4 else {
-    print("usage: swift scripts/testflight-notes.swift <bundle id> <build number> <notes file>")
+guard args.count == 4 || args.count == 5, let copies = Int(args.count == 5 ? args[4] : "2"), copies > 0 else {
+    print("usage: swift scripts/testflight-notes.swift <bundle id> <build number> <notes file> [copies]")
     exit(2)
 }
 let (bundleID, build) = (args[1], args[2])
@@ -61,15 +63,15 @@ guard let app = items(try await call("GET", "/v1/apps?filter%5BbundleId%5D=\(bun
     print("no app with bundle id \(bundleID)"); exit(1)
 }
 
-// Every platform's copy of the build, once processed (up to 30 minutes).
+// Every platform's copy of the build, once all `copies` are processed (up to 30 minutes).
 var builds: [[String: Any]] = []
 for attempt in 0..<60 {
     builds = items(try await call("GET", "/v1/builds?filter%5Bapp%5D=\(app)&filter%5Bversion%5D=\(build)&include=preReleaseVersion&limit=10"))
     let states = builds.map { attributes($0)["processingState"] as? String ?? "?" }
-    if !states.isEmpty, states.allSatisfy({ $0 == "VALID" }) { break }
+    if states.count >= copies, states.allSatisfy({ $0 == "VALID" }) { break }
     if states.contains(where: { $0 == "FAILED" || $0 == "INVALID" }) { print("build \(build) failed processing: \(states)"); exit(1) }
     if attempt == 59 { print("build \(build) still not processed: \(states)"); exit(1) }
-    print("waiting for build \(build) to process: \(states.isEmpty ? "not uploaded yet" : states.joined(separator: ", "))")
+    print("waiting for build \(build): \(states.count) of \(copies) copies listed (\(states.joined(separator: ", ")))")
     try await Task.sleep(for: .seconds(30))
 }
 
