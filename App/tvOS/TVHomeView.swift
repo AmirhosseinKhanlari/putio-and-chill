@@ -159,16 +159,23 @@ struct TVBrowseView: View {
                 if !latest.isEmpty {
                     TVCatalogShelf(row: CatalogRow(id: "latest", title: kind == .tv ? "Latest Shows" : "Latest Movies", items: latest))
                 }
+                TVMDBChartShelf(chart: .streamingTop10, kind: kind)
+                TVMDBChartShelf(chart: .trending, kind: kind)
+                TVMDBChartShelf(chart: .anticipated, kind: kind)
                 if model?.isLoading == true, model?.rows.isEmpty == true {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 80)
                 }
                 ForEach(model?.rows ?? []) { TVCatalogShelf(row: $0) }
+                TVMDBListsShelf(kind: kind)
             }
             .padding(.bottom, 90)
         }
         .ignoresSafeArea(edges: featured.isEmpty ? [] : .top)
         .tvPageBackground()
         .task {
+            // MDBList's charts and lists, asked for again once they're a few hours old.
+            Task { await app.lists.loadRows(kind: kind) }
+            Task { await app.lists.loadLists() }
             guard model == nil, let catalog = app.catalog else { return }
             let browse = BrowseModel(kind: kind, catalog: catalog)
             model = browse

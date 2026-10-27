@@ -2,27 +2,97 @@ import AMDBCore
 import Foundation
 import Observation
 
-/// Local watchlist, newest first.
+/// Watchlist, newest first, the same on every device signed in to the same iCloud: each save and removal goes into a
+/// synced Keychain item (`MyListLog`), and the list is what that log says. Kept on this device too (`LocalStore`),
+/// which is all there is without `synced` (demo mode, tests).
 @Observable @MainActor
 public final class MyList {
     public private(set) var items: [SavedTitle] = []
     @ObservationIgnored private let store: LocalStore
+    @ObservationIgnored private let synced: (any WatchLogStore)?
+    @ObservationIgnored private let now: () -> Date
 
-    public init(store: LocalStore) { self.store = store }
+    public init(store: LocalStore, synced: (any WatchLogStore)? = nil, now: @escaping () -> Date = Date.init) {
+        self.store = store
+        self.synced = synced
+        self.now = now
+    }
 
-    public func load() async { items = await store.snapshot.myList }
+    public func load() async {
+        items = await store.snapshot.myList
+        await sync()
+    }
 
     public func contains(_ item: CatalogItem) -> Bool { items.contains { $0.id == SavedTitle(item).id } }
 
     public func toggle(_ item: CatalogItem) async {
         let saved = SavedTitle(item)
-        if let index = items.firstIndex(where: { $0.id == saved.id }) {
-            items.remove(at: index)
+        let removing = items.contains { $0.id == saved.id }
+        if removing {
+            items.removeAll { $0.id == saved.id }
         } else {
             items.insert(saved, at: 0)
         }
+        await save(MyListChange(title: saved, at: now(), removed: removing))
+    }
+
+    /// Reads what the other devices saved and removed (launch, the app coming back).
+    public func sync() async { await save(nil) }
+
+    /// Merges this device's list and `change` with the shared log, writes the log back if that changed it, and makes
+    /// the list (here and in `LocalStore`) what the log says.
+    private func save(_ change: MyListChange?) async {
+        guard let synced else {
+            let snapshot = items
+            await store.update { $0.myList = snapshot }
+            return
+        }
+        let stored = MyListLog.decode(synced.read(account: MyListLog.account))
+        let log = MyListLog.merged(stored, MyListLog.untracked(items, in: stored) + (change.map { [$0] } ?? []), now: now())
+        if log != stored, let data = MyListLog.encode(log) { synced.write(data, account: MyListLog.account) }
+        items = MyListLog.titles(log)
         let snapshot = items
         await store.update { $0.myList = snapshot }
+    }
+}
+
+/// One save to or removal from My List, as the user's devices tell each other about it.
+public struct MyListChange: Codable, Sendable, Equatable {
+    public var title: SavedTitle
+    public var at: Date
+    public var removed: Bool
+    public init(title: SavedTitle, at: Date, removed: Bool) { self.title = title; self.at = at; self.removed = removed }
+}
+
+/// The shared My List: the newest change per title. Removals are kept for `keepRemovals`, so another device's older
+/// copy of the list can't bring a removed title back.
+public enum MyListLog {
+    public static let account = "mylist"
+    static let keepRemovals: TimeInterval = 90 * 86_400
+
+    /// Newest change per title, newest first, without removals older than `keepRemovals`.
+    public static func merged(_ a: [MyListChange], _ b: [MyListChange], now: Date) -> [MyListChange] {
+        var newest: [String: MyListChange] = [:]
+        for change in a + b where (newest[change.title.id]?.at ?? .distantPast) < change.at { newest[change.title.id] = change }
+        return newest.values.filter { !$0.removed || now.timeIntervalSince($0.at) < keepRemovals }
+            .sorted { ($0.at, $0.title.id) > ($1.at, $1.title.id) }
+    }
+
+    /// Saved titles, newest first.
+    static func titles(_ log: [MyListChange]) -> [SavedTitle] { log.filter { !$0.removed }.map(\.title) }
+
+    /// Titles on this device the log has never heard of (saved before syncing, or the item was reset): they join as
+    /// saves from long ago, in their order, so any removal made since wins over them.
+    static func untracked(_ items: [SavedTitle], in log: [MyListChange]) -> [MyListChange] {
+        let known = Set(log.map(\.title.id))
+        return items.enumerated().filter { !known.contains($0.element.id) }.map { index, title in
+            MyListChange(title: title, at: Date(timeIntervalSince1970: TimeInterval(items.count - index)), removed: false)
+        }
+    }
+
+    static func encode(_ log: [MyListChange]) -> Data? { try? JSONEncoder().encode(log) }
+    static func decode(_ data: Data?) -> [MyListChange] {
+        data.flatMap { try? JSONDecoder().decode([MyListChange].self, from: $0) } ?? []
     }
 }
 

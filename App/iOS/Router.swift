@@ -42,6 +42,10 @@ enum Route: Hashable {
     case files(FilesFolder)
     case trash
     case imdbWatchlist
+    /// MDBList (Movies and TV tabs): every chart and list for a kind, one chart, one list.
+    case mdbLists(MediaKind)
+    case mdbChart(MDBListChart, MediaKind)
+    case mdbList(MDBList)
 }
 
 struct NextEpisode: Hashable {
@@ -146,6 +150,9 @@ final class Router {
     func openFiles() { push(.files(.root)) }
     func openFolder(_ folder: FilesFolder) { push(.files(folder)) }
     func openTrash() { push(.trash) }
+    func openLists(_ kind: MediaKind) { push(.mdbLists(kind)) }
+    func openChart(_ chart: MDBListChart, _ kind: MediaKind) { push(.mdbChart(chart, kind)) }
+    func openList(_ list: MDBList) { push(.mdbList(list)) }
     func openIMDbWatchlist() { push(.imdbWatchlist) }
 
     private func push(_ route: Route) {

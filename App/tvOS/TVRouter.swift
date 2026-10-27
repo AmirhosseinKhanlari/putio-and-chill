@@ -36,6 +36,10 @@ enum TVRoute: Hashable {
     case files(FilesFolder)
     case trash
     case fixMatch(FixMatchRequest)
+    /// MDBList (Movies and TV pages): every chart and list for a kind, one chart, one list.
+    case mdbLists(MediaKind)
+    case mdbChart(MDBListChart, MediaKind)
+    case mdbList(MDBList)
 }
 
 /// A video to play: the put.io file plus what it is (for progress, subtitles and the next episode).

@@ -7,6 +7,12 @@ enum Theme {
     static let okay = Color(red: 0.98, green: 0.8, blue: 0.08)
     static let poor = Color(red: 0.97, green: 0.44, blue: 0.44)
 
+    /// A muted color that's always the same for the same name (list cards).
+    static func tint(for name: String) -> Color {
+        let hash = name.unicodeScalars.reduce(5381) { ($0 &* 33 &+ Int($1.value)) & 0xFFFFFF }
+        return Color(hue: Double(hash % 360) / 360, saturation: 0.45, brightness: 0.42)
+    }
+
     static func seeders(_ count: Int?) -> Color {
         switch count ?? 0 {
         case 50...: good

@@ -111,6 +111,8 @@ struct MainView: View {
             if app.reloadSyncedTokens() { Task { await app.imdbWatchlist.load(force: true) } }
             // Watched on another device meanwhile: Continue Watching shows it now, not at the next library update.
             Task { await app.refreshContinueWatching() }
+            // Saved to or removed from My List on another device.
+            Task { await app.myList.sync() }
             // Latest Movies / Shows (chill, MyMoviz) are fetched every time the app opens.
             Task { await app.refreshChillFeed(force: true) }
             // New-episode alerts follow TMDB's schedule, which changes: plan them again.
@@ -302,6 +304,9 @@ private struct TabStack: View {
                     case let .files(folder): FilesPage(folder: folder)
                     case .trash: TrashPage()
                     case .imdbWatchlist: IMDbWatchlistPage()
+                    case let .mdbLists(kind): MDBListsPage(kind: kind)
+                    case let .mdbChart(chart, kind): MDBChartPage(chart: chart, kind: kind)
+                    case let .mdbList(list): MDBListPage(list: list)
                     }
                 }
         }

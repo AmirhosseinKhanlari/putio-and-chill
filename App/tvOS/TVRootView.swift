@@ -49,6 +49,8 @@ struct TVRootView: View {
                 TVTopShelfPublisher.publish(app.library, force: true)
                 app.appWillLeave()
             }
+            // Saved to or removed from My List on another device.
+            if phase == .active { Task { await app.myList.sync() } }
             // Back in the app: Latest Movies / Shows are fetched every time it opens, and the library is checked.
             if phase == .active, app.putio != nil {
                 Task {
@@ -170,6 +172,9 @@ struct TVRootView: View {
                 case let .files(folder): TVFilesView(folder: folder)
                 case .trash: TVTrashView()
                 case let .fixMatch(request): TVFixMatchView(request: request)
+                case let .mdbLists(kind): TVMDBListsView(kind: kind)
+                case let .mdbChart(chart, kind): TVMDBChartView(chart: chart, kind: kind)
+                case let .mdbList(list): TVMDBListView(list: list)
                 }
     }
 

@@ -38,11 +38,15 @@ struct BrowseView: View {
                 if !latest.isEmpty {
                     CatalogRowView(row: CatalogRow(id: "latest", title: kind == .tv ? "Latest Shows" : "Latest Movies", items: latest))
                 }
+                MDBChartRow(chart: .streamingTop10, kind: kind)
+                MDBChartRow(chart: .trending, kind: kind)
                 if let chart { ChartRowView(model: chart) }
+                MDBChartRow(chart: .anticipated, kind: kind)
                 if model?.isLoading == true && model?.rows.isEmpty == true {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
                 }
                 ForEach(model?.rows ?? []) { CatalogRowView(row: $0) }
+                MDBListsRow(kind: kind)
             }
             .padding(.bottom, 120)
         }
@@ -50,6 +54,9 @@ struct BrowseView: View {
         .ambientBackground()
         .toolbar(.hidden, for: .navigationBar)
         .task {
+            // MDBList's charts and lists, asked for again once they're a few hours old.
+            Task { await app.lists.loadRows(kind: kind) }
+            Task { await app.lists.loadLists() }
             guard model == nil, let catalog = app.catalog else { return }
             let browse = BrowseModel(kind: kind, catalog: catalog)
             model = browse

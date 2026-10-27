@@ -109,6 +109,16 @@ extension ChartsService {
 
 extension TraktClient: ChartsService {}
 
+/// MDBList's charts and lists (Movies and TV tabs).
+public protocol ListsService: Sendable {
+    func chart(_ chart: MDBListChart, kind: MediaKind) async throws -> [MDBListTitle]
+    func popularLists() async throws -> [MDBList]
+    func curatedLists() async throws -> [MDBList]
+    func items(of list: Int, offset: Int, limit: Int) async throws -> MDBListPage
+}
+
+extension MDBListClient: ListsService {}
+
 public protocol TrailerService: Sendable {
     func trailer(imdbID: String) async throws -> TrailerVideo?
 }

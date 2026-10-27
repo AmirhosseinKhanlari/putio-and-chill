@@ -7,6 +7,7 @@ public struct ServiceFactory: Sendable {
     public var makeCatalog: @Sendable (String) -> any CatalogService
     public var makeProvider: @Sendable (SourceConfig, _ chillToken: String?) -> (any SourceProvider)?
     public var makeRatings: @Sendable (String) -> any RatingsService
+    public var makeLists: @Sendable (String) -> any ListsService
     public var makeCharts: @Sendable (String) -> any ChartsService
     public var trailers: any TrailerService
     public var episodeRatings: any EpisodeRatingsService
@@ -23,6 +24,9 @@ public struct ServiceFactory: Sendable {
                 makeProvider: @escaping @Sendable (SourceConfig, String?) -> (any SourceProvider)?,
                 makeRatings: @escaping @Sendable (String) -> any RatingsService = {
                     RatingsClient(apiKey: $0, transport: URLSessionTransport())
+                },
+                makeLists: @escaping @Sendable (String) -> any ListsService = {
+                    MDBListClient(apiKey: $0, transport: URLSessionTransport())
                 },
                 makeCharts: @escaping @Sendable (String) -> any ChartsService = {
                     TraktClient(clientID: $0, transport: URLSessionTransport())
@@ -45,6 +49,7 @@ public struct ServiceFactory: Sendable {
         self.makeCatalog = makeCatalog
         self.makeProvider = makeProvider
         self.makeRatings = makeRatings
+        self.makeLists = makeLists
         self.makeCharts = makeCharts
         self.trailers = trailers
         self.episodeRatings = episodeRatings
@@ -78,6 +83,7 @@ public struct ServiceFactory: Sendable {
                 }
             },
             makeRatings: { RatingsClient(apiKey: $0, transport: metadata) },
+            makeLists: { MDBListClient(apiKey: $0, transport: metadata) },
             makeCharts: { TraktClient(clientID: $0, transport: metadata) },
             trailers: IMDbTrailerClient(transport: metadata),
             episodeRatings: IMDbEpisodeRatingsClient(transport: metadata),
@@ -110,6 +116,8 @@ public final class AppModel {
     public let transfers: TransferMonitor
     public let store: LocalStore
     public let myList: MyList
+    /// MDBList charts and lists for the Movies and TV tabs.
+    public let lists = MDBLists()
     public let downloads: DownloadsIndex
     /// "Latest on chill" rows (needs a connected chill account).
     public let chillFeed: ChillFeed
@@ -183,7 +191,7 @@ public final class AppModel {
         settings = current
         library = LibraryIndex(store: store, cache: libraryCache)
         transfers = TransferMonitor(store: store)
-        myList = MyList(store: store)
+        myList = MyList(store: store, synced: watchLogStore)
         downloads = DownloadsIndex(store: store)
         chillFeed = ChillFeed(fileURL: chillFeedURL)
         imdbWatchlist = IMDbWatchlistModel(store: store)
@@ -590,6 +598,7 @@ public final class AppModel {
         openSubtitlesUser = tokens.read(.opensubtitlesUsername)
         openSubtitlesLogin = nil
         hasRatings = ratingsService != nil
+        lists.use((tokens.read(.mdblist) ?? bundledMDBListKey).map(factory.makeLists))
         let chillToken = tokens.read(.chill)
         hasChill = chillToken != nil
         chillCatalog = chillToken.map(factory.makeChillCatalog)
