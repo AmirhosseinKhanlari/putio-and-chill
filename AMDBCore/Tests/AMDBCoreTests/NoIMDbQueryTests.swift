@@ -29,6 +29,25 @@ import Testing
         #expect(!ReleaseRelevance.matches(ReleaseNameParser.parse("Monster 2022 S03 1080p NF WEB-DL DDP5 1 Atmos H 264-GP-TV"), season))
     }
 
+    /// TorrentGalaxy's search for "Wildwood 2026" also finds "Wellwood 2025": a year off by one isn't enough.
+    @Test func movieReleasesMustNameTheMovie() {
+        func matches(_ name: String, _ title: String, _ year: Int?) -> Bool {
+            ReleaseRelevance.matches(ReleaseNameParser.parse(name), .movie(imdbID: "tt1", title: title, year: year))
+        }
+        #expect(matches("Wildwood 2026 1080p WEB-DL x264", "Wildwood", 2026))
+        #expect(!matches("Wellwood 2025 1080p web YTS", "Wildwood", 2026))
+        #expect(!matches("Wellwood (2025) 1080p bluray 5.1-LAMA", "Wildwood", 2026))
+        // Punctuation, a dropped subtitle and words added after the title are the same movie.
+        #expect(matches("Dune.Part.Two.2024.2160p.WEB-DL", "Dune: Part Two", 2024))
+        #expect(matches("Glass Onion 2022 1080p NF WEB-DL", "Glass Onion: A Knives Out Mystery", 2022))
+        #expect(matches("Dune Part One 2021 1080p BluRay", "Dune", 2021))
+        #expect(matches("www.UIndex.org - Wildwood 2026 720p", "Wildwood", 2026))
+        // Sequels are told apart by the year, and another movie that merely starts the same way doesn't count.
+        #expect(!matches("Dune 1984 1080p BluRay", "Dune", 2021))
+        #expect(!matches("Wildwood Nights 2026 1080p", "Wild", 2026))
+        #expect(!matches("Spider 2026 1080p", "Spider-Man", 2026))
+    }
+
     @Test func showTitleComparison() {
         #expect(ReleaseRelevance.sameShow("The Last of Us", "The Last of Us"))
         #expect(ReleaseRelevance.sameShow("Last of Us", "The Last of Us"))

@@ -14,8 +14,8 @@ public enum ReleaseRelevance {
             return first == episode || (p.episodeEnd.map { episode >= first && episode <= $0 } ?? false)
         case let .season(_, title, season):
             return p.season == season && p.episode == nil && sameShow(p.title, title)
-        case let .movie(_, _, year):
-            guard p.season == nil else { return false }
+        case let .movie(_, title, year):
+            guard p.season == nil, sameMovie(p.title, title) else { return false }
             if let year, let found = p.year { return abs(found - year) <= 1 }
             return true
         case .text:
@@ -36,6 +36,18 @@ public enum ReleaseRelevance {
         }
         let isYear = extra.count == 4 && Int(extra).map { (1900...2100).contains($0) } == true
         return isYear || (extra.count == 2 && extra.allSatisfy(\.isLetter))
+    }
+
+    /// Whether a release's title names the movie asked for: the same words, the words before the title's colon
+    /// ("Glass Onion" for "Glass Onion: A Knives Out Mystery"), or the title's words with more after them ("Dune Part
+    /// One" for "Dune"). Search sites also return look-alikes ("Wellwood" for "Wildwood"); those don't count. Sequels
+    /// with the same name are told apart by the year. An empty title on either side can't be checked and passes.
+    public static func sameMovie(_ releaseTitle: String, _ movieTitle: String) -> Bool {
+        let wanted = words(movieTitle), found = words(withoutSitePrefix(releaseTitle))
+        guard !wanted.isEmpty, !found.isEmpty else { return true }
+        if found.joined() == wanted.joined() || found.starts(with: wanted) { return true }
+        guard let main = movieTitle.split(separator: ":").first, main.count < movieTitle.count else { return false }
+        return found.joined() == words(String(main)).joined()
     }
 
     /// "www.UIndex.org - Severance" → "Severance": some uploads lead with the site they came from.
