@@ -110,8 +110,12 @@ private struct TitleHeader: View {
                     }
                 }
                 .padding(.top, 6)
-                if model?.error != nil {
-                    Text("Couldn't load details.").font(.footnote).foregroundStyle(Theme.poor)
+                if let model, model.error != nil {
+                    HStack(spacing: 12) {
+                        Text("Couldn't load details.").font(.footnote).foregroundStyle(Theme.poor)
+                        Button("Try Again") { Task { await model.load() } }
+                            .font(.footnote.weight(.semibold))
+                    }
                 }
             }
             .frame(maxWidth: 640, alignment: .leading)

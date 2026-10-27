@@ -55,9 +55,13 @@ public struct ServiceFactory: Sendable {
 
     public static let live: ServiceFactory = {
         let transport = URLSessionTransport()
+        // TMDB, MDBList, Trakt and IMDb, and put.io: each on connections that are replaced when they stop answering,
+        // so one silently dead connection can't leave every title page blank until the app restarts.
+        let metadata = RenewingTransport()
+        let putio = RenewingTransport { URLSessionTransport(session: URLSession(configuration: .default)) }
         return ServiceFactory(
-            makePutio: { PutioClient(token: $0, transport: transport) },
-            makeCatalog: { CatalogClient(accessToken: $0, transport: transport) },
+            makePutio: { PutioClient(token: $0, transport: putio) },
+            makeCatalog: { CatalogClient(accessToken: $0, transport: metadata) },
             makeProvider: { config, chillToken in
                 guard let url = URL(string: config.baseURL) else { return nil }
                 switch config.id {
@@ -73,10 +77,10 @@ public struct ServiceFactory: Sendable {
                 default: return nil
                 }
             },
-            makeRatings: { RatingsClient(apiKey: $0, transport: transport) },
-            makeCharts: { TraktClient(clientID: $0, transport: transport) },
-            trailers: IMDbTrailerClient(transport: transport),
-            episodeRatings: IMDbEpisodeRatingsClient(transport: transport),
+            makeRatings: { RatingsClient(apiKey: $0, transport: metadata) },
+            makeCharts: { TraktClient(clientID: $0, transport: metadata) },
+            trailers: IMDbTrailerClient(transport: metadata),
+            episodeRatings: IMDbEpisodeRatingsClient(transport: metadata),
             makeSubtitles: { OpenSubtitlesClient(apiKey: $0, transport: transport) })
     }()
 }

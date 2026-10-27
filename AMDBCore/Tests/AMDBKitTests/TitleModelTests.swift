@@ -22,6 +22,26 @@ import Testing
         return (TitleModel(item: Self.dune, catalog: Self.catalog, library: library, transfers: transfers), library, transfers, putio)
     }
 
+    /// A title that couldn't load can be tried again from the page: the error clears once it loads.
+    @Test func loadCanBeTriedAgainAfterAFailure() async {
+        var catalog = Self.catalog
+        let outage = FakeCatalog.Outage()
+        catalog.outage = outage
+        let store = LocalStore(fileURL: nil)
+        let library = LibraryIndex(store: store)
+        let model = TitleModel(item: Self.dune, catalog: catalog, library: library,
+                               transfers: TransferMonitor(store: store, pollInterval: .seconds(3600)))
+        await model.load()
+        #expect(model.detail == nil)
+        #expect(model.error != nil)
+        #expect(!model.isLoading)
+
+        outage.isOn = false
+        await model.load()
+        #expect(model.detail?.imdbID == "tt15239678")
+        #expect(model.error == nil)
+    }
+
     @Test func movieActionsFollowLibraryAndTransfers() async throws {
         let (model, library, transfers, _) = rig()
         await model.load()

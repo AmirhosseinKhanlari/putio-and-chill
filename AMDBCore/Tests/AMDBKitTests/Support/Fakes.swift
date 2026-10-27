@@ -283,6 +283,9 @@ struct FakeCatalog: CatalogService {
     var movieSearch: [String: [CatalogItem]] = [:]
     var tvSearch: [String: [CatalogItem]] = [:]
     var failAll = false
+    /// Fails every call while `isOn`, and can be switched off later (copies share it).
+    var outage: Outage?
+    final class Outage: @unchecked Sendable { var isOn = true }
     /// Makes title searches slow, to look at a refresh while it's still matching.
     var searchDelay: Duration = .zero
     /// Records the rating filters discover was asked for.
@@ -296,7 +299,7 @@ struct FakeCatalog: CatalogService {
     func findByIMDb(_ imdbID: String) async throws -> CatalogItem? { try guarded(imdb[imdbID]) }
 
     private func guarded<T>(_ value: T) throws -> T {
-        if failAll { throw AppError.transport("offline") }
+        if failAll || outage?.isOn == true { throw AppError.transport("offline") }
         return value
     }
 

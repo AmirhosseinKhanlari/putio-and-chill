@@ -63,6 +63,12 @@ struct TVTitleView: View {
                     .frame(maxWidth: 940, alignment: .leading)
             }
             if let model { TVTitleActions(model: model, item: item).padding(.top, 14) }
+            if let model, model.error != nil {
+                HStack(spacing: 24) {
+                    Text("Couldn't load details.").font(.system(size: 24)).foregroundStyle(TVMetrics.secondaryText)
+                    Button("Try Again") { Task { await model.load() } }.tvPill()
+                }
+            }
             if let collection = model?.detail?.collection {
                 Button { router.open(.collection(collection.id)) } label: {
                     Label("Part of the \(collection.name) · Watch in order", systemImage: "square.stack")

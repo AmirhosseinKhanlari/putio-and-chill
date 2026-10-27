@@ -1,7 +1,14 @@
 import Foundation
+import os
 
 public protocol HTTPTransport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+    /// It's been replaced by a fresh one (`RenewingTransport`): let go of its connections once in-flight requests end.
+    func retire()
+}
+
+extension HTTPTransport {
+    public func retire() {}
 }
 
 public struct URLSessionTransport: HTTPTransport {
@@ -12,6 +19,73 @@ public struct URLSessionTransport: HTTPTransport {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw AppError.transport("non-HTTP response") }
         return (data, http)
+    }
+
+    public func retire() {
+        if session !== URLSession.shared { session.finishTasksAndInvalidate() }
+    }
+}
+
+/// Sends requests over its own connection and starts a fresh one when that stops answering.
+///
+/// One HTTP/2 connection carries every request to a host. If it dies silently (Wi-Fi to cellular, the phone asleep,
+/// a router forgetting it) URLSession keeps queueing requests on it: each times out on its own, but the connection
+/// can linger for many minutes, so every title page stays blank until the app restarts. A request that times out
+/// or loses its connection here drops the whole session and, for a GET, is tried once more on a new one.
+public final class RenewingTransport: HTTPTransport, @unchecked Sendable {
+    static let log = Logger(subsystem: "app.amdb", category: "network")
+
+    private let makeConnection: @Sendable () -> any HTTPTransport
+    private let lock = NSLock()
+    private var current: any HTTPTransport
+    private var generation = 0
+
+    public init(makeConnection: @escaping @Sendable () -> any HTTPTransport = { URLSessionTransport(session: RenewingTransport.apiSession()) }) {
+        self.makeConnection = makeConnection
+        current = makeConnection()
+    }
+
+    /// A session for small API calls: an answer that takes over 15 s isn't coming.
+    public static func apiSession() -> URLSession {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 15
+        return URLSession(configuration: configuration)
+    }
+
+    /// The connection in use, and which one it is (they're numbered as they're made).
+    public var connection: (generation: Int, transport: any HTTPTransport) { lock.withLock { (generation, current) } }
+
+    /// Replaces connection `generation` with a fresh one, unless another request already did.
+    public func renew(replacing generation: Int) {
+        let stale: (any HTTPTransport)? = lock.withLock {
+            guard generation == self.generation else { return nil }
+            defer { current = makeConnection(); self.generation += 1 }
+            return current
+        }
+        stale?.retire()
+    }
+
+    public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (generation, transport) = connection
+        do {
+            return try await transport.send(request)
+        } catch let error as URLError where Self.isStale(error) {
+            Self.log.notice("\(request.url?.host() ?? "?", privacy: .public) stopped answering (URLError \(error.code.rawValue)); starting a fresh connection")
+            renew(replacing: generation)
+            guard ["GET", "HEAD"].contains(request.httpMethod ?? "GET") else { throw error }
+            let (retryGeneration, retry) = connection
+            do {
+                return try await retry.send(request)
+            } catch let error as URLError where Self.isStale(error) {
+                renew(replacing: retryGeneration)
+                throw error
+            }
+        }
+    }
+
+    /// Errors that say the connection itself is gone, rather than the server answering or the device being offline.
+    static func isStale(_ error: URLError) -> Bool {
+        error.code == .timedOut || error.code == .networkConnectionLost
     }
 }
 

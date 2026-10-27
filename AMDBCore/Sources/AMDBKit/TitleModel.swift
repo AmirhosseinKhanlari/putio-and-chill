@@ -17,6 +17,8 @@ public final class TitleModel {
     public private(set) var episodes: [Episode] = []
     public private(set) var selectedSeason: Int?
     public private(set) var error: AppError?
+    /// A load is under way (the first, or "Try Again" after an error).
+    public private(set) var isLoading = false
     public private(set) var ratings: Ratings?
     /// IMDb score per episode number for the selected season.
     public private(set) var episodeRatings: [Int: EpisodeRating] = [:]
@@ -45,6 +47,10 @@ public final class TitleModel {
     }
 
     public func load() async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        error = nil
         do {
             let loaded = try await catalog.detail(item.mediaType, id: item.tmdbID)
             detail = loaded
