@@ -262,6 +262,8 @@ struct TVWideCard: View {
     var progress: Double?
     /// Hold Select: "Play" and this (the movie or show page).
     var details: (title: String, open: () -> Void)?
+    /// Hold Select: "Remove from Continue Watching".
+    var remove: (() -> Void)?
     let action: () -> Void
 
     var body: some View {
@@ -282,9 +284,10 @@ struct TVWideCard: View {
             }
             .buttonStyle(.card)
             .contextMenu {
-                if let details {
-                    Button("Play", action: action)
-                    Button(details.title, action: details.open)
+                if details != nil || remove != nil { Button("Play", action: action) }
+                if let details { Button(details.title, action: details.open) }
+                if let remove {
+                    Button("Remove from Continue Watching", systemImage: "eye.slash", role: .destructive, action: remove)
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
@@ -392,13 +395,15 @@ struct TVContinueWatchingShelf: View {
                                progress: app.library.watchedFraction(for: entry),
                                details: entry.titleItem.map { item in
                                    (item.mediaType == .tv ? "Go to Show" : "Go to Movie", { router.showTitle(item) })
-                               }) {
+                               },
+                               remove: { app.library.removeFromContinueWatching(card) }) {
                         router.play(entry, from: resume)
                     }
                 case let .upNext(next):
                     TVWideCard(title: next.showTitle, subtitle: ([next.label] + [next.name].compactMap { $0 }).joined(separator: " · "),
                                imagePath: next.backdropPath ?? next.posterPath,
-                               details: next.isInPutio ? ("Go to Show", { router.showTitle(next.titleItem) }) : nil) {
+                               details: next.isInPutio ? ("Go to Show", { router.showTitle(next.titleItem) }) : nil,
+                               remove: { app.library.removeFromContinueWatching(card) }) {
                         if let entry = next.entry { router.play(entry, from: 0, exactStart: true) } else { router.showTitle(next.titleItem) }
                     }
                 }

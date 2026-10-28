@@ -79,10 +79,25 @@ extension LibraryIndex {
     /// - a watched episode: the show's next episode, up next (once known to have aired: TMDB, else the next file in
     ///   put.io). None when it was the last one aired, until TMDB lists a newer one.
     public var continueWatchingCards: [WatchingCard] {
-        latestPerTitle.compactMap { entry in
+        latestPerTitle.filter { hiddenCards[$0.id] != cardMark($0) }.compactMap { entry in
             isWatched(entry) ? upNextCard(after: entry).map(WatchingCard.upNext) : .resume(entry)
         }
     }
+
+    /// Takes a card out of Continue Watching (touch and hold, Remove). It stays out until that title is played again:
+    /// another position, or another of its episodes watched.
+    public func removeFromContinueWatching(_ card: WatchingCard) {
+        let fileID = switch card {
+        case let .resume(entry): entry.id
+        case let .upNext(next): next.after
+        }
+        guard let entry = entries.first(where: { $0.id == fileID }) else { return }
+        hiddenCards[fileID] = cardMark(entry)
+        Task { await persist() }
+    }
+
+    /// What a file's card shows: its position, or -1 once watched. Playing it again changes it.
+    private func cardMark(_ entry: LibraryEntry) -> Int { isWatched(entry) ? -1 : resumeSeconds(for: entry) }
 
     /// The card for one show or movie, if it's in Continue Watching (its page's main button follows it).
     public func watchingCard(tmdbID: Int) -> WatchingCard? {

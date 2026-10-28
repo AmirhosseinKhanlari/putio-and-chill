@@ -55,10 +55,12 @@ struct EntryRowView: View {
     }
 }
 
-/// A file in put.io (Continue Watching, Recently Added): tap plays it, touch and hold opens its movie or show page.
+/// A file in put.io (Continue Watching, Recently Added): tap plays it, touch and hold opens its movie or show page
+/// (with `remove`: a menu with that and Remove from Continue Watching).
 struct EntryCard: View {
     let entry: LibraryEntry
     let width: CGFloat
+    var remove: (() -> Void)?
     @Environment(AppModel.self) private var app
     @Environment(Router.self) private var router
     /// When the hold opened the title page: the button's own tap (on lifting the finger) is then ignored.
@@ -78,7 +80,9 @@ struct EntryCard: View {
                           isWatched: app.library.isWatched(entry))
         }
         .buttonStyle(.lift)
-        .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in openDetails() })
+        .modifier(HoldMenu(remove: remove, details: entry.titleItem.map { item in
+            (item.mediaType == .tv ? "Go to Show" : "Go to Movie", { router.showTitle(item) })
+        }, holdAction: openDetails))
         .accessibilityHint(entry.titleItem == nil ? "Plays it" : "Plays it. Touch and hold for details")
         .accessibilityAction(named: entry.match?.mediaType == .tv ? "Show details" : "Movie details") { openDetails() }
         .onDisappear { heldAt = nil }
@@ -89,5 +93,24 @@ struct EntryCard: View {
         heldAt = Date()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         router.showTitle(item)
+    }
+}
+
+/// Touch and hold on a card: `holdAction` (open the title), or, when the card can be removed from Continue Watching,
+/// a menu with the title's page and Remove.
+struct HoldMenu: ViewModifier {
+    let remove: (() -> Void)?
+    let details: (title: String, open: () -> Void)?
+    let holdAction: () -> Void
+
+    func body(content: Content) -> some View {
+        if let remove {
+            content.contextMenu {
+                if let details { Button(details.title, systemImage: "info.circle", action: details.open) }
+                Button("Remove from Continue Watching", systemImage: "eye.slash", role: .destructive, action: remove)
+            }
+        } else {
+            content.simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in holdAction() })
+        }
     }
 }

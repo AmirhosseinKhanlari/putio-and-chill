@@ -5,6 +5,7 @@ import SwiftUI
 /// Continue Watching on Home: videos to resume, and each show's next episode after a watched one (Up Next).
 struct ContinueWatchingRow: View {
     let cards: [WatchingCard]
+    @Environment(AppModel.self) private var app
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
@@ -13,9 +14,10 @@ struct ContinueWatchingRow: View {
             Shelf {
                 LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(cards) { card in
+                        let remove = { withAnimation { app.library.removeFromContinueWatching(card) } }
                         switch card {
-                        case let .resume(entry): EntryCard(entry: entry, width: Metrics.poster(sizeClass))
-                        case let .upNext(next): UpNextCardView(card: next, width: Metrics.poster(sizeClass))
+                        case let .resume(entry): EntryCard(entry: entry, width: Metrics.poster(sizeClass), remove: remove)
+                        case let .upNext(next): UpNextCardView(card: next, width: Metrics.poster(sizeClass), remove: remove)
                         }
                     }
                 }
@@ -28,10 +30,11 @@ struct ContinueWatchingRow: View {
 }
 
 /// The episode after the one just watched: tap plays it from the start (or opens the show on it when it isn't in
-/// put.io); touch and hold opens the show.
+/// put.io); touch and hold opens the show (with `remove`: a menu with that and Remove from Continue Watching).
 struct UpNextCardView: View {
     let card: UpNextCard
     let width: CGFloat
+    var remove: (() -> Void)?
     @Environment(Router.self) private var router
     @State private var heldAt: Date?
 
@@ -61,7 +64,7 @@ struct UpNextCardView: View {
             .hoverEffect(.lift)
         }
         .buttonStyle(.lift)
-        .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in openShow() })
+        .modifier(HoldMenu(remove: remove, details: ("Go to Show", { router.showTitle(card.titleItem) }), holdAction: openShow))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel([card.showTitle, card.label, card.name].compactMap { $0 }.joined(separator: ", "))
         .accessibilityHint(card.isInPutio ? "Plays it. Touch and hold for the show" : "Opens the show on this episode")

@@ -3,11 +3,12 @@ import Foundation
 /// When a video counts as watched: it's then out of Continue Watching (a show's next episode takes its place), put.io's
 /// position is reset, and the user's other devices are told.
 public enum Watched {
-    /// The position from which a video is watched: 95% of it, or where the credits start, whichever comes first
-    /// (the credits only come first in videos under about 7 minutes).
+    /// The position from which a video is watched: its last 10%, but at most its last 10 minutes (end credits run
+    /// long: a 52-minute episode stopped 3 minutes before the end, when they start, is watched), and never less than
+    /// the credits of a very short video.
     public static func threshold(duration: Double) -> Double? {
         guard duration.isFinite, duration > 0 else { return nil }
-        return min(duration * 0.95, duration - NextUp.creditsLength(duration: duration))
+        return duration - max(NextUp.creditsLength(duration: duration), min(duration * 0.1, 600))
     }
 
     public static func isReached(position: Double, duration: Double) -> Bool {

@@ -53,18 +53,23 @@ import Testing
 
     // MARK: When it counts as watched
 
-    @Test func watchedAt95PercentOrTheCreditsWhicheverComesFirst() {
-        // A 5-minute video: the credits (20 s) start before 95%.
-        #expect(Watched.threshold(duration: 300) == 280)
-        // Half an hour: 95% (1254 s of 22 min) comes before the credits (33 s from the end).
-        #expect(Watched.threshold(duration: 22 * 60) == 1254)
-        #expect(Watched.threshold(duration: 3600) == 3420)
+    @Test func watchedInTheLastTenPercentAtMostTenMinutes() {
+        // A 5-minute video: the last 10% (30 s).
+        #expect(Watched.threshold(duration: 300) == 270)
+        // A 22-minute episode: 132 s before the end.
+        #expect(Watched.threshold(duration: 22 * 60) == 1188)
+        // The Gentlemen: a 52-minute episode stopped with 3 minutes left (the credits) is watched.
+        #expect(Watched.isReached(position: 49 * 60, duration: 52 * 60))
+        #expect(!Watched.isReached(position: 46 * 60, duration: 52 * 60))
+        // An hour: the last 6 minutes. Two hours: the last 10 minutes, not 12.
+        #expect(Watched.threshold(duration: 3600) == 3240)
+        #expect(Watched.threshold(duration: 7200) == 6600)
+        // Very short: the credits (20 s at least) still count.
+        #expect(Watched.threshold(duration: 120) == 100)
         #expect(Watched.threshold(duration: 0) == nil)
         #expect(Watched.threshold(duration: .nan) == nil)
-        #expect(Watched.isReached(position: 281, duration: 300))
-        #expect(!Watched.isReached(position: 279, duration: 300))
-        #expect(Watched.isReached(position: 1254, duration: 22 * 60))
-        #expect(!Watched.isReached(position: 1253, duration: 22 * 60))
+        #expect(Watched.isReached(position: 271, duration: 300))
+        #expect(!Watched.isReached(position: 269, duration: 300))
         #expect(!Watched.isReached(position: 5000, duration: 0), "length unknown: never watched by position")
     }
 
@@ -73,8 +78,8 @@ import Testing
         let store = LocalStore(fileURL: nil)
         let index = await library()
         let session = PlaybackSession(fileID: 10, resumeFrom: 0, putio: putio, library: index, store: store)
-        await session.tick(seconds: 2700, duration: 3000)
-        #expect(!index.isWatched(fileID: 10), "90%: not yet")
+        await session.tick(seconds: 2600, duration: 3000)
+        #expect(!index.isWatched(fileID: 10), "87%: not yet")
         await session.finish(seconds: 2860, duration: 3000)
         #expect(index.isWatched(fileID: 10))
         #expect(index.resumeSeconds(fileID: 10) == 0)
@@ -256,6 +261,40 @@ import Testing
         index.noteProgress(fileID: 10, seconds: 300, now: t(50))
         #expect(index.continueWatchingCards.map(\.id) == ["resume-11", "upnext-95396", "resume-10"])
         #expect(index.continueWatching.map(\.id) == [11, 10])
+    }
+
+    /// Remove from Continue Watching (touch and hold): the card stays gone until that title is played again.
+    @Test func removedCardsStayGoneUntilPlayedAgain() async throws {
+        let index = await library()
+        index.noteProgress(fileID: 12, seconds: 0, now: t(100), watched: true)
+        index.noteProgress(fileID: 11, seconds: 600, now: t(200))
+        index.noteProgress(fileID: 10, seconds: 300, now: t(50))
+        let heat = try #require(index.continueWatchingCards.first)
+        index.removeFromContinueWatching(heat)
+        index.removeFromContinueWatching(try #require(index.continueWatchingCards.first { $0.upNext != nil }))
+        #expect(index.continueWatchingCards.map(\.id) == ["resume-10"])
+        #expect(index.continueWatching.map(\.id) == [10])
+        // Played again: back, and the removal is forgotten.
+        index.noteProgress(fileID: 11, seconds: 900, now: t(300))
+        #expect(index.continueWatchingCards.map(\.id) == ["resume-11", "resume-10"])
+        // The next episode watched: the show is back with what follows it.
+        index.noteProgress(fileID: 15, seconds: 400, now: t(400))
+        #expect(index.continueWatchingCards.map(\.id) == ["resume-15", "resume-11", "resume-10"])
+    }
+
+    @Test func removedCardsSurviveARelaunch() async throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "library-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let index = LibraryIndex(store: LocalStore(fileURL: nil), cache: LibraryCache(fileURL: file))
+        index.configure(putio: Self.tree(), catalog: LibraryIndexTests.catalog)
+        await index.refresh()
+        index.noteProgress(fileID: 11, seconds: 600, now: t(200))
+        index.removeFromContinueWatching(try #require(index.continueWatchingCards.first { $0.id == "resume-11" }))
+        try? await Task.sleep(for: .milliseconds(150))
+        let next = LibraryIndex(store: LocalStore(fileURL: nil), cache: LibraryCache(fileURL: file))
+        next.configure(putio: Self.tree(), catalog: LibraryIndexTests.catalog)
+        await next.loadCached()
+        #expect(!next.continueWatchingCards.contains { $0.id == "resume-11" })
     }
 
     @Test func oneCardPerShowByWhatWasWatchedLast() async {

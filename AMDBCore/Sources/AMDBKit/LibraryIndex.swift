@@ -38,12 +38,15 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
     public var scope: String?
     /// Resume positions with when they were true and where they came from (this device, put.io, the other devices).
     public var positions: [Int64: WatchProgress]?
+    /// Cards removed from Continue Watching (`LibraryIndex.removeFromContinueWatching`). Absent in older caches.
+    public var hiddenCards: [Int64: Int]?
 
     public init(entries: [LibraryEntry], updatedAt: Date, progress: [Int64: Int]? = nil, folders: [PutioFile]? = nil,
                 durations: [Int64: Int]? = nil, watched: [Int64: Date]? = nil, scope: String? = nil,
-                positions: [Int64: WatchProgress]? = nil) {
+                positions: [Int64: WatchProgress]? = nil, hiddenCards: [Int64: Int]? = nil) {
         self.entries = entries; self.updatedAt = updatedAt; self.progress = progress; self.folders = folders
         self.durations = durations; self.watched = watched; self.scope = scope; self.positions = positions
+        self.hiddenCards = hiddenCards
     }
 
     /// Positions, including those an older build saved (as already sent to put.io: put.io's newer value may replace them).
@@ -150,6 +153,8 @@ public final class LibraryIndex {
     var goneFiles: Set<Int64> = []
     /// What TMDB said comes after each show's watched episode (`ContinueWatching`); kept for this session.
     var upNextFound: [EpisodeKey: UpNextFound] = [:]
+    /// Files whose Continue Watching card was removed, with what the card showed then (`ContinueWatching.swift`).
+    var hiddenCards: [Int64: Int] = [:]
     /// put.io, for reading and sending positions (`LibraryIndex+Positions`).
     var putioService: (any PutioService)? { putio }
 
@@ -194,6 +199,7 @@ public final class LibraryIndex {
         // Anything noted since launch is newer than the cache.
         for (id, saved) in snapshot.allPositions { positions[id] = WatchProgress.merged(saved, positions[id] ?? saved) }
         for (id, seconds) in snapshot.durations ?? [:] where durations[id] == nil { durations[id] = seconds }
+        for (id, mark) in snapshot.hiddenCards ?? [:] where hiddenCards[id] == nil { hiddenCards[id] = mark }
     }
 
     /// Whether the library is older than `maxAge` (or was never fetched).
@@ -535,7 +541,8 @@ public final class LibraryIndex {
     func persist() async {
         guard let lastUpdated else { return }
         await cache.save(LibrarySnapshot(entries: entries, updatedAt: lastUpdated, folders: Array(folderTree.folders.values),
-                                         durations: durations, scope: entriesScope, positions: positions))
+                                         durations: durations, scope: entriesScope, positions: positions,
+                                         hiddenCards: hiddenCards.isEmpty ? nil : hiddenCards))
     }
 
     /// Folders that only hold subtitles, samples or artwork: not read (a season pack's "Subs" folder alone can hold

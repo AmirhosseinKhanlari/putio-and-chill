@@ -10,9 +10,22 @@ extension LibraryIndex {
     /// When the file was last watched anywhere, if known.
     public func watchedAt(fileID: Int64) -> Date? { positions[fileID]?.watchedAt }
 
-    /// Watched to the end (`Watched`) on any device, and not rewatched since.
-    public func isWatched(fileID: Int64) -> Bool { positions[fileID]?.isWatched ?? false }
-    public func isWatched(_ entry: LibraryEntry) -> Bool { isWatched(fileID: entry.id) }
+    /// Watched to the end (`Watched`) on any device, and not rewatched since. A position saved elsewhere (another
+    /// device, put.io's site) that's already in the last minutes (`Watched.threshold`) counts too, when the video's
+    /// real length is known (the player's, or put.io's).
+    public func isWatched(fileID: Int64) -> Bool {
+        isWatched(fileID: fileID, seconds: positions[fileID]?.seconds ?? 0, length: durations[fileID])
+    }
+
+    public func isWatched(_ entry: LibraryEntry) -> Bool {
+        isWatched(fileID: entry.id, seconds: resumeSeconds(for: entry), length: durations[entry.id] ?? entry.file.duration)
+    }
+
+    private func isWatched(fileID: Int64, seconds: Int, length: Int?) -> Bool {
+        if positions[fileID]?.isWatched == true { return true }
+        guard seconds >= Watched.rewatchSeconds, let length else { return false }
+        return Watched.isReached(position: Double(seconds), duration: Double(length))
+    }
 
     /// Positions in put.io's file list. That field isn't documented, so only a started position counts: a missing or
     /// zero value never removes one (the file's own start-from, read by `checkPositions`, does that).
