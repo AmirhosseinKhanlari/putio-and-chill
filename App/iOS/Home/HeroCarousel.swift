@@ -5,8 +5,17 @@ import SwiftUI
 struct HeroCarousel: View {
     let items: [CatalogItem]
     @Environment(AmbientController.self) private var ambient
+    @Environment(Router.self) private var router
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.keyNavTab) private var tab
     @State private var index = 0
+
+    /// Home is the tab showing, with nothing pushed over it. Hidden tabs stay mounted, so without this the carousel
+    /// kept turning unseen and recoloring the glow behind whatever page was actually showing.
+    private var isActive: Bool {
+        let home = tab ?? .home
+        return router.tab == home && router.isAtRoot(home)
+    }
 
     var body: some View {
         TabView(selection: $index) {
@@ -26,12 +35,17 @@ struct HeroCarousel: View {
             .animation(.snappy, value: index)
         }
         .onChange(of: index, initial: true) { _, current in
-            if items.indices.contains(current) { ambient.focus(items[current]) }
+            if isActive, items.indices.contains(current) { ambient.focus(items[current]) }
+        }
+        // Back on Home: its hero colors the glow again (another page changed it meanwhile).
+        .onChange(of: isActive) { _, active in
+            if active, items.indices.contains(index) { ambient.focus(items[index]) }
         }
         .task(id: items.count) {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(8))
                 guard !Task.isCancelled, !items.isEmpty else { return }
+                guard isActive else { continue }
                 withAnimation(.easeInOut(duration: 0.6)) { index = (index + 1) % items.count }
             }
         }

@@ -50,6 +50,12 @@ public final class TransferMonitor {
     @ObservationIgnored private weak var library: LibraryIndex?
     private var detectors: [Int64: StallDetector] = [:]
     private var loop: Task<Void, Never>?
+    /// Which polling loop is the current one: a loop that `stop()` ended must not clear the one started after it.
+    private var loopGeneration = 0
+    /// Polls in a row that put.io didn't answer, per transfer (a transient error is tried again; `maxFailures` isn't).
+    private var failures: [Int64: Int] = [:]
+    /// Consecutive failed polls after which a transfer is reported as failed instead of being asked about forever.
+    static let maxFailures = 30
     /// Makes room on put.io when a download doesn't fit (`RoomKeeper`).
     @ObservationIgnored public let room: RoomKeeper
 
@@ -69,13 +75,18 @@ public final class TransferMonitor {
     }
 
     public func configure(putio: (any PutioService)?, library: LibraryIndex?) {
-        self.putio = putio
         self.library = library
         room.configure(putio: putio, library: library)
         if putio == nil {
+            let signedOut = self.putio != nil
             stop()
             tracked = []
+            detectors = [:]
+            failures = [:]
+            // Signing out forgets the saved transfers too, so another account's launch never restores them.
+            if signedOut { Task { [store] in await store.update { $0.pending = [] } } }
         }
+        self.putio = putio
     }
 
     /// Picks up transfers that were in flight when the app last quit.
@@ -118,8 +129,23 @@ public final class TransferMonitor {
     public func pollOnce() async {
         guard let putio else { return }
         for id in tracked.filter({ !$0.notified }).map(\.id) {
-            guard let transfer = try? await putio.transfer(id: id),
-                  let index = tracked.firstIndex(where: { $0.id == id }) else { continue }
+            let transfer: PutioTransfer
+            do {
+                transfer = try await putio.transfer(id: id)
+                failures[id] = nil
+            } catch AppError.http(_, status: 404) {
+                // Removed on put.io's site: there's nothing left to follow, now or at the next launch.
+                await forget(id)
+                continue
+            } catch {
+                failures[id, default: 0] += 1
+                if failures[id, default: 0] >= Self.maxFailures {
+                    failures[id] = nil
+                    await report(failed: id, "put.io stopped answering about this download. Check it on put.io.")
+                }
+                continue
+            }
+            guard let index = tracked.firstIndex(where: { $0.id == id }) else { continue }
             var detector = detectors[id] ?? StallDetector()
             tracked[index].transfer = transfer
             tracked[index].phase = TransferPhase(transfer)
@@ -162,7 +188,20 @@ public final class TransferMonitor {
         await store.update { $0.pending.removeAll { $0.transferID == id } }
     }
 
-    public func dismiss(_ id: Int64) { tracked.removeAll { $0.id == id } }
+    /// Takes a finished or failed transfer off the list, for good: it's not saved for the next launch either.
+    public func dismiss(_ id: Int64) {
+        tracked.removeAll { $0.id == id }
+        Task { [store] in await store.update { $0.pending.removeAll { $0.transferID == id } } }
+    }
+
+    /// Drops a transfer put.io no longer has, here and from what's saved for the next launch.
+    private func forget(_ id: Int64) async {
+        tracked.removeAll { $0.id == id }
+        detectors[id] = nil
+        failures[id] = nil
+        completedSince[id] = nil
+        await store.update { $0.pending.removeAll { $0.transferID == id } }
+    }
 
     public func latest(tmdbID: Int, season: Int? = nil, episode: Int? = nil) -> TrackedTransfer? {
         tracked.last { $0.pending.tmdbID == tmdbID && $0.pending.season == season && $0.pending.episode == episode }
@@ -175,12 +214,14 @@ public final class TransferMonitor {
 
     private func startIfNeeded() {
         guard loop == nil, tracked.contains(where: { !$0.notified }) else { return }
+        loopGeneration += 1
+        let mine = loopGeneration
         loop = Task { [weak self] in
             while let self, !Task.isCancelled, self.tracked.contains(where: { !$0.notified }) {
                 try? await Task.sleep(for: self.pollInterval)
                 await self.pollOnce()
             }
-            self?.loop = nil
+            if let self, self.loopGeneration == mine { self.loop = nil }
         }
     }
 
@@ -194,8 +235,14 @@ public final class TransferMonitor {
     private func giveUpIfStuck(_ id: Int64, _ message: String) async {
         let since = completedSince[id] ?? now()
         completedSince[id] = since
-        guard now().timeIntervalSince(since) >= Self.fileGrace, let index = tracked.firstIndex(where: { $0.id == id }) else { return }
+        guard now().timeIntervalSince(since) >= Self.fileGrace else { return }
         completedSince[id] = nil
+        await report(failed: id, message)
+    }
+
+    /// Shows the transfer as failed with `message`, stops following it, and tells the app once.
+    private func report(failed id: Int64, _ message: String) async {
+        guard let index = tracked.firstIndex(where: { $0.id == id }) else { return }
         tracked[index].phase = .failed(message: message)
         tracked[index].notified = true
         let failed = tracked[index]

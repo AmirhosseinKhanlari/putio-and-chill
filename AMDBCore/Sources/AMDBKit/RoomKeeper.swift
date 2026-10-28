@@ -159,7 +159,7 @@ public final class RoomKeeper {
         let entries = library.entries
         var positions: [Int64: Int] = [:]
         for entry in entries { positions[entry.id] = library.resumeSeconds(for: entry) }
-        let rules = RoomPlanner.Rules(watched: Set(entries.filter { library.isWatched(fileID: $0.id) }.map(\.id)),
+        let rules = RoomPlanner.Rules(watched: Set(entries.filter { library.isWatched($0) }.map(\.id)),
                                       positions: positions, myList: Set(state.myList.map(\.id)), target: target,
                                       busyFolders: busyFolders())
         return RoomPlanner.plan(needed: needed, entries: entries, folders: Array(library.folderTree.folders.values), rules: rules)

@@ -11,6 +11,8 @@ final class PlayerViewController: UIViewController, @MainActor AVPictureInPictur
     /// Holds the current player's picture view (it changes when the built-in player takes over).
     private let videoContainer = UIView()
     private var pip: AVPictureInPictureController?
+    /// Picture in Picture is being closed because the picture changed underneath it: set it up again once it has.
+    private var rebuildPiPAfterStop = false
 
     /// Picture in Picture started (the full-screen player gets out of the way) / ended.
     var onPiPChanged: (Bool) -> Void = { _ in }
@@ -68,12 +70,25 @@ final class PlayerViewController: UIViewController, @MainActor AVPictureInPictur
     /// Picture in Picture for whatever draws the picture now. The built-in player's layer only exists once it has
     /// loaded, so this runs again when it changes.
     private func setUpPictureInPicture() {
-        guard pip?.isPictureInPictureActive != true else { return }
+        if let pip, pip.isPictureInPictureActive {
+            // The window would keep showing the previous player's layer (a backend switch while in PiP): close it,
+            // and PiP is set up again for the new picture once it has stopped.
+            rebuildPiPAfterStop = true
+            pip.stopPictureInPicture()
+            return
+        }
         pip?.delegate = nil
         pip = engine.backend.makePictureInPicture()
         pip?.canStartPictureInPictureAutomaticallyFromInline = true
         pip?.delegate = self
         chrome.pipSupported = pip != nil
+    }
+
+    /// Closes the Picture in Picture window, if there is one (the playback is being replaced or ended for good).
+    func stopPictureInPicture() {
+        rebuildPiPAfterStop = false
+        guard let pip, pip.isPictureInPictureActive else { return }
+        pip.stopPictureInPicture()
     }
 
     // MARK: Swipe down to close
@@ -121,6 +136,10 @@ final class PlayerViewController: UIViewController, @MainActor AVPictureInPictur
         engine.backend.pictureInPictureChanged(active: false)
         chrome.pipActive = false
         onPiPChanged(false)
+        if rebuildPiPAfterStop {
+            rebuildPiPAfterStop = false
+            setUpPictureInPicture()
+        }
     }
 
     func pictureInPictureController(_ controller: AVPictureInPictureController,

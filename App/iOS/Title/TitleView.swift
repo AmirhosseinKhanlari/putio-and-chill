@@ -10,8 +10,19 @@ struct TitleView: View {
     @Environment(Router.self) private var router
     @Environment(AmbientController.self) private var ambient
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.keyNavTab) private var tab
     @State private var model: TitleModel?
     @State private var scrolledToFocus = false
+    /// Between onAppear and onDisappear (a tab switch fires neither: hidden tabs stay mounted).
+    @State private var isOnScreen = false
+
+    /// The item as it came in, with what TMDB loaded filling in whatever the link that opened the page didn't carry:
+    /// a page opened from a new-episode notification, a widget's Up Next card or Downloads' "Go to Show" arrives
+    /// with only its id, and showed no artwork, name or year.
+    private var shown: CatalogItem {
+        guard let loaded = model?.detail?.item else { return item }
+        return item.filled(from: loaded)
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -26,7 +37,7 @@ struct TitleView: View {
     private var page: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 30) {
-                TitleHeader(item: item, model: model)
+                TitleHeader(item: shown, model: model)
                 if let collection = model?.detail?.collection { CollectionCard(collection: collection) }
                 if item.mediaType == .tv, let model { EpisodeList(model: model) }
                 if let detail = model?.detail, !(detail.cast.isEmpty && detail.crew.isEmpty) {
@@ -48,10 +59,20 @@ struct TitleView: View {
             }
         }
         .onAppear {
-            router.activeTitle = item.tmdbID
-            ambient.focus(item)
+            isOnScreen = true
+            syncActiveTitle()
+            ambient.focus(shown)
         }
-        .onDisappear { if router.activeTitle == item.tmdbID { router.activeTitle = nil } }
+        .onDisappear {
+            isOnScreen = false
+            syncActiveTitle()
+        }
+        .onChange(of: router.tab) { _, _ in syncActiveTitle() }
+        // The page opened with only an id: the glow takes the artwork's colors once TMDB has answered.
+        .onChange(of: model?.detail?.item) { _, loaded in
+            guard loaded != nil, item.backdropPath == nil, item.posterPath == nil else { return }
+            ambient.focus(shown)
+        }
         .task {
             guard model == nil, let catalog = app.catalog else { return }
             let title = TitleModel(item: item, catalog: catalog, library: app.library, transfers: app.transfers, focus: focus,
@@ -60,6 +81,34 @@ struct TitleView: View {
             model = title
             await title.load()
         }
+    }
+
+    /// A ready transfer counts down on this page only while it's the page in view: in the tab that's showing and
+    /// not under another page. Hidden tabs stay mounted, so a tab switch has to be noticed here too, or an unseen
+    /// page would count down and start playback.
+    private func syncActiveTitle() {
+        let active = isOnScreen && (tab == nil || router.tab == tab)
+        if active {
+            router.activeTitle = item.tmdbID
+        } else if router.activeTitle == item.tmdbID {
+            router.activeTitle = nil
+        }
+    }
+}
+
+private extension CatalogItem {
+    /// This item with `loaded`'s values wherever this one has none.
+    func filled(from loaded: CatalogItem) -> CatalogItem {
+        CatalogItem(tmdbID: tmdbID, mediaType: mediaType,
+                    title: title.isEmpty ? loaded.title : title,
+                    overview: overview.isEmpty ? loaded.overview : overview,
+                    posterPath: posterPath ?? loaded.posterPath,
+                    backdropPath: backdropPath ?? loaded.backdropPath,
+                    profilePath: profilePath ?? loaded.profilePath,
+                    year: year ?? loaded.year,
+                    voteAverage: voteAverage ?? loaded.voteAverage,
+                    genreIDs: genreIDs.isEmpty ? loaded.genreIDs : genreIDs,
+                    knownFor: knownFor)
     }
 }
 

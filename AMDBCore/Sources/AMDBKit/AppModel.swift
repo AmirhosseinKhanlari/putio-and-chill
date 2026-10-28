@@ -327,7 +327,7 @@ public final class AppModel {
         }
         positionsCheck = task
         await task.value
-        positionsCheck = nil
+        if positionsCheck == task { positionsCheck = nil }
     }
 
     /// Asks TMDB what comes after each show's just-watched episode, for Continue Watching's Up Next cards (until it
@@ -588,6 +588,9 @@ public final class AppModel {
         if lastTokens[.putio] != tokens.read(.putio) {
             watchLog.use(account: nil)
             lastPositionsCheck = nil
+            // A check still asking the old account about its files would write their positions into the new one's.
+            positionsCheck?.cancel()
+            positionsCheck = nil
         }
         lastTokens = currentTokens()
         putio = tokens.read(.putio).map(factory.makePutio)

@@ -40,13 +40,16 @@ public struct LibrarySnapshot: Codable, Sendable, Equatable {
     public var positions: [Int64: WatchProgress]?
     /// Cards removed from Continue Watching (`LibraryIndex.removeFromContinueWatching`). Absent in older caches.
     public var hiddenCards: [Int64: Int]?
+    /// Files put.io said no longer exist (`LibraryIndex.goneFiles`), so the other devices' list can't bring a deleted
+    /// file back as a resume card at the next launch. Absent in older caches.
+    public var goneFiles: Set<Int64>?
 
     public init(entries: [LibraryEntry], updatedAt: Date, progress: [Int64: Int]? = nil, folders: [PutioFile]? = nil,
                 durations: [Int64: Int]? = nil, watched: [Int64: Date]? = nil, scope: String? = nil,
-                positions: [Int64: WatchProgress]? = nil, hiddenCards: [Int64: Int]? = nil) {
+                positions: [Int64: WatchProgress]? = nil, hiddenCards: [Int64: Int]? = nil, goneFiles: Set<Int64>? = nil) {
         self.entries = entries; self.updatedAt = updatedAt; self.progress = progress; self.folders = folders
         self.durations = durations; self.watched = watched; self.scope = scope; self.positions = positions
-        self.hiddenCards = hiddenCards
+        self.hiddenCards = hiddenCards; self.goneFiles = goneFiles
     }
 
     /// Positions, including those an older build saved (as already sent to put.io: put.io's newer value may replace them).
@@ -139,6 +142,9 @@ public final class LibraryIndex {
     /// Four lookups at a time keeps well under TMDB's rate limit (each file can take two searches).
     private let matchParallelism = 4
     @ObservationIgnored private var currentRefresh: Task<Void, Never>?
+    /// Counts the put.io accounts configured so far. Work started against one (an update, a position check) checks
+    /// it before writing anything: after a sign-out, or another account signing in, what it read is not this account's.
+    @ObservationIgnored private(set) var generation = 0
     /// Resume positions, newest wins (`WatchProgress.merged`); kept in the cache and never dropped by an update.
     var positions: [Int64: WatchProgress] = [:]
     /// Video lengths (seconds) seen by the player, so cards can show how much is left.
@@ -168,13 +174,18 @@ public final class LibraryIndex {
     public func configure(putio: (any PutioService)?, catalog: (any CatalogService)?) {
         let signedOut = self.putio != nil && putio == nil
         self.putio = putio
+        generation += 1
         matcher = catalog.map { LibraryMatcher(catalog: $0) }
         if putio == nil {
+            // An update still walking the old account must not write its files back over the empty library.
+            currentRefresh?.cancel()
+            currentRefresh = nil
             entries = []
             playedOutside = [:]
             positions = [:]
             upNextFound = [:]
             touchedOrder = [:]
+            goneFiles = []
             lastUpdated = nil
             entriesScope = nil
             needsRescan = false
@@ -200,6 +211,7 @@ public final class LibraryIndex {
         for (id, saved) in snapshot.allPositions { positions[id] = WatchProgress.merged(saved, positions[id] ?? saved) }
         for (id, seconds) in snapshot.durations ?? [:] where durations[id] == nil { durations[id] = seconds }
         for (id, mark) in snapshot.hiddenCards ?? [:] where hiddenCards[id] == nil { hiddenCards[id] = mark }
+        goneFiles.formUnion(snapshot.goneFiles ?? [])
     }
 
     /// Whether the library is older than `maxAge` (or was never fetched).
@@ -233,6 +245,9 @@ public final class LibraryIndex {
         guard let putio else { return }
         isRefreshing = true
         defer { isRefreshing = false }
+        // Every wait below can end after a sign-out: nothing read from the old account is written then.
+        let account = generation
+        func stillSignedIn() -> Bool { account == generation }
         // put.io is the truth for files played before this walk; ones played during it are kept (see withPlayed).
         playedOutside = [:]
         let before = Set(entries.map(\.id))
@@ -244,11 +259,13 @@ public final class LibraryIndex {
         do {
             var folders: [PutioFile] = []
             let found = try await Self.walk(putio, scope: scope, maxFolders: maxFolders, parallelism: parallelism) { folders.append($0) }
+            guard stillSignedIn() else { return }
             folderTree = FolderTree(folders: folders)
             entriesScope = scope.signature
             if self.scope.signature == scope.signature { needsRescan = false }
             notePutioList(found.map(\.file), readAt: walkStarted, firstRead: !updatedBefore)
             let state = await store.snapshot
+            guard stillSignedIn() else { return }
             var result = found.map { LibraryEntry(file: $0.file, match: state.matches[$0.file.id], folderName: $0.folder) }
             // Earlier builds saved one file of each finished season pack as "season N" with no episode: complete
             // those from the file name (nothing else saved about them changes).
@@ -262,6 +279,7 @@ public final class LibraryIndex {
             if !repaired.isEmpty {
                 let fixes = repaired
                 await store.update { state in for (id, match) in fixes { state.matches[id] = match } }
+                guard stillSignedIn() else { return }
             }
             // Fix Match choices come first: those files are never looked up.
             overrides = state.matchOverrides
@@ -297,6 +315,7 @@ public final class LibraryIndex {
                 }
                 while next < min(matchParallelism, pending.count) { add() }
                 while let (index, outcome) = await group.next() {
+                    guard stillSignedIn() else { group.cancelAll(); return }
                     let id = result[index].id
                     switch outcome {
                     case let .matched(match):
@@ -315,6 +334,7 @@ public final class LibraryIndex {
                         // TMDB couldn't be reached: not a verdict; the next refresh tries again.
                         break
                     }
+                    guard stillSignedIn() else { group.cancelAll(); return }
                     settled[index] = true
                     done += 1
                     pendingMatches -= 1
@@ -322,6 +342,7 @@ public final class LibraryIndex {
                     if next < pending.count { add() }
                 }
             }
+            guard stillSignedIn() else { pendingMatches = 0; return }
             pendingMatches = 0
             entries = withPlayed(result)
             let now = Date()
@@ -542,7 +563,8 @@ public final class LibraryIndex {
         guard let lastUpdated else { return }
         await cache.save(LibrarySnapshot(entries: entries, updatedAt: lastUpdated, folders: Array(folderTree.folders.values),
                                          durations: durations, scope: entriesScope, positions: positions,
-                                         hiddenCards: hiddenCards.isEmpty ? nil : hiddenCards))
+                                         hiddenCards: hiddenCards.isEmpty ? nil : hiddenCards,
+                                         goneFiles: goneFiles.isEmpty ? nil : goneFiles))
     }
 
     /// Folders that only hold subtitles, samples or artwork: not read (a season pack's "Subs" folder alone can hold

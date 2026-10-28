@@ -93,15 +93,21 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         // subtitles menu works offline too.
         let fileID = entry.id
         Task { await app.cachePutioSubtitles(fileID: fileID) }
+        // Setting up can take a minute (put.io's stream is asked several things); the download can be cancelled
+        // meanwhile, which removes its record. Checked after every wait: a download started for a record that's
+        // gone would write gigabytes nobody could see or delete.
+        let stillWanted = { [app] in app.downloads.record(fileID: fileID) != nil }
         // A video Apple's player can't play (put.io's codec info says so, or the built-in player played it before):
         // the original file, for the built-in player. No conversion.
         if await BuiltInPlayer.plan(fileID: entry.id, app: app).firstStep() == .play(.builtIn) {
+            guard stillWanted() else { return }
             await startOriginal(entry)
             return
         }
         var asset = AVURLAsset(url: putio.hlsURL(fileID: entry.id, subtitles: false))
         let streamable = asset
         let playable = await Self.within(seconds: 20, { try? await streamable.load(.isPlayable) }) ?? false
+        guard stillWanted() else { return }
         // put.io's stream doesn't play: the original file for the built-in player, or (in the Mac app, or with "Convert
         // with put.io") put.io converts it to MP4 first (the button shows how far), then it downloads like any other.
         if !playable, BuiltInPlayer.isAvailable, app.settings.unsupportedVideoPlayer == .builtIn {
@@ -109,6 +115,7 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
             return
         }
         if !playable, await app.conversions.needsConversion(fileID: entry.id) {
+            guard stillWanted() else { return }
             guard await app.conversions.makePlayable(fileID: entry.id) else {
                 await app.downloads.update(fileID: entry.id) {
                     $0.state = .failed(message: "put.io couldn't convert this video for Apple devices.")
@@ -126,6 +133,7 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
             ?? nil {
             configuration.primaryContentConfiguration.mediaSelections = selections
         }
+        guard stillWanted() else { return }
         if app.settings.downloadDataSaver {
             configuration.primaryContentConfiguration.variantQualifiers = [
                 AVAssetVariantQualifier(predicate: NSPredicate(format: "peakBitRate <= 3000000")),
@@ -138,6 +146,11 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         let dataSaver = app.settings.downloadDataSaver
         if let expected = await Self.within(seconds: 20, { await Self.expectedBytes(ready, dataSaver: dataSaver) }) {
             task.countOfBytesClientExpectsToReceive = expected
+        }
+        // Cancelled during the last wait: the task was made but never started.
+        guard stillWanted() else {
+            task.cancel()
+            return
         }
         tasks[entry.id] = task
         observeProgress(task, fileID: entry.id)
@@ -196,13 +209,26 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         tasks[fileID]?.cancel()
         tasks[fileID] = nil
         originals.cancel(fileID: fileID)
+        // Taken before the wait, so the task's own completion (which can land meanwhile) doesn't take it first.
+        let partial = locations.removeValue(forKey: fileID)
         await remove(fileID: fileID)
+        // A cancelled HLS download leaves what it had written; nothing lists it any more, so it goes now.
+        if let partial { discardOrphan(stored: partial) }
     }
 
     /// Deletes the offline copy (the put.io file is untouched).
     func remove(fileID: Int64) async {
         if let url = localURL(fileID: fileID) { try? FileManager.default.removeItem(at: url) }
         await app.downloads.remove(fileID: fileID)
+    }
+
+    /// Deletes a download package no record lists (cancelled while it was set up or written): it would sit there
+    /// unseen, taking space nothing could free.
+    private func discardOrphan(stored: String) {
+        let path = DownloadPaths.resolve(stored: stored, home: NSHomeDirectory())
+        for candidate in [path, "/private" + path] where FileManager.default.fileExists(atPath: candidate) {
+            try? FileManager.default.removeItem(atPath: candidate)
+        }
     }
 
     /// A playable library entry for a download, even when put.io isn't reachable (offline) or the file left put.io.
@@ -262,6 +288,12 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
         guard let id = assetDownloadTask.taskDescription.flatMap(Int64.init) else { return }
         let stored = DownloadPaths.stored(location: location.path, home: NSHomeDirectory())
         MainActor.assumeIsolated {
+            // Cancelled while it was being set up: the record went before the download could be stopped.
+            guard self.app.downloads.record(fileID: id) != nil else {
+                self.locations[id] = nil
+                self.discardOrphan(stored: stored)
+                return
+            }
             self.locations[id] = stored
             _ = Task { await self.app.downloads.update(fileID: id) { $0.state = .done(relativePath: stored) } }
         }
@@ -276,6 +308,11 @@ final class OfflineDownloader: NSObject, AVAssetDownloadDelegate {
             self.progressObservers[id] = nil
             self.reported[id] = nil
             let location = self.locations.removeValue(forKey: id)
+            // No record any more (cancelled while it was being set up): whatever it wrote goes.
+            guard self.app.downloads.record(fileID: id) != nil else {
+                if let location { self.discardOrphan(stored: location) }
+                return
+            }
             if succeeded, let location {
                 // Make sure it's marked done even if didFinishDownloadingTo never came.
                 let isDone = if case .done? = self.app.downloads.record(fileID: id)?.state { true } else { false }

@@ -146,6 +146,67 @@ import Testing
         #expect(await rig.store.snapshot.pending.isEmpty)
     }
 
+    /// A transfer deleted on put.io's site (404) is dropped, here and from what's restored at the next launch,
+    /// instead of being asked about every two seconds forever.
+    @Test func aTransferDeletedOnPutioIsDropped() async throws {
+        let rig = Rig()
+        let tracked = try await rig.monitor.send(makeRelease("a", seeders: 10, name: "x"), target: target)
+        rig.monitor.stop()
+        try await rig.putio.cancelTransfers(ids: [tracked.id])
+        await rig.monitor.pollOnce()
+        #expect(rig.monitor.tracked.isEmpty)
+        #expect(await rig.store.snapshot.pending.isEmpty)
+    }
+
+    /// put.io not answering about a transfer is tried again, but not forever: after `maxFailures` polls in a row
+    /// the tile shows it failed, once.
+    @Test func repeatedPollFailuresMarkItFailed() async throws {
+        let rig = Rig()
+        var events: [TransferEvent] = []
+        rig.monitor.onEvent = { events.append($0) }
+        let tracked = try await rig.monitor.send(makeRelease("a", seeders: 10, name: "x"), target: target)
+        rig.monitor.stop()
+        rig.putio.failingTransfers = [tracked.id]
+        for _ in 0..<(TransferMonitor.maxFailures - 1) { await rig.monitor.pollOnce() }
+        #expect(rig.monitor.tracked.first?.notified == false, "still being followed")
+        #expect(events.isEmpty)
+        await rig.monitor.pollOnce()
+        guard case .failed = rig.monitor.tracked.first?.phase else { Issue.record("expected failed"); return }
+        #expect(events.count == 1)
+        #expect(await rig.store.snapshot.pending.isEmpty)
+        await rig.monitor.pollOnce()
+        #expect(events.count == 1)
+    }
+
+    /// Dismissing a transfer's tile forgets it for the next launch too, so it can't come back from the saved list.
+    @Test func dismissForgetsItForTheNextLaunch() async throws {
+        let rig = Rig()
+        let tracked = try await rig.monitor.send(makeRelease("a", seeders: 10, name: "x"), target: target)
+        rig.monitor.stop()
+        rig.monitor.dismiss(tracked.id)
+        #expect(rig.monitor.tracked.isEmpty)
+        for _ in 0..<200 where await !rig.store.snapshot.pending.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
+        #expect(await rig.store.snapshot.pending.isEmpty)
+        await rig.monitor.restore()
+        rig.monitor.stop()
+        #expect(rig.monitor.tracked.isEmpty)
+    }
+
+    /// Signing out forgets the saved transfers: another account signing in on the device doesn't restore them.
+    @Test func signingOutForgetsPendingTransfers() async throws {
+        let rig = Rig()
+        _ = try await rig.monitor.send(makeRelease("a", seeders: 10, name: "x"), target: target)
+        rig.monitor.stop()
+        rig.monitor.configure(putio: nil, library: nil)
+        #expect(rig.monitor.tracked.isEmpty)
+        for _ in 0..<200 where await !rig.store.snapshot.pending.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
+        #expect(await rig.store.snapshot.pending.isEmpty)
+        rig.monitor.configure(putio: FakePutio(), library: rig.library)
+        await rig.monitor.restore()
+        rig.monitor.stop()
+        #expect(rig.monitor.tracked.isEmpty)
+    }
+
     @Test func untitledTransfersAreNotRecordedInLibrary() async throws {
         let rig = Rig()
         let untitled = TransferTarget(tmdbID: 0, kind: .movie, title: "Some.Release", posterPath: nil, backdropPath: nil,

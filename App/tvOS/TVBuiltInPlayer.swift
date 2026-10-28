@@ -64,6 +64,7 @@ final class TVPlayerHostController: UIViewController {
         child.didMove(toParent: self)
         current = child
         (child as? AVPlayerViewController)?.showsPlaybackControls = !showsUpNext
+        (child as? TVBuiltInPlayerController)?.upNextShowing = showsUpNext
         setNeedsFocusUpdate()
     }
 
@@ -71,19 +72,51 @@ final class TVPlayerHostController: UIViewController {
     func setUpNext(_ state: TVUpNextState?) {
         let wasShowing = showsUpNext
         upNext.state = state
-        guard showsUpNext != wasShowing else { return }
+        guard showsUpNext != wasShowing else {
+            // Still showing: if focus got away from the panel (or never reached it), bring it back.
+            if showsUpNext, !panelHasFocus { requestFocus() }
+            return
+        }
         let showing = showsUpNext
         menuPress.isEnabled = showing
         (current as? AVPlayerViewController)?.showsPlaybackControls = !showing
-        if showing { panel.view.isHidden = false }
+        (current as? TVBuiltInPlayerController)?.upNextShowing = showing
+        if showing {
+            panel.view.isHidden = false
+            // The panel's buttons must exist before focus can move to them: lay the panel out now, then ask.
+            panel.view.layoutIfNeeded()
+        }
         UIView.animate(withDuration: 0.45, delay: 0, options: [.curveEaseInOut, .beginFromCurrentState]) {
             self.current?.view.frame = self.playerFrame
             self.current?.view.layer.cornerRadius = showing ? 22 : 0
         } completion: { _ in
-            if !self.showsUpNext { self.panel.view.isHidden = true }
+            if !self.showsUpNext {
+                self.panel.view.isHidden = true
+                // Back to the player, now that the panel's buttons can't be focused.
+                self.requestFocus()
+            }
         }
+        requestFocus()
+        // SwiftUI may build the buttons only on the next turn of the run loop: ask once more then.
+        Task { @MainActor [weak self] in
+            guard let self, self.showsUpNext == showing else { return }
+            self.requestFocus()
+        }
+    }
+
+    /// The countdown stopped (the app went inactive): Play Next stops filling up until the next state comes.
+    func pauseUpNextCountdown() {
+        upNext.state?.countdownStarted = nil
+    }
+
+    private func requestFocus() {
         setNeedsFocusUpdate()
         updateFocusIfNeeded()
+    }
+
+    private var panelHasFocus: Bool {
+        guard let focused = UIFocusSystem.focusSystem(for: self)?.focusedItem as? UIView else { return false }
+        return focused.isDescendant(of: panel.view)
     }
 
     private var playerFrame: CGRect { showsUpNext ? TVUpNextLayout.videoRect(in: view.bounds) : view.bounds }
@@ -102,9 +135,10 @@ final class TVPlayerHostController: UIViewController {
 }
 
 /// A full-screen view that takes focus while nothing else on the built-in player's screen can, so the remote's
-/// clicks and swipes come to the player.
+/// clicks and swipes come to the player. Not while the next episode shows: the remote is the panel's then.
 private final class RemoteSurface: UIView {
-    override var canBecomeFocused: Bool { true }
+    var focusable = true { didSet { isUserInteractionEnabled = focusable } }
+    override var canBecomeFocused: Bool { focusable }
 }
 
 /// The built-in player on Apple TV, with Siri Remote conventions: click or Play/Pause plays and pauses, left/right
@@ -120,6 +154,15 @@ final class TVBuiltInPlayerController: UIViewController {
     private var panStart: Double = 0
     /// A Menu press that began here (one that began in the panel is the panel's).
     private var menuPressBegan = false
+    /// The next episode shows beside the shrunk picture: the picture takes no focus, clicks or swipes, so an Up
+    /// swipe from Play Next can't land on it and toggle or scrub playback. Focus comes back when the panel hides.
+    var upNextShowing = false {
+        didSet {
+            guard upNextShowing != oldValue else { return }
+            surface.focusable = !upNextShowing
+            setNeedsFocusUpdate()
+        }
+    }
 
     init(engine: PlayerEngine, chrome: TVBuiltInChrome, line: TVSubtitleLine) {
         self.engine = engine

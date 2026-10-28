@@ -33,6 +33,9 @@ struct ResumePrompt: View {
 enum PlayerPresenter {
     /// Presents Apple's player full screen. Its own close button is the only one; dismissal is detected by the coordinator.
     static func present(_ request: PlayerRequest, from seconds: Int, app: AppModel, router: Router, localURL: URL? = nil) {
+        // One video at a time: whatever still plays (in Picture in Picture, say) is closed and its position saved
+        // first, instead of living on unseen next to the new one.
+        PlayerCoordinator.current?.end()
         guard let putio = app.putio, let presenter = topViewController() else {
             router.player = nil
             return
@@ -360,6 +363,17 @@ final class PlayerCoordinator {
         } else {
             giveUp("put.io couldn't convert this video for Apple devices. Try another version of it.")
         }
+    }
+
+    /// Ends this playback now (another video is starting): the Picture in Picture window closes, the position is
+    /// saved, the player is torn down. Closing PiP doesn't bring this player back on screen.
+    func end() {
+        guard !finished else { return }
+        controller.onPiPRestore = { $0(true) }
+        controller.onPiPChanged = { _ in }
+        controller.stopPictureInPicture()
+        if controller.presentingViewController != nil { controller.dismiss(animated: false) }
+        finish()
     }
 
     private func finish() {

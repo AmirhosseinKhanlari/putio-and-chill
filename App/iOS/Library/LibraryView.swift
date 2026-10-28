@@ -139,8 +139,12 @@ private struct LibraryCardView: View {
             .confirmationDialog("Delete from put.io?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
                     Task {
-                        try? await app.library.delete(entries)
-                        await app.storage.refresh()
+                        do {
+                            try await app.library.delete(entries)
+                            await app.storage.refresh()
+                        } catch {
+                            withAnimation { router.toast = "Couldn't delete from put.io. Check your connection and try again." }
+                        }
                     }
                 }
             } message: {
@@ -210,7 +214,7 @@ private struct TransferCard: View {
                 if transfer.notified {
                     Button("Dismiss") { app.transfers.dismiss(transfer.id) }
                 } else {
-                    Button("Cancel transfer", role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } }
+                    Button("Cancel transfer", role: .destructive) { Task { await router.cancelTransfer(transfer.id, app: app) } }
                 }
             } label: { Image(systemName: "ellipsis").frame(width: 28, height: 28) }
         }

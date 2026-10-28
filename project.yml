@@ -132,6 +132,8 @@ targets:
     sources:
       - path: App/Widgets
       - path: App/Shared
+      # The widgets read the App Group's defaults too: the same privacy manifest as the app.
+      - path: App/iOS/PrivacyInfo.xcprivacy
     entitlements:
       path: App/Widgets/AMDBWidgets.entitlements
       properties:
@@ -167,6 +169,8 @@ targets:
       - path: App/SharedUI
       - path: App/TVShared
       - path: App/PlayerCore
+      # The TV app writes the Top Shelf feed to the App Group's defaults: the same privacy manifest as the app.
+      - path: App/iOS/PrivacyInfo.xcprivacy
     dependencies:
       - package: AMDBCore
         product: AMDBCore
@@ -212,6 +216,8 @@ targets:
     sources:
       - path: App/TopShelf
       - path: App/TVShared
+      # Top Shelf reads its feed from the App Group's defaults: the same privacy manifest as the app.
+      - path: App/iOS/PrivacyInfo.xcprivacy
     entitlements:
       path: App/TopShelf/AMDBTopShelf.entitlements
       properties:

@@ -515,6 +515,7 @@ private struct DestinationLevel: View {
     @State private var model: FileBrowserModel?
     @State private var askingName = false
     @State private var name = ""
+    @State private var errorMessage: String?
 
     private var verb: String { request.action == .move ? "Move" : "Copy" }
     private var canPick: Bool { !(request.action == .move && folder.id == request.source) && !request.ids.contains(folder.id) }
@@ -556,8 +557,20 @@ private struct DestinationLevel: View {
         }
         .alert("New Folder", isPresented: $askingName) {
             TextField("Name", text: $name)
-            Button("Create") { let name = name; Task { try? await model?.createFolder(named: name) } }
+            Button("Create") {
+                let name = name
+                Task {
+                    do { try await model?.createFolder(named: name) } catch {
+                        errorMessage = "put.io didn't accept that. Check your connection and try again."
+                    }
+                }
+            }
             Button("Cancel", role: .cancel) {}
+        }
+        .alert("Something went wrong", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
         }
         .task {
             guard model == nil, let putio = app.putio else { return }

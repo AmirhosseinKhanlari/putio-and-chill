@@ -18,6 +18,9 @@
 			<array>
 				<!-- CA92.1: read/write data only accessible to the app itself (settings, onboarding flag). -->
 				<string>CA92.1</string>
+				<!-- 1C8F.1: the App Group's defaults, shared between the app, its widgets and the TV Top Shelf (links
+				     handed over from controls, the Top Shelf feed). -->
+				<string>1C8F.1</string>
 			</array>
 		</dict>
 	</array>

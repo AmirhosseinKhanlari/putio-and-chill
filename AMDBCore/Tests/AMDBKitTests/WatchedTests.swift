@@ -121,6 +121,23 @@ import Testing
         #expect(index.continueWatching.first?.id == 10)
     }
 
+    /// The Gentlemen S2E4 stopped in its credits on another device (49 of 52 minutes in put.io, never marked here):
+    /// opening it for ten seconds on this device leaves it watched, exactly as it would a file marked here.
+    @Test func aPeekAtAnEpisodeStoppedInItsCreditsElsewhereKeepsItWatched() async {
+        let putio = Self.tree()
+        putio.add(PutioFile(id: 16, name: "The.Gentlemen.S02E04.mkv", fileType: "VIDEO", size: 2_000_000_000,
+                            createdAt: "2026-09-04T00:00:00", startFrom: 49 * 60,
+                            videoMetadata: PutioFile.VideoMetadata(duration: 52 * 60)), to: 0)
+        let index = await library(putio: putio)
+        #expect(index.isWatched(fileID: 16))
+        let peek = PlaybackSession(fileID: 16, resumeFrom: 0, putio: putio, library: index)
+        await peek.finish(seconds: 10, duration: 52 * 60)
+        #expect(index.isWatched(fileID: 16), "a peek doesn't un-mark it")
+        #expect(index.resumeSeconds(fileID: 16) == 49 * 60, "the peek isn't saved over put.io's position")
+        #expect(putio.startFromSets.isEmpty, "put.io isn't told either")
+        #expect(!index.continueWatching.contains { $0.id == 16 }, "watched: not a resume card")
+    }
+
     @Test func putiosZeroAfterTheMarkKeepsItWatched() async {
         let index = await library()
         index.noteProgress(fileID: 10, seconds: 0, now: t(0), watched: true)

@@ -83,8 +83,9 @@ public struct PutioClient: Sendable {
 
     public func listFiles(parentID: Int64) async throws -> PutioFileList {
         // video_metadata: each video's length, for the bar and the time left on cards (as put.io's own apps ask).
-        try await get("files/list", query: [("parent_id", String(parentID)), ("per_page", "1000"), ("video_metadata", "1")],
-                      as: PutioFileList.self)
+        let pages: [FilesPage] = try await allPages("files/list", query: [("parent_id", String(parentID)), ("video_metadata", "1")],
+                                                    perPage: 1000)
+        return PutioFileList(parent: pages.first?.parent, files: pages.flatMap(\.files))
     }
 
     public func file(id: Int64) async throws -> PutioFile {
@@ -132,13 +133,15 @@ public struct PutioClient: Sendable {
 
     /// Files and folders anywhere in the account whose name matches.
     public func searchFiles(_ query: String) async throws -> [PutioFile] {
-        try await get("files/search", query: [("query", query), ("per_page", "200")], as: SearchEnvelope.self).files
+        let pages: [SearchPage] = try await allPages("files/search", query: [("query", query)], perPage: 200)
+        return pages.flatMap(\.files)
     }
 
     // MARK: Trash (deleted files stay here until emptied or they expire)
 
     public func trash() async throws -> PutioTrash {
-        try await get("trash/list", query: [("per_page", "1000")], as: PutioTrash.self)
+        let pages: [TrashPage] = try await allPages("trash/list", query: [], perPage: 1000)
+        return PutioTrash(files: pages.flatMap(\.files), trashSize: pages.first?.trashSize)
     }
 
     public func restoreFromTrash(ids: [Int64]) async throws {
@@ -228,6 +231,29 @@ public struct PutioClient: Sendable {
         try await http.decode(T.self, form(path, fields), decoder: .snakeCase)
     }
 
+    /// The most pages one listing follows: a folder with more than that isn't expected, and a cursor put.io never
+    /// closes can't keep the app reading forever.
+    static let maxPages = 20
+
+    /// A listing in full. put.io answers `perPage` items at a time with a cursor for the rest, which comes from
+    /// `<path>/continue`; without the rest, a folder of over a thousand files would be shown short.
+    private func allPages<Page: PutioPage>(_ path: String, query: [(String, String)], perPage: Int) async throws -> [Page] {
+        var pages = [try await get(path, query: query + [("per_page", String(perPage))], as: Page.self)]
+        while let cursor = pages.last?.cursor, !cursor.isEmpty, pages.count < Self.maxPages {
+            pages.append(try await post("\(path)/continue", [("cursor", cursor), ("per_page", String(perPage))], as: Page.self))
+        }
+        return pages
+    }
+
+    /// One page of a listing: what it holds, and the cursor for the next page (nil on the last).
+    protocol PutioPage: Decodable {
+        var cursor: String? { get }
+    }
+
+    struct FilesPage: PutioPage { let parent: PutioFile?; let files: [PutioFile]; let cursor: String? }
+    struct SearchPage: PutioPage { let files: [PutioFile]; let cursor: String? }
+    struct TrashPage: PutioPage { let files: [PutioTrashFile]; let trashSize: Int64?; let cursor: String? }
+
     struct InfoEnvelope: Decodable { let info: PutioAccount }
     struct TransferEnvelope: Decodable { let transfer: PutioTransfer }
     struct TransfersEnvelope: Decodable { let transfers: [PutioTransfer] }
@@ -235,7 +261,6 @@ public struct PutioClient: Sendable {
     struct StartFromEnvelope: Decodable { let startFrom: Int? }
     struct URLEnvelope: Decodable { let url: String }
     struct SubtitlesEnvelope: Decodable { let subtitles: [PutioSubtitle] }
-    struct SearchEnvelope: Decodable { let files: [PutioFile] }
     struct Mp4Envelope: Decodable { let mp4: PutioMp4Status }
     struct MediaInfoEnvelope: Decodable { let file: PutioMediaInfo }
 }

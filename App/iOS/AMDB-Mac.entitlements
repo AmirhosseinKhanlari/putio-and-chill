@@ -6,6 +6,10 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- AirPlay subtitles: the Mac serves a playlist to the TV from a local port (LocalHLSServer); without this the
+	     sandbox refuses the listener and the subtitle quietly never reaches the TV. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.app.amdb</string>

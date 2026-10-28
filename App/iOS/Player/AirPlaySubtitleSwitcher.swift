@@ -50,6 +50,11 @@ final class AirPlaySubtitleSwitcher {
     private var offSeconds = 0
     /// A stream with a subtitle that didn't play: not tried again until the pick changes.
     private var failed: AirPlaySubtitleRoute?
+    /// Watches a subtitle stream once it plays (see startWatchdog).
+    private var watchdog: Task<Void, Never>?
+    private var itemFailureObserver: NSObjectProtocol?
+    /// The subtitle stream's item gave up (failed to play to the end).
+    private var itemFailed = false
     private let server = LocalHLSServer()
     #if DEBUG
     private var legibleLog: LegibleLog?
@@ -64,7 +69,10 @@ final class AirPlaySubtitleSwitcher {
         self.fromDevice = fromDevice
     }
 
-    func tearDown() { server.stop() }
+    func tearDown() {
+        stopWatchdog()
+        server.stop()
+    }
 
     func update() {
         guard let apple = engine.backend as? AVPlayerBackend else {
@@ -100,10 +108,11 @@ final class AirPlaySubtitleSwitcher {
 
     private func switchStream(to route: AirPlaySubtitleRoute, on apple: AVPlayerBackend) async {
         defer { isSwitching = false }
+        stopWatchdog()
         let position = engine.position, playing = engine.isPlaying || engine.status == .loading
         let choice = finder?.choice
         guard let url = await streamURL(for: route, choice: choice, apple: apple), engine.backend === apple else {
-            if route.drawnByReceiver { fail(route) }
+            if route.drawnByReceiver { fail(route, playing: playing) }
             return
         }
         Self.log.notice("file \(self.fileID): AirPlay subtitles \(String(describing: route), privacy: .public)")
@@ -124,12 +133,15 @@ final class AirPlaySubtitleSwitcher {
         }
         guard engine.backend === apple, current == route else { return }
         guard engine.status == .ready else {
-            fail(route)
+            // The user may have paused during the wait; a stream that failed outright can't say, so what was
+            // meant before the switch counts.
+            fail(route, playing: engine.status.isFailed ? playing : engine.isPlaying)
             return
         }
         let selected = await apple.selectStreamSubtitle()
         let name = await apple.selectedStreamSubtitleName()
         Self.log.notice("file \(self.fileID): subtitle rendition selected \(selected) (\(name ?? "none", privacy: .public))")
+        startWatchdog(route: route, on: apple)
         #if DEBUG
         if Self.forcesExternalPlayback {
             debugLog("stream \(url.absoluteString.contains("oauth_token") ? "put.io (token hidden)" : url.absoluteString)")
@@ -175,13 +187,64 @@ final class AirPlaySubtitleSwitcher {
         }
     }
 
+    /// Some AirPlay receivers blank the picture as soon as a subtitle rendition is on and never move again, while the
+    /// player still reports playing. Once the rendition is selected, this watches the stream: if the position doesn't
+    /// move for 8 s of playing (not paused, not buffering, AirPlay still on), or the item gives up, the route counts
+    /// as failed and the plain stream comes back, as when the stream didn't load. A slow receiver that does move
+    /// is left alone: any movement resets the count.
+    private func startWatchdog(route: AirPlaySubtitleRoute, on apple: AVPlayerBackend) {
+        stopWatchdog()
+        if let item = apple.player.currentItem {
+            itemFailureObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification,
+                                                                         object: item, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.itemFailed = true }
+            }
+        }
+        watchdog = Task { [weak self] in
+            var last = self?.engine.position ?? 0
+            var stalled = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled, engine.backend === apple, current == route, !isSwitching else { return }
+                if itemFailed || engine.status.isFailed {
+                    Self.log.notice("file \(self.fileID): subtitle stream failed after selection, back to the plain stream")
+                    fail(route, playing: true)
+                    return
+                }
+                let position = engine.position
+                let moved = abs(position - last) > 0.25
+                last = position
+                let airPlay = engine.isExternalPlayback || Self.forcesExternalPlayback
+                guard airPlay, engine.isPlaying, !engine.isBuffering, !moved else {
+                    stalled = 0
+                    continue
+                }
+                stalled += 1
+                guard stalled >= 8 else { continue }
+                Self.log.notice("file \(self.fileID): receiver stuck at \(String(format: "%.1f", position)) with the subtitle rendition on, back to the plain stream")
+                fail(route, playing: true)
+                return
+            }
+        }
+    }
+
+    private func stopWatchdog() {
+        watchdog?.cancel()
+        watchdog = nil
+        if let itemFailureObserver { NotificationCenter.default.removeObserver(itemFailureObserver) }
+        itemFailureObserver = nil
+        itemFailed = false
+    }
+
     /// The subtitle didn't reach the TV: back to the plain stream, the subtitle stays on this device, and it says so.
-    private func fail(_ route: AirPlaySubtitleRoute) {
+    /// `playing` keeps whether the user had it running or paused.
+    private func fail(_ route: AirPlaySubtitleRoute, playing: Bool) {
+        stopWatchdog()
         failed = route
         current = .unavailable(.failed)
         if let apple = engine.backend as? AVPlayerBackend, let plainStream {
             apple.streamSubtitle = nil
-            apple.replace(with: plainStream, at: engine.position, rate: engine.rate, playing: true)
+            apple.replace(with: plainStream, at: engine.position, rate: engine.rate, playing: playing)
         }
         server.stop()
         publish(.unavailable(.failed), airPlay: true)
@@ -196,6 +259,7 @@ final class AirPlaySubtitleSwitcher {
     }
 
     private func reset() {
+        stopWatchdog()
         backendID = nil
         current = .appDrawn
         server.stop()

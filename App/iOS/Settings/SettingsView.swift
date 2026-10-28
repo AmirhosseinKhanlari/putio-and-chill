@@ -17,6 +17,9 @@ struct SettingsView: View {
     @State private var showChill = false
     @State private var tmdbDraft = ""
     @State private var mdblistDraft = ""
+    /// Why the key just entered wasn't saved, shown under its field (saving used to fail without a word).
+    @State private var tmdbProblem: String?
+    @State private var mdblistProblem: String?
     @State private var subtitlesKeyDraft = ""
     @State private var subtitlesUser = ""
     @State private var subtitlesPassword = ""
@@ -525,11 +528,13 @@ struct SettingsView: View {
                         Button("Save") {
                             Task {
                                 let token = tmdbDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                if (try? await app.validateTMDB(token)) != nil { app.setToken(token, for: .tmdb); tmdbDraft = "" }
+                                tmdbProblem = await Self.keyProblem(service: "TMDB") { try await app.validateTMDB(token) }
+                                if tmdbProblem == nil { app.setToken(token, for: .tmdb); tmdbDraft = "" }
                             }
                         }
                         .disabled(tmdbDraft.isEmpty)
                     }
+                    if let tmdbProblem { Text(tmdbProblem).font(.footnote).foregroundStyle(Theme.poor) }
                 }
             } header: {
                 Text("Catalog")
@@ -548,11 +553,13 @@ struct SettingsView: View {
                         Button("Save") {
                             Task {
                                 let key = mdblistDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                if (try? await app.validateMDBList(key)) != nil { app.setToken(key, for: .mdblist); mdblistDraft = "" }
+                                mdblistProblem = await Self.keyProblem(service: "MDBList") { try await app.validateMDBList(key) }
+                                if mdblistProblem == nil { app.setToken(key, for: .mdblist); mdblistDraft = "" }
                             }
                         }
                         .disabled(mdblistDraft.isEmpty)
                     }
+                    if let mdblistProblem { Text(mdblistProblem).font(.footnote).foregroundStyle(Theme.poor) }
                 }
             } header: {
                 Text("Ratings")
@@ -572,6 +579,21 @@ struct SettingsView: View {
             } footer: {
                 Text("chill's release search and Latest lists.")
             }
+        }
+    }
+}
+
+private extension SettingsView {
+    /// Runs a key check; nil when the key works, else what to tell the user: the key is wrong, or the service
+    /// couldn't be reached (so a good key isn't blamed for a bad connection).
+    static func keyProblem(service: String, _ check: () async throws -> Void) async -> String? {
+        do {
+            try await check()
+            return nil
+        } catch let error as URLError where error.code != .userAuthenticationRequired {
+            return "Couldn't reach \(service). Check your connection and try again."
+        } catch {
+            return "This key didn't work. Check it and try again."
         }
     }
 }

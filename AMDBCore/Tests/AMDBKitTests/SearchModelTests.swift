@@ -35,6 +35,21 @@ import Testing
         #expect(search.releaseQuery == nil)
     }
 
+    /// TMDB unreachable: the spinner stops and the model says why, instead of searching forever.
+    @Test func aFailedSearchStopsTheSpinner() async throws {
+        var offline = Self.catalog
+        offline.failAll = true
+        let search = SearchModel(catalog: offline, store: LocalStore(fileURL: nil), debounce: .zero)
+        search.query = "dune"
+        try await waitUntil { !search.isSearching }
+        #expect(search.results.isEmpty)
+        #expect(search.error == .transport("offline"))
+        // Typing again clears the error.
+        search.query = "dune part two"
+        #expect(search.error == nil)
+        try await waitUntil { !search.isSearching }
+    }
+
     @Test func commitStoresRecentAndBuildsReleaseQuery() async {
         let store = LocalStore(fileURL: nil)
         let search = SearchModel(catalog: Self.catalog, store: store, debounce: .zero)

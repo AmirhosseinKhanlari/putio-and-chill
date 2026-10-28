@@ -55,7 +55,9 @@ final class TVPlaybackCoordinator {
     private let line = TVSubtitleLine()
     private let player: AVPlayer
     private let host = TVPlayerHostController()
-    private weak var controller: AVPlayerViewController?
+    /// Apple's player, kept while the built-in player has the screen (the host drops it as a child then), so it can
+    /// take the screen back with its picture and the "Converting…" card; released when the player closes.
+    private var controller: AVPlayerViewController?
     /// The built-in player, while it plays this video (nil: Apple's player).
     private var builtIn: PlayerEngine?
     private let builtInChrome = TVBuiltInChrome()
@@ -77,6 +79,9 @@ final class TVPlaybackCoordinator {
     private var selectionObserver: NSObjectProtocol?
     private var sleepTimer: SleepTimer?
     private var lastSleepMinute = -1
+    /// The sleep timer paused playback: the pause isn't the end of the episode, and the next episode waits for the
+    /// user (Play Next by hand, no countdown) rather than starting by itself. Cleared once playback goes on.
+    private var stoppedBySleepTimer = false
     /// The episode after this one (from TMDB, wherever playback started): offered when the credits start.
     private var nextUp: NextUp?
     private var creditsDismissed = false
@@ -173,10 +178,16 @@ final class TVPlaybackCoordinator {
             }
             await self.watchApplesPlayer()
         }
-        // Pausing (or reaching the end) saves the position, for put.io and the other devices.
+        // Pausing (or reaching the end) saves the position, for put.io and the other devices. Playing again after
+        // the sleep timer stopped it lets the next episode count down again.
         pauseObservation = player.observe(\.timeControlStatus, options: [.old, .new]) { [weak self] _, change in
-            guard change.oldValue != .paused, change.newValue == .paused else { return }
-            Task { @MainActor in self?.saveProgress() }
+            let paused = change.oldValue != .paused && change.newValue == .paused
+            let playing = change.newValue == .playing
+            guard paused || playing else { return }
+            Task { @MainActor in
+                if paused { self?.saveProgress() }
+                if playing { self?.resumedAfterSleepTimer() }
+            }
         }
         // put.io's tracks, then the saved pick or the preferred language from Settings.
         Task {
@@ -195,9 +206,14 @@ final class TVPlaybackCoordinator {
             }
         }
         // Leaving the app (TV or Home button, the app switcher) doesn't close the player, so save the position now.
+        // The next episode's countdown starts over when the app comes back: the time away mustn't count, or the
+        // first tick back would start the next episode with no countdown seen.
         resignObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification,
                                                                 object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.saveProgress() }
+            MainActor.assumeIsolated {
+                self?.saveProgress()
+                self?.resetCountdown()
+            }
         }
         endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification,
                                                              object: nil, queue: .main) { [weak self] note in
@@ -304,11 +320,16 @@ final class TVPlaybackCoordinator {
         return true
     }
 
-    /// Back to Apple's player (the built-in one failed, or put.io converted the video).
+    /// Back to Apple's player (the built-in one failed, or put.io converted the video), going on from wherever the
+    /// built-in player got to, not from where the video started.
     private func switchToApple(url: URL?) {
+        // Read before the built-in player is torn down: its position is the furthest point reached.
+        let resumeAt = Int(resumePoint)
         builtInTicker?.cancel()
         builtIn?.tearDown()
         builtIn = nil
+        // Kept for the conversion path too: Apple's player starts here once put.io's conversion is done.
+        startSeconds = resumeAt
         host.setUpNext(nil)
         shownActions = []
         if let controller { host.show(controller) }
@@ -319,9 +340,7 @@ final class TVPlaybackCoordinator {
             metadata.value = request.title as NSString
             item.externalMetadata = [metadata]
             player.replaceCurrentItem(with: item)
-            let resumeAt = Double(startSeconds)
-            if resumeAt > 0 { player.seek(to: CMTime(seconds: resumeAt, preferredTimescale: 600)) }
-            player.play()
+            start(at: resumeAt)
             Task { await loadStreamCaptions() }
         }
         rebuildMenus()
@@ -331,6 +350,7 @@ final class TVPlaybackCoordinator {
     private func watchBuiltIn(_ engine: PlayerEngine) async {
         var remembered = false
         var waited = 0
+        var wasPlaying = false
         while !Task.isCancelled, !finished, builtIn === engine {
             try? await Task.sleep(for: .milliseconds(250))
             if engine.status == .ready {
@@ -339,8 +359,13 @@ final class TVPlaybackCoordinator {
                     plan?.succeeded(.builtIn)
                     BuiltInPlayer.log.notice("file \(self.request.entry.id): playing with builtIn (TV)")
                 }
+                // Going from paused to playing (the engine reports the pause a moment after it's asked for, so only
+                // the change counts): the user went on after the sleep timer stopped it.
+                if engine.isPlaying, !wasPlaying { resumedAfterSleepTimer() }
+                wasPlaying = engine.isPlaying
                 tick(engine.position)
-                if engine.duration > 0, engine.position >= engine.duration - 1, !engine.isPlaying, !endHandled {
+                // A pause by the sleep timer in the last second isn't the episode ending.
+                if engine.duration > 0, engine.position >= engine.duration - 1, !engine.isPlaying, !endHandled, !stoppedBySleepTimer {
                     endHandled = true
                     playbackEnded()
                 }
@@ -390,11 +415,13 @@ final class TVPlaybackCoordinator {
 
     private var lastSync = 0.0
 
-    /// Seeks to the starting point and plays. Positions aren't saved until the seek is done (`atStart`).
+    /// Seeks to the starting point and plays. Positions aren't saved until the seek is done (`atStart`): also when
+    /// Apple's player takes over from the built-in one, so the 0 it reports before the seek isn't saved.
     private func start(at seconds: Int) {
         guard !finished else { return }
         startSeconds = seconds
         lastSync = Double(seconds)
+        atStart = false
         if seconds > 0 {
             player.seek(to: CMTime(seconds: Double(seconds), preferredTimescale: 600)) { [weak self] _ in
                 Task { @MainActor in self?.atStart = true }
@@ -442,6 +469,7 @@ final class TVPlaybackCoordinator {
         saveProgress()
         builtIn?.onPause = nil
         builtIn?.tearDown()
+        controller = nil
     }
 
     /// Saves where playback is now (in the library at once, then to put.io), finishing even if the app is leaving.
@@ -457,7 +485,9 @@ final class TVPlaybackCoordinator {
 
     // MARK: Next episode (Netflix-style)
 
-    private var autoplay: Bool { app.settings.autoPlayNextEpisode && sleepTimer?.option != .endOfEpisode }
+    private var autoplay: Bool {
+        app.settings.autoPlayNextEpisode && sleepTimer?.option != .endOfEpisode && !stoppedBySleepTimer
+    }
 
     /// From the start of the credits: "Next Episode · 8" counting down (then it plays), and "Watch Credits".
     /// Not in put.io yet: "Get Next Episode", which fetches it and plays it when ready.
@@ -481,7 +511,11 @@ final class TVPlaybackCoordinator {
         if show {
             if next.isInPutio {
                 var title = "Next Episode"
-                if autoplay {
+                // The countdown only runs while the app is active: ticks still come for a moment after the TV
+                // button, and they mustn't restart it with the clock then running on while the app is away.
+                if autoplay, UIApplication.shared.applicationState != .active {
+                    countdownStarted = nil
+                } else if autoplay {
                     let started = countdownStarted ?? Date()
                     countdownStarted = started
                     let left = Int((NextUp.countdown - Date().timeIntervalSince(started)).rounded(.up))
@@ -516,6 +550,14 @@ final class TVPlaybackCoordinator {
             TVUpNextState(next: next, primary: primary, secondary: secondary,
                           countdownStarted: next.isInPutio && autoplay ? countdownStarted : nil, progress: gettingProgress)
         })
+    }
+
+    /// Play Next stops filling up, and the countdown starts from 8 again at the next offer (also on the panel: the
+    /// next refresh pushes a fresh state even if the title hasn't changed).
+    private func resetCountdown() {
+        countdownStarted = nil
+        shownActions = []
+        host.pauseUpNextCountdown()
     }
 
     private func playNext() {
@@ -571,24 +613,35 @@ final class TVPlaybackCoordinator {
 
     // MARK: Sleep timer
 
-    /// Fades the sound over the last 15 seconds, then pauses.
+    /// Fades the sound over the last 15 seconds, then pauses. The next episode stays offered (in the credits) but
+    /// without its countdown: the user is asleep, or meant to stop here.
     private func applySleepTimer(position: Double) {
         guard let timer = sleepTimer else { return }
         let duration = currentDuration
         let now = Date()
         setVolume(timer.volume(now: now, position: position, duration: duration))
         if timer.shouldStop(now: now, position: position, duration: duration) {
+            stoppedBySleepTimer = true
+            countdownStarted = nil
             pausePlayback()
             setVolume(1)
             sleepTimer = nil
-            host.setUpNext(nil)
-            shownActions = []
+            // Rebuilt without the countdown (this tick's offer was made before the stop).
+            updateNextOffer(at: position)
             rebuildMenus()
             return
         }
         // Refresh "about N min left" in the menu once a minute.
         let minute = Int((timer.remaining(now: now, position: position, duration: duration) ?? 0) / 60)
         if minute != lastSleepMinute { lastSleepMinute = minute; rebuildMenus() }
+    }
+
+    /// Playback went on after the sleep timer stopped it: the next episode may count down and play by itself again.
+    /// Only if it really is playing now: a "playing" change reported just before the stop arrives after it.
+    private func resumedAfterSleepTimer() {
+        guard stoppedBySleepTimer, builtIn?.isPlaying ?? (player.timeControlStatus == .playing) else { return }
+        stoppedBySleepTimer = false
+        countdownStarted = nil
     }
 
     private func sleepMenu() -> TVMenu {

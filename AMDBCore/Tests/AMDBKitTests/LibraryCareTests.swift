@@ -16,6 +16,21 @@ import Testing
         #expect(await store.snapshot.finished.map(\.fileID) == [7])
     }
 
+    /// A movie finished weeks ago that's being watched again isn't finished any more: auto-clean must not delete it
+    /// under the user. Finishing it again puts it back on the list, dated now.
+    @Test func rewatchingAFinishedMovieTakesItOffTheCleanList() async {
+        let store = LocalStore(fileURL: nil)
+        let longAgo = Date().addingTimeInterval(-35 * day)
+        await store.update { $0.finished = [FinishedFile(fileID: 7, at: longAgo), FinishedFile(fileID: 8, at: longAgo)] }
+        let session = PlaybackSession(fileID: 7, resumeFrom: 0, putio: FakePutio(), library: nil, store: store)
+        await session.tick(seconds: 2400, duration: 7200)
+        #expect(await store.snapshot.finished.map(\.fileID) == [8])
+        await session.finish(seconds: 7100, duration: 7200)
+        let finished = await store.snapshot.finished
+        #expect(finished.map(\.fileID) == [8, 7])
+        #expect(finished.last.map { $0.at > longAgo } == true)
+    }
+
     @Test func autoCleanPicksOnlyMoviesFinishedLongEnoughAgo() {
         let now = Date(timeIntervalSince1970: 100 * day)
         func entry(_ id: Int64, _ kind: MediaKind?) -> LibraryEntry {

@@ -34,6 +34,8 @@ enum TVUpNextLayout {
 
 struct TVUpNextPanel: View {
     let model: TVUpNextModel
+    /// The first focus on the panel lands on Play Next, not Watch Credits.
+    @Namespace private var buttons
 
     var body: some View {
         GeometryReader { proxy in
@@ -57,6 +59,7 @@ struct TVUpNextPanel: View {
                             }
                             HStack(spacing: 28) {
                                 PrimaryButton(item: state.primary, countdownStarted: state.countdownStarted, progress: state.progress)
+                                    .prefersDefaultFocus(true, in: buttons)
                                 if let secondary = state.secondary {
                                     Button { secondary.action?() } label: {
                                         Label(secondary.title, systemImage: secondary.symbol ?? "text.append")
@@ -66,6 +69,7 @@ struct TVUpNextPanel: View {
                             }
                             .padding(.top, 18)
                             .focusSection()
+                            .focusScope(buttons)
                         }
                     }
                     .padding(.horizontal, TVUpNextLayout.inset.width)

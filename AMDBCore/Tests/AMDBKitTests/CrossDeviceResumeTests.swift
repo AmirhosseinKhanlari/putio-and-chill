@@ -196,6 +196,34 @@ import Testing
         #expect(tv.library.remainingSeconds(for: first!) == 5160)
     }
 
+    /// A file the iPad played that was deleted from put.io since: the TV learns it's gone (404) and drops its card,
+    /// and remembers that across a relaunch, so the iPad's list can't bring it back at every start.
+    @Test func aFileDeletedOnPutioStaysGoneAfterARelaunch() async {
+        let putio = LibraryIndexTests.tree()
+        let keychain = InMemoryWatchLogStore()
+        let ipad = await cachedDevice(putio, keychain: keychain, name: "iPad")
+        await ipad.syncWatchLog()
+        let session = PlaybackSession(fileID: 99, resumeFrom: 0, putio: putio, library: ipad.library,
+                                      entry: ContinueWatchingTests.outside, watchLog: ipad.watchLog)
+        await session.finish(seconds: 1800, duration: 6960)
+        putio.missingFiles = [99]
+
+        let cache = LibraryCache(fileURL: nil)
+        let tv = device(putio, cache: cache, keychain: keychain, name: "Apple TV")
+        await tv.library.refresh()
+        await tv.refreshContinueWatching()
+        #expect(!tv.library.entries.contains { $0.id == 99 }, "put.io says it's gone")
+        for _ in 0..<200 where await cache.load()?.goneFiles == nil { try? await Task.sleep(for: .milliseconds(10)) }
+
+        let relaunched = device(putio, cache: cache, keychain: keychain, name: "Apple TV")
+        await relaunched.library.loadCached()
+        // The iPad's list still names it: it doesn't come back as a card while put.io is asked about it again.
+        await relaunched.syncWatchLog()
+        #expect(!relaunched.library.entries.contains { $0.id == 99 })
+        await relaunched.refreshContinueWatching()
+        #expect(!relaunched.library.continueWatching.contains { $0.id == 99 })
+    }
+
     @Test func theLogIsPerPutioAccount() async {
         let keychain = InMemoryWatchLogStore()
         let mine = FakePutio()

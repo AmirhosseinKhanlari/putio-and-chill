@@ -12,9 +12,12 @@ extension LibraryIndex {
 
     /// Watched to the end (`Watched`) on any device, and not rewatched since. A position saved elsewhere (another
     /// device, put.io's site) that's already in the last minutes (`Watched.threshold`) counts too, when the video's
-    /// real length is known (the player's, or put.io's).
+    /// real length is known (the player's, or put.io's). Both forms answer the same for a file the library has:
+    /// an episode stopped in its credits on another device is watched whichever way the player asks, so a short
+    /// peek at it here can't un-mark it.
     public func isWatched(fileID: Int64) -> Bool {
-        isWatched(fileID: fileID, seconds: positions[fileID]?.seconds ?? 0, length: durations[fileID])
+        let entry = entries.first { $0.id == fileID }
+        return isWatched(fileID: fileID, seconds: resumeSeconds(fileID: fileID), length: durations[fileID] ?? entry?.file.duration)
     }
 
     public func isWatched(_ entry: LibraryEntry) -> Bool {
@@ -114,6 +117,7 @@ extension LibraryIndex {
     public func checkPositions(_ fileIDs: [Int64], timeout: Duration = positionTimeout, parallelism: Int = 6,
                                now: Date = Date()) async -> [Int64: Int] {
         guard let putio = putioService, !fileIDs.isEmpty else { return [:] }
+        let account = generation
         enum Outcome: Sendable { case position(Int), gone, unknown }
         var read: [Int64: Int] = [:]
         var gone: [Int64] = []
@@ -142,10 +146,14 @@ extension LibraryIndex {
                 if next < fileIDs.count { add() }
             }
         }
+        // The account was signed out (or changed) while put.io was answering: these positions aren't its.
+        guard account == generation else { return [:] }
         for id in gone {
             goneFiles.insert(id)
             dropPlayedOutside(id)
         }
+        // A file put.io no longer has stays forgotten across launches, not just until the app quits.
+        if !gone.isEmpty { await persist() }
         notePutioPositions(read, readAt: now)
         return read
     }

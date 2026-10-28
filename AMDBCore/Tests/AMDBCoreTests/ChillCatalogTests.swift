@@ -9,9 +9,13 @@ import Testing
         var source = "MOVIES_SOURCE_YTS"
         var saves: [String] = []
         var failing: Set<String> = []
+        /// Runs after each save of a movie source (to cancel the request at a chosen moment).
+        var onSave: (@Sendable (String) -> Void)?
 
         func transport() -> StubTransport {
             StubTransport { request in
+                // Like URLSession: a request from a cancelled task fails at once.
+                if Task.isCancelled { throw URLError(.cancelled) }
                 let path = request.url!.path
                 if path.hasSuffix("/GetUserSettings") {
                     let current = self.lock.withLock { self.source }
@@ -23,6 +27,7 @@ import Testing
                     let saved = (settings["catalog"] as! [String: Any])["moviesSource"] as! String
                     #expect(settings["search"] != nil, "the rest of the settings is sent back untouched")
                     self.lock.withLock { self.source = saved; self.saves.append(saved) }
+                    self.lock.withLock { self.onSave }?(saved)
                     return (200, Data("{}".utf8))
                 }
                 if path.hasSuffix("/GetMovies") {
@@ -61,6 +66,19 @@ import Testing
         account.failing = ["MOVIES_SOURCE_TRAKT", "MOVIES_SOURCE_ROTTEN_TOMATOES"]
         let movies = try await ChillCatalogClient(token: "tok", transport: account.transport()).combinedMovies()
         #expect(movies.map(\.title) == ["Dune: Part Two", "Heat"])
+        #expect(account.source == "MOVIES_SOURCE_YTS")
+    }
+
+    /// The screen moves on while the lists are being read (the request is cancelled right after the first source was
+    /// saved): the remaining sources are skipped, and the user's own choice still goes back, once.
+    @Test func restoresTheUsersChoiceWhenCancelledMidway() async throws {
+        let account = Account()
+        let client = ChillCatalogClient(token: "tok", transport: account.transport())
+        // The save runs inside the request's own task: cancelling that is what the screen going away does.
+        account.onSave = { saved in if saved == ChillMerge.movieSources[0] { withUnsafeCurrentTask { $0?.cancel() } } }
+        let request = Task { try await client.combinedMovies() }
+        await #expect(throws: (any Error).self) { try await request.value }
+        #expect(account.saves == [ChillMerge.movieSources[0], "MOVIES_SOURCE_YTS"], "one switch, then the restore")
         #expect(account.source == "MOVIES_SOURCE_YTS")
     }
 

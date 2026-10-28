@@ -25,6 +25,7 @@ private struct FolderLevel: View {
     @State private var failed = false
     @State private var newFolderName = ""
     @State private var askingName = false
+    @State private var createFailed = false
 
     var body: some View {
         List {
@@ -90,6 +91,11 @@ private struct FolderLevel: View {
         } message: {
             Text("Created in \(path.isEmpty ? "your put.io" : path.joined(separator: "/")).")
         }
+        .alert("Couldn't create the folder", isPresented: $createFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("put.io didn't accept that. Check your connection and try again.")
+        }
         .task { await load() }
     }
 
@@ -106,8 +112,13 @@ private struct FolderLevel: View {
     private func create() async {
         let name = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "/", with: "-")
         newFolderName = ""
-        guard !name.isEmpty, let putio = app.putio, let folder = try? await putio.createFolder(name: name, parentID: folderID) else { return }
-        folders = ((folders ?? []) + [folder]).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        guard !name.isEmpty, let putio = app.putio else { return }
+        do {
+            let folder = try await putio.createFolder(name: name, parentID: folderID)
+            folders = ((folders ?? []) + [folder]).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        } catch {
+            createFailed = true
+        }
     }
 }
 

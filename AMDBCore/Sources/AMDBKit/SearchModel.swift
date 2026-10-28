@@ -13,6 +13,8 @@ public final class SearchModel {
     /// More TMDB pages exist for the current query; call `loadMore()` when the grid reaches its end.
     public private(set) var canLoadMore = false
     public private(set) var isLoadingMore = false
+    /// Why the last search brought nothing (TMDB unreachable); nil once a newer query is typed.
+    public private(set) var error: AppError?
 
     @ObservationIgnored private let engine: LiveSearchEngine<CatalogItem>
     @ObservationIgnored private let store: LocalStore
@@ -69,6 +71,7 @@ public final class SearchModel {
     private func schedule() {
         task?.cancel()
         let text = trimmed
+        error = nil
         guard !text.isEmpty else {
             results = []
             isSearching = false
@@ -79,12 +82,19 @@ public final class SearchModel {
         isSearching = true
         let engine = engine
         task = Task {
-            guard let found = try? await engine.results(for: text), !Task.isCancelled else { return }
-            results = found
-            isSearching = false
-            pagedQuery = text
-            nextPage = 2
-            canLoadMore = !found.isEmpty
+            do {
+                guard let found = try await engine.results(for: text), !Task.isCancelled else { return }
+                results = found
+                isSearching = false
+                pagedQuery = text
+                nextPage = 2
+                canLoadMore = !found.isEmpty
+            } catch {
+                // A newer query took over: its own search ends the spinner. Otherwise the spinner would never stop.
+                guard !Task.isCancelled else { return }
+                isSearching = false
+                self.error = error as? AppError ?? .transport(error.localizedDescription)
+            }
         }
     }
 }

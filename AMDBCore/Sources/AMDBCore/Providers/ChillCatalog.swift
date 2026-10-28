@@ -129,9 +129,12 @@ public actor ChillCatalogClient: ChillCatalogService {
         guard var settings = try JSONSerialization.jsonObject(with: original) as? [String: Any] else {
             throw AppError.decoding(service: "chill", detail: "settings")
         }
+        // The user's own choice, ready to send back before anything below changes it.
+        let restoreRequest = request("SaveUserSettings", body: try JSONSerialization.data(withJSONObject: ["settings": settings]))
         var catalog = settings["catalog"] as? [String: Any] ?? [:]
         var lists: [[ChillTitle]] = []
         var failure: (any Error)?
+        var cancelled = false
         for source in ChillMerge.movieSources {
             do {
                 catalog["moviesSource"] = source
@@ -139,14 +142,19 @@ public actor ChillCatalogClient: ChillCatalogService {
                 _ = try await raw("SaveUserSettings", body: JSONSerialization.data(withJSONObject: ["settings": settings]))
                 let response = try await decode(MoviesResponse.self, "GetMovies", body: Data("{}".utf8))
                 lists.append((response.movies ?? []).map { $0.title(source: source) })
+            } catch is CancellationError {
+                // The screen moved on: every further request would fail at once, so stop and put the account back.
+                cancelled = true
+                break
             } catch {
                 failure = error
             }
         }
-        // Always restore what the user had picked on chill.institute (even after a failure above).
-        if let restored = try? JSONSerialization.jsonObject(with: original) as? [String: Any] {
-            _ = try? await raw("SaveUserSettings", body: JSONSerialization.data(withJSONObject: ["settings": restored]))
-        }
+        // Always restore what the user had picked on chill.institute (even after a failure above, and even when
+        // this request was cancelled: the restore runs in a task of its own, which cancelling can't reach).
+        let restore = Task.detached { [http] in _ = try? await http.data(restoreRequest) }
+        await restore.value
+        if cancelled { throw CancellationError() }
         if lists.allSatisfy(\.isEmpty), let failure { throw failure }
         return ChillMerge.combine(lists)
     }

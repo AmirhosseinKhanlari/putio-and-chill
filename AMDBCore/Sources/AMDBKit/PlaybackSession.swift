@@ -25,6 +25,8 @@ public final class PlaybackSession {
     private var latestSave: Date?
     /// The user moved on (Next Episode, its countdown): watched wherever playback stopped.
     private var markedWatched = false
+    /// This play already took the file off the finished list (done once, not at every save).
+    private var unfinished = false
 
     public init(fileID: Int64, resumeFrom: Int, putio: any PutioService, library: LibraryIndex?,
                 store: LocalStore? = nil, saveEvery: Int = 10, entry: LibraryEntry? = nil, watchLog: WatchLogSync? = nil,
@@ -75,10 +77,16 @@ public final class PlaybackSession {
         if duration.isFinite, duration > 0 { library?.noteDuration(fileID: fileID, seconds: Int(duration)) }
         if let entry, value >= 30 || watchedToEnd { library?.notePlayed(entry) }
         library?.noteProgress(fileID: fileID, seconds: value, now: at, watched: watchedToEnd)
-        if watchedToEnd, let store {
+        if let store {
             let id = fileID
-            await store.update { state in
-                if !state.finished.contains(where: { $0.fileID == id }) { state.finished.append(FinishedFile(fileID: id, at: Date())) }
+            if watchedToEnd {
+                await store.update { state in
+                    if !state.finished.contains(where: { $0.fileID == id }) { state.finished.append(FinishedFile(fileID: id, at: Date())) }
+                }
+            } else if value >= Watched.rewatchSeconds, !unfinished {
+                // Being watched again: no longer a finished movie that auto-clean may delete from under the user.
+                unfinished = true
+                await store.update { state in state.finished.removeAll { $0.fileID == id } }
             }
         }
         if checkpoint || (watchedToEnd && !loggedEnd) {

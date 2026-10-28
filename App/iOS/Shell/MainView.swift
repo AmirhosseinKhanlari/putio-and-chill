@@ -10,6 +10,9 @@ struct MainView: View {
     @State private var visited: Set<AppTab> = [.home]
     @State private var cleanupReview: [LibraryEntry]?
     @State private var liveActivities = LiveActivityManager()
+    /// The saved library and the tracked transfers have been read: a play link can be looked up. Before that (a
+    /// widget tap that cold-launches the app) the link waits for them instead of being dropped.
+    @State private var linksResolvable = false
 
     var body: some View {
         @Bindable var router = router
@@ -72,6 +75,9 @@ struct MainView: View {
             #endif
             openPendingLink()
             await app.transfers.restore()
+            // A play link that arrived before the library and transfers were read is tried again now.
+            linksResolvable = true
+            openPendingLink()
             // Before the library update, so it reads the merged folders.
             await mergeOldFolders()
             await app.refreshLibraryIfDue()
@@ -165,6 +171,9 @@ struct MainView: View {
                 router.play(entry, resumeFrom: app.library.resumeSeconds(for: entry))
             } else if let transfer = app.transfers.tracked.first(where: { $0.playableFile?.id == fileID }) {
                 router.play(transfer)
+            } else if !linksResolvable {
+                // Not known yet because nothing has been read: it waits for the library (see the first task).
+                PendingLink.set(DeepLink.play(fileID: fileID).url.absoluteString)
             }
         case let .title(tmdbID, kind)?:
             router.tab = .home

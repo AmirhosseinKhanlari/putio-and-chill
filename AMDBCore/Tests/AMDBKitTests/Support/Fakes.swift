@@ -46,7 +46,11 @@ final class FakePutio: PutioService, @unchecked Sendable {
         }
     }
 
+    /// Transfers put.io can't be asked about right now (a server error, not a missing transfer).
+    var failingTransfers: Set<Int64> = []
+
     func transfer(id: Int64) async throws -> PutioTransfer {
+        if lock.withLock({ failingTransfers.contains(id) }) { throw AppError.http(service: "putio", status: 503) }
         guard let transfer = lock.withLock({ transfersByID[id] }) else { throw AppError.http(service: "putio", status: 404) }
         return transfer
     }
@@ -55,8 +59,13 @@ final class FakePutio: PutioService, @unchecked Sendable {
     func cancelTransfers(ids: [Int64]) async throws { lock.withLock { ids.forEach { transfersByID[$0] = nil } } }
     func retryTransfer(id: Int64) async throws -> PutioTransfer { try await transfer(id: id) }
 
+    /// Folder listings that take this long (to sign out while an update is still reading put.io).
+    var listDelay: Duration = .zero
+
     func listFiles(parentID: Int64) async throws -> PutioFileList {
-        try lock.withLock {
+        let delay = lock.withLock { listDelay }
+        if delay > .zero { try await Task.sleep(for: delay) }
+        return try lock.withLock {
             listCalls += 1
             // Like put.io: a deleted folder can't be listed.
             if deletedFolders.contains(parentID) { throw AppError.http(service: "putio", status: 404) }

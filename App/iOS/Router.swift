@@ -72,7 +72,9 @@ struct PlayerRequest: Identifiable {
     var source: PlaybackSource = .automatic
     /// Start exactly at `resumeFrom` (Start Over, demo screens), whatever position put.io has.
     var exactStart = false
-    var id: Int64 { file.id }
+    /// One per request, not the file's id: playing the same file again (Start Over, a widget tap while it's in
+    /// Picture in Picture, a second tap just after closing) has to count as a new request to start at all.
+    let id = UUID()
 
     var subtitleContext: SubtitleContext {
         SubtitleContext(fileID: file.id, fileName: file.name, title: played?.title ?? title, tmdbID: played?.tmdbID,
@@ -131,6 +133,9 @@ final class Router {
         if case let .title(current)? = path(of: tab).last, current.tmdbID == item.tmdbID, current.mediaType == item.mediaType { return }
         push(.title(item))
     }
+
+    /// Nothing is pushed over `tab`'s first page.
+    func isAtRoot(_ tab: AppTab) -> Bool { path(of: tab).isEmpty }
 
     private func path(of tab: AppTab) -> [Route] {
         switch tab {

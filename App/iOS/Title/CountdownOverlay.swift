@@ -4,6 +4,7 @@ import SwiftUI
 struct CountdownOverlay: View {
     let transfer: TrackedTransfer
     @Environment(Router.self) private var router
+    @Environment(\.keyNavTab) private var tab
     @State private var remaining = 5
 
     var body: some View {
@@ -30,6 +31,9 @@ struct CountdownOverlay: View {
             while remaining > 0 {
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled, router.countdown?.id == transfer.id else { return }
+                // Hidden tabs stay mounted: the count waits while another tab is showing, so playback never starts
+                // from a page (and a Cancel button) nobody can see.
+                if let tab, router.tab != tab { continue }
                 remaining -= 1
             }
             start()

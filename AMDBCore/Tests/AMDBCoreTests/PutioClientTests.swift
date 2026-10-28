@@ -41,6 +41,53 @@ import Testing
 
     /// put.io's documented calls (as its official SDK uses them): GET and POST files/{id}/start-from, and
     /// POST files/{id}/start-from/delete to reset.
+    /// put.io lists a thousand files at a time and hands out a cursor for the rest: a big folder is read whole, the
+    /// rest fetched from `files/list/continue` with that cursor.
+    @Test func listFilesFollowsTheCursor() async throws {
+        let stub = StubTransport { request in
+            if request.url!.path.hasSuffix("/continue") {
+                return (200, Data(#"{"status":"OK","files":[{"id":2,"name":"b.mkv","file_type":"VIDEO"}],"cursor":null}"#.utf8))
+            }
+            return (200, Data(#"{"status":"OK","parent":{"id":0,"name":"Your Files","file_type":"FOLDER"},"files":[{"id":1,"name":"a.mkv","file_type":"VIDEO"}],"cursor":"abc"}"#.utf8))
+        }
+        let list = try await PutioClient(token: "T", transport: stub).listFiles(parentID: 0)
+        #expect(list.files.map(\.id) == [1, 2])
+        #expect(list.parent?.name == "Your Files")
+        #expect(stub.requests.count == 2)
+        let next = stub.requests[1]
+        #expect(next.httpMethod == "POST")
+        #expect(next.url?.path == "/v2/files/list/continue")
+        #expect(next.bodyString == "cursor=abc&per_page=1000")
+        #expect(next.value(forHTTPHeaderField: "Authorization") == "token T")
+    }
+
+    @Test func searchAndTrashFollowTheCursorToo() async throws {
+        let stub = StubTransport { request in
+            let path = request.url!.path
+            if path.hasSuffix("/files/search/continue") { return (200, Data(#"{"files":[{"id":2,"name":"Heat.mkv"}],"cursor":null}"#.utf8)) }
+            if path.hasSuffix("/files/search") { return (200, Data(#"{"files":[{"id":1,"name":"Heat.mkv"}],"cursor":"s1"}"#.utf8)) }
+            if path.hasSuffix("/trash/list/continue") { return (200, Data(#"{"files":[{"id":9,"name":"Two.mkv"}],"cursor":null}"#.utf8)) }
+            if path.hasSuffix("/trash/list") { return (200, Data(#"{"trash_size":2000,"files":[{"id":8,"name":"One.mkv"}],"cursor":"t1"}"#.utf8)) }
+            return (404, Data())
+        }
+        let client = PutioClient(token: "T", transport: stub)
+        #expect(try await client.searchFiles("heat").map(\.id) == [1, 2])
+        let trash = try await client.trash()
+        #expect(trash.files.map(\.id) == [8, 9])
+        #expect(trash.trashSize == 2000)
+        #expect(stub.requests[1].bodyString == "cursor=s1&per_page=200")
+        #expect(stub.requests[3].url?.path == "/v2/trash/list/continue")
+        #expect(stub.requests[3].bodyString == "cursor=t1&per_page=1000")
+    }
+
+    /// A cursor that never closes (put.io misbehaving) stops at the cap instead of reading forever.
+    @Test func cursorPagingIsCapped() async throws {
+        let stub = StubTransport(json: #"{"files":[{"id":1,"name":"a.mkv"}],"cursor":"again"}"#)
+        let list = try await PutioClient(token: "T", transport: stub).listFiles(parentID: 0)
+        #expect(list.files.count == PutioClient.maxPages)
+        #expect(stub.requests.count == PutioClient.maxPages)
+    }
+
     @Test func startFromRoundTrip() async throws {
         let stub = StubTransport { request in
             request.httpMethod == "GET" ? (200, Data(#"{"status":"OK","start_from":4360}"#.utf8)) : (200, Data(#"{"status":"OK"}"#.utf8))

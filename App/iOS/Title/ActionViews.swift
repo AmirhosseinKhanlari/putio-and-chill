@@ -110,6 +110,7 @@ struct DownloadStatus: View {
     /// Just the ring, for tight rows (the episode list).
     var ringOnly = false
     @Environment(AppModel.self) private var app
+    @Environment(Router.self) private var router
 
     var body: some View {
         HStack(spacing: 14) {
@@ -125,7 +126,7 @@ struct DownloadStatus: View {
                     Text(headline).font(large ? .headline : .caption.weight(.semibold)).lineLimit(1).fixedSize(horizontal: large, vertical: false)
                     Text(details).font(.caption).foregroundStyle(.white.opacity(0.65)).lineLimit(2)
                     if large {
-                        Button("Cancel", role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } }
+                        Button("Cancel", role: .destructive) { Task { await router.cancelTransfer(transfer.id, app: app) } }
                             .font(.caption.weight(.semibold)).padding(.top, 2)
                     }
                 }
@@ -204,7 +205,7 @@ struct EpisodeActionButton: View {
             case .get:
                 Button { Task { await get() } } label: { Label("Get Episode", systemImage: "icloud.and.arrow.down") }
             case let .downloading(transfer):
-                Button(role: .destructive) { Task { try? await app.transfers.cancel(transfer.id) } } label: {
+                Button(role: .destructive) { Task { await router.cancelTransfer(transfer.id, app: app) } } label: {
                     Label("Cancel Download", systemImage: "xmark")
                 }
             case .failed:
@@ -331,5 +332,17 @@ private struct PlaySourceMenu: ViewModifier {
 extension View {
     func playSourceMenu(entry: LibraryEntry, resumeFrom: Int, next: NextEpisode? = nil) -> some View {
         modifier(PlaySourceMenu(entry: entry, resumeFrom: resumeFrom, next: next))
+    }
+}
+
+extension Router {
+    /// Cancels a transfer at put.io; when put.io didn't take it, the transfer stays and the toast says so (it used
+    /// to fail without a word, and the ring kept turning).
+    func cancelTransfer(_ id: Int64, app: AppModel) async {
+        do {
+            try await app.transfers.cancel(id)
+        } catch {
+            withAnimation { toast = "Couldn't cancel this transfer. Check your connection and try again." }
+        }
     }
 }

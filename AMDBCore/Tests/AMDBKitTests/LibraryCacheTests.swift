@@ -59,6 +59,61 @@ import Testing
         #expect(await cache.load() == nil)
     }
 
+    /// Signing out while an update is still reading put.io: the update's files, positions and date never land, and
+    /// nothing is written to the cache file another account would see at its first launch.
+    @Test func signingOutDuringAnUpdateLeavesTheLibraryEmpty() async throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: "library-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let putio = LibraryIndexTests.tree()
+        putio.listDelay = .milliseconds(300)
+        let cache = LibraryCache(fileURL: file)
+        let library = index(putio, cache: cache)
+        let refresh = Task { await library.refresh() }
+        for _ in 0..<100 where !library.isRefreshing { try? await Task.sleep(for: .milliseconds(5)) }
+        library.configure(putio: nil, catalog: nil)
+        await refresh.value
+        #expect(library.entries.isEmpty)
+        #expect(library.lastUpdated == nil)
+        #expect(!library.isRefreshing)
+        for _ in 0..<200 where await cache.load() != nil { try? await Task.sleep(for: .milliseconds(10)) }
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(await cache.load() == nil)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+    }
+
+    /// The same when put.io was already read and the update is matching files to TMDB when the user signs out.
+    @Test func signingOutDuringMatchingLeavesTheLibraryEmpty() async {
+        var slow = LibraryIndexTests.catalog
+        slow.searchDelay = .milliseconds(300)
+        let cache = LibraryCache(fileURL: nil)
+        let library = LibraryIndex(store: LocalStore(fileURL: nil), cache: cache)
+        library.configure(putio: LibraryIndexTests.tree(), catalog: slow)
+        let refresh = Task { await library.refresh() }
+        for _ in 0..<100 where library.pendingMatches == 0 { try? await Task.sleep(for: .milliseconds(5)) }
+        library.configure(putio: nil, catalog: nil)
+        await refresh.value
+        #expect(library.entries.isEmpty)
+        #expect(library.lastUpdated == nil)
+        #expect(library.pendingMatches == 0)
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(await cache.load() == nil)
+    }
+
+    /// A position check that put.io answers after the sign-out says nothing about the next account.
+    @Test func aPositionCheckEndingAfterSignOutIsDropped() async {
+        let putio = LibraryIndexTests.tree()
+        let library = index(putio, cache: LibraryCache(fileURL: nil))
+        await library.refresh()
+        putio.setPosition(2000, fileID: 11)
+        putio.startFromDelay = .milliseconds(200)
+        let check = Task { await library.checkPositions([11]) }
+        try? await Task.sleep(for: .milliseconds(50))
+        library.configure(putio: nil, catalog: nil)
+        #expect(await check.value.isEmpty)
+        #expect(library.positions.isEmpty)
+        #expect(library.resumeSeconds(fileID: 11) == 0)
+    }
+
     @Test func autoUpdatePolicy() async {
         let putio = LibraryIndexTests.tree()
         let catalog = LibraryIndexTests.catalog

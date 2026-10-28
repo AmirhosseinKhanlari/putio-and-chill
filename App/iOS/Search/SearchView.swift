@@ -140,6 +140,15 @@ private struct SearchContent: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .onAppear { focused = true }
+        // Hidden tabs stay mounted: leaving Search puts the keyboard away (it stayed up over the next tab on iPhone,
+        // and kept the arrow keys from navigating on a Mac); coming back puts the cursor in the field again.
+        .onChange(of: router.tab) { _, tab in
+            if tab != .search {
+                focused = false
+            } else if router.searchPath.isEmpty {
+                focused = true
+            }
+        }
         .onChange(of: model.query) { _, _ in askResults = nil; askFailed = false }
     }
 

@@ -55,7 +55,14 @@ final class PlayerEngine {
     /// The picture's layer changed within the same player (the built-in one moved to its software path).
     @ObservationIgnored var onPictureSourceChanged: (() -> Void)?
     @ObservationIgnored private var nowPlayingTitle: String?
-    @ObservationIgnored private var commandsRegistered = false
+    /// This engine's own handlers on the shared remote commands, so tearing down removes only these. Two engines
+    /// overlap for a moment on Next Episode (the new one starts before the old one's loop notices it closed) and
+    /// whenever a trailer closes over a video in Picture in Picture; wiping every target then left the lock screen,
+    /// Control Center and AirPods controls dead for the video still playing.
+    @ObservationIgnored private var commandTargets: [(command: MPRemoteCommand, target: Any)] = []
+    /// The engine whose video the lock screen shows: the newest one to enable Now Playing. Only it writes the
+    /// Now Playing info, and only it clears it when it goes away.
+    @ObservationIgnored private static weak var nowPlayingOwner: PlayerEngine?
 
     init(backend: any PlayerBackend) {
         self.backend = backend
@@ -67,13 +74,12 @@ final class PlayerEngine {
 
     func tearDown() {
         backend.tearDown()
-        let center = MPRemoteCommandCenter.shared()
-        for command in [center.playCommand, center.pauseCommand, center.togglePlayPauseCommand, center.skipForwardCommand,
-                        center.skipBackwardCommand, center.changePlaybackPositionCommand] {
-            command.removeTarget(nil)
+        for (command, target) in commandTargets { command.removeTarget(target) }
+        commandTargets = []
+        if Self.nowPlayingOwner === self {
+            Self.nowPlayingOwner = nil
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         }
-        commandsRegistered = false
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
     // MARK: Controls
@@ -149,29 +155,43 @@ final class PlayerEngine {
 
     // MARK: Now Playing
 
+    /// Lock Screen / Control Center show this engine's video from now on, until another engine takes over or this
+    /// one is torn down.
     func enableNowPlaying(title: String) {
         nowPlayingTitle = title
-        if !commandsRegistered {
-            commandsRegistered = true
+        Self.nowPlayingOwner = self
+        if commandTargets.isEmpty {
             let center = MPRemoteCommandCenter.shared()
-            center.playCommand.addTarget { [weak self] _ in MainActor.assumeIsolated { self?.play() }; return .success }
-            center.pauseCommand.addTarget { [weak self] _ in MainActor.assumeIsolated { self?.pause() }; return .success }
-            center.togglePlayPauseCommand.addTarget { [weak self] _ in MainActor.assumeIsolated { self?.togglePlay() }; return .success }
             center.skipForwardCommand.preferredIntervals = [10]
             center.skipBackwardCommand.preferredIntervals = [10]
-            center.skipForwardCommand.addTarget { [weak self] _ in MainActor.assumeIsolated { self?.skip(by: 10) }; return .success }
-            center.skipBackwardCommand.addTarget { [weak self] _ in MainActor.assumeIsolated { self?.skip(by: -10) }; return .success }
-            center.changePlaybackPositionCommand.addTarget { [weak self] event in
-                guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-                MainActor.assumeIsolated { self?.seek(to: event.positionTime) }
-                return .success
-            }
+            commandTargets = [
+                (center.playCommand, center.playCommand.addTarget { [weak self] _ in MainActor.assumeIsolated { self?.play() }; return .success }),
+                (center.pauseCommand, center.pauseCommand.addTarget { [weak self] _ in MainActor.assumeIsolated { self?.pause() }; return .success }),
+                (center.togglePlayPauseCommand, center.togglePlayPauseCommand.addTarget { [weak self] _ in
+                    MainActor.assumeIsolated { self?.togglePlay() }
+                    return .success
+                }),
+                (center.skipForwardCommand, center.skipForwardCommand.addTarget { [weak self] _ in
+                    MainActor.assumeIsolated { self?.skip(by: 10) }
+                    return .success
+                }),
+                (center.skipBackwardCommand, center.skipBackwardCommand.addTarget { [weak self] _ in
+                    MainActor.assumeIsolated { self?.skip(by: -10) }
+                    return .success
+                }),
+                (center.changePlaybackPositionCommand, center.changePlaybackPositionCommand.addTarget { [weak self] event in
+                    guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+                    MainActor.assumeIsolated { self?.seek(to: event.positionTime) }
+                    return .success
+                }),
+            ]
         }
         updateNowPlaying()
     }
 
     private func updateNowPlaying() {
-        guard let nowPlayingTitle else { return }
+        // An engine on its way out (the previous episode, a trailer) never overwrites the current video's info.
+        guard let nowPlayingTitle, Self.nowPlayingOwner === self else { return }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = [
             MPMediaItemPropertyTitle: nowPlayingTitle,
             MPMediaItemPropertyPlaybackDuration: duration,
