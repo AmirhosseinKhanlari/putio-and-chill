@@ -1,0 +1,31 @@
+Build 37
+
+Fixes from a full review of the app.
+
+Apple TV
+• If the built-in player gives up on a video, Apple's player takes over with a picture again (it used to play sound over a black screen) and goes on from where it was.
+• A sleep timer set to "end of episode" no longer starts the next episode anyway; it waits for you.
+• The Next Episode countdown starts over when you come back to the app instead of jumping straight to the next episode.
+• With the Up Next screen showing, swiping up no longer lands on the small video.
+
+Watching
+• Opening an episode you finished on another device for a few seconds no longer un-marks it or drops it from Continue Watching.
+• Signing out during an "Updating…" no longer brings the old account's library back.
+• A file deleted on put.io no longer reappears in Continue Watching at every launch.
+• Lock screen and Control Center controls keep working after Next Episode, and after closing a trailer while a video is in Picture in Picture.
+• Starting another video while one is in Picture in Picture closes the first one instead of playing both.
+• AirPlay: if the TV goes black after a subtitle is turned on, the app now notices and goes back to the subtitle-free stream by itself (about 8 seconds).
+
+iPhone, iPad and Mac
+• Cancelling a download right after starting it no longer leaves a hidden download on your device.
+• Title pages opened from a notification, widget or Downloads show their artwork, name and year.
+• Deleting from put.io, cancelling a transfer, creating a folder and checking a key now tell you when they fail.
+• The keyboard goes away when you leave Search; the colored glow no longer changes under other tabs.
+• Tapping a widget when the app isn't running now plays the video.
+• Mac: AirPlay subtitles work (the app wasn't allowed to serve them before).
+
+put.io
+• Folders with more than 1,000 files are shown in full.
+• A transfer deleted on put.io's site is removed instead of being checked forever.
+
+Please try: on Apple TV, let an episode run out with a sleep timer set to "end of episode"; on iPhone, tap Next Episode and then check the lock-screen controls; on the onn TV, turn a subtitle on over AirPlay and see whether the picture comes back on its own.
