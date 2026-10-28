@@ -1,0 +1,7 @@
+Build 39
+
+Apple TV
+• Featured slides at the top of Home, Movies and TV Shows: on the dots, swiping or clicking left now only goes to the previous slide; it no longer opens the side menu as well. Only a swipe left from the first dot opens the menu, like any row. Back opens the menu.
+• Moving down onto the dots keeps the slide that's showing.
+
+Please try: move down to the dots, swipe left and right through all the slides, then swipe left past the first one and press Back.
