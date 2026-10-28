@@ -1,6 +1,7 @@
 import AMDBCore
 import AMDBKit
 import SwiftUI
+import UIKit
 
 /// Home: a featured title on full-screen art, then what you're watching, Surprise Me, My List, trending,
 /// new in put.io, and catalog rows.
@@ -215,7 +216,7 @@ struct TVHeroCarousel: View {
     let items: [CatalogItem]
     @State private var index = 0
     @State private var focusInside = false
-    @FocusState private var pagerFocused: Bool
+    @State private var pagerFocused = false
 
     var body: some View {
         if items.indices.contains(index) {
@@ -252,27 +253,97 @@ struct TVHeroCarousel: View {
             .scaleEffect(pagerFocused ? 1.08 : 1, anchor: .leading)
             .animation(.snappy, value: index)
             .animation(.easeOut(duration: 0.18), value: pagerFocused)
-            .focusable()
-            .focused($pagerFocused)
-            .onMoveCommand { direction in
-                switch direction {
-                case .left: withAnimation(.easeInOut(duration: 0.45)) { index = (index - 1 + items.count) % items.count }
-                case .right: withAnimation(.easeInOut(duration: 0.45)) { index = (index + 1) % items.count }
-                default: break
-                }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Featured \(index + 1) of \(items.count)")
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment: index = (index + 1) % items.count
-                case .decrement: index = (index - 1 + items.count) % items.count
-                @unknown default: break
-                }
-            }
+            .accessibilityHidden(true)
             // The whole width catches focus moving down from any button.
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                TVPagerRemote(label: "Featured \(index + 1) of \(items.count)", focused: $pagerFocused) { step in
+                    withAnimation(.easeInOut(duration: 0.45)) { index = (index + step + items.count) % items.count }
+                }
+            }
             .focusSection()
         }
+    }
+}
+
+/// Takes focus for the carousel's dots and turns the remote's left and right (swipes and clicks) into slides.
+/// SwiftUI's move commands only come when focus has nowhere to go, and the sidebar is to the left, so a swipe
+/// left used to open the sidebar instead. Focus stays here sideways; Back still opens the sidebar.
+private struct TVPagerRemote: UIViewRepresentable {
+    let label: String
+    @Binding var focused: Bool
+    let step: (Int) -> Void
+
+    func makeUIView(context: Context) -> TVPagerRemoteView {
+        let view = TVPagerRemoteView()
+        for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
+            let swipe = UISwipeGestureRecognizer(target: view, action: #selector(TVPagerRemoteView.swiped(_:)))
+            swipe.direction = direction
+            swipe.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
+            view.addGestureRecognizer(swipe)
+        }
+        return view
+    }
+
+    func updateUIView(_ view: TVPagerRemoteView, context: Context) {
+        view.accessibilityLabel = label
+        view.step = step
+        let focused = $focused
+        view.onFocus = { focused.wrappedValue = $0 }
+    }
+}
+
+final class TVPagerRemoteView: UIView {
+    var step: (Int) -> Void = { _ in }
+    var onFocus: (Bool) -> Void = { _ in }
+    /// One swipe can reach here twice (the swipe itself and the focus move it tried), so a repeat this soon is dropped.
+    private var lastMove: (step: Int, at: TimeInterval)?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isAccessibilityElement = true
+        accessibilityTraits = .adjustable
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var canBecomeFocused: Bool { true }
+
+    /// Left and right are the slides', not a way out to the sidebar.
+    override func shouldUpdateFocus(in context: UIFocusUpdateContext) -> Bool {
+        if context.previouslyFocusedItem === self {
+            if context.focusHeading.contains(.left) { move(-1); return false }
+            if context.focusHeading.contains(.right) { move(1); return false }
+        }
+        return super.shouldUpdateFocus(in: context)
+    }
+
+    override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
+        super.didUpdateFocus(in: context, with: coordinator)
+        onFocus(isFocused)
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        switch presses.first?.type {
+        case .leftArrow where isFocused: move(-1)
+        case .rightArrow where isFocused: move(1)
+        default: super.pressesBegan(presses, with: event)
+        }
+    }
+
+    @objc func swiped(_ swipe: UISwipeGestureRecognizer) {
+        guard isFocused else { return }
+        move(swipe.direction == .left ? -1 : 1)
+    }
+
+    override func accessibilityIncrement() { step(1) }
+    override func accessibilityDecrement() { step(-1) }
+
+    private func move(_ by: Int) {
+        let now = ProcessInfo.processInfo.systemUptime
+        if let lastMove, lastMove.step == by, now - lastMove.at < 0.3 { return }
+        lastMove = (by, now)
+        step(by)
     }
 }
