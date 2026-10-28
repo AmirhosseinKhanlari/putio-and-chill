@@ -216,6 +216,8 @@ struct TVHeroCarousel: View {
     @State private var index = 0
     @State private var focusInside = false
     @FocusState private var focusedDot: Int?
+    /// The invisible focus stop left of the first dot.
+    private static let wrapStop = -1
 
     var body: some View {
         if items.indices.contains(index) {
@@ -233,16 +235,25 @@ struct TVHeroCarousel: View {
     }
 
     /// Every dot takes focus, so left and right are ordinary moves from dot to dot (each shows its slide). With a
-    /// dot to go to, a swipe left stays on the dots instead of opening the sidebar; only past the first one does it.
+    /// dot to go to, a swipe left stays on the dots instead of opening the sidebar. The ends wrap around: past the
+    /// first dot is an invisible stop that hands focus to the last one, and right on the last goes to the first.
     @ViewBuilder private var pager: some View {
         if items.count > 1 {
             HStack(spacing: 18) {
                 HStack(spacing: 8) {
+                    Color.clear.frame(width: 2, height: 12)
+                        .focusable()
+                        .focused($focusedDot, equals: Self.wrapStop)
+                        .accessibilityHidden(true)
                     ForEach(items.indices, id: \.self) { dot in
                         Capsule().fill(.white.opacity(dot == index ? 1 : 0.35))
                             .frame(width: dot == index ? 34 : 12, height: 12)
                             .focusable()
                             .focused($focusedDot, equals: dot)
+                            .onMoveCommand { direction in
+                                // Nothing to the right of the last dot, so the move comes here.
+                                if direction == .right, dot == items.count - 1 { focusedDot = 0 }
+                            }
                             .accessibilityLabel("\(items[dot].title), featured \(dot + 1) of \(items.count)")
                     }
                 }
@@ -252,7 +263,8 @@ struct TVHeroCarousel: View {
                         .transition(.opacity)
                 }
             }
-            .padding(.horizontal, 18).padding(.vertical, 12)
+            // The stop's width and spacing come off the leading padding, so the dots sit where they did.
+            .padding(.leading, 8).padding(.trailing, 18).padding(.vertical, 12)
             .background(Capsule().fill(.white.opacity(focusedDot != nil ? 0.18 : 0)))
             .scaleEffect(focusedDot != nil ? 1.08 : 1, anchor: .leading)
             .animation(.snappy, value: index)
@@ -262,6 +274,11 @@ struct TVHeroCarousel: View {
                 // Arriving from a button above or a row below lands on the slide that's showing, not the nearest dot.
                 if old == nil {
                     if new != index { focusedDot = index }
+                    return
+                }
+                // Left from the first dot: on to the last.
+                if new == Self.wrapStop {
+                    focusedDot = items.count - 1
                     return
                 }
                 withAnimation(.easeInOut(duration: 0.45)) { index = new }
