@@ -1,0 +1,5 @@
+Build 36
+
+• Apple TV: a new Up Next screen at the end of an episode. When the credits start, the video shrinks to the top left and the next episode shows under it (its picture, name and summary). Play Next fills up as the countdown runs; Watch Credits (or Menu) brings the full picture back.
+
+Please try: let an episode reach its credits on Apple TV; check the countdown, Play Next, Watch Credits and the Menu button.
