@@ -83,6 +83,8 @@ final class TVPlaybackCoordinator {
     private var countdownStarted: Date?
     private var shownActions: [String] = []
     private var gettingStatus: String?
+    /// How far the next episode's download is (0…1), while it's being fetched.
+    private var gettingProgress: Double?
     private var gettingTask: Task<Void, Never>?
     private var gettingFailed = false
     /// Captions inside the video stream itself (e.g. closed captions), offered in our menu; and the one picked there.
@@ -307,7 +309,7 @@ final class TVPlaybackCoordinator {
         builtInTicker?.cancel()
         builtIn?.tearDown()
         builtIn = nil
-        builtInChrome.nextActions = []
+        host.setUpNext(nil)
         shownActions = []
         if let controller { host.show(controller) }
         if let url {
@@ -505,16 +507,15 @@ final class TVPlaybackCoordinator {
         let titles = actions.map(\.title)
         guard titles != shownActions else { return }
         shownActions = titles
-        if builtIn != nil {
-            builtInChrome.nextActions = actions
-        } else {
-            controller?.contextualActions = actions.map { item in
-                let run = MainThreadAction { item.action?() }
-                return UIAction(title: item.title, image: item.title == "Watch Credits" ? nil : item.symbol.flatMap { UIImage(systemName: $0) }) { _ in
-                    run()
-                }
-            }
+        let secondary = actions.dropFirst().first
+        // Menu on the remote: Watch Credits, or at the very end (or while it's being fetched) close the player.
+        host.onUpNextBack = { [weak self] in
+            if let watchCredits = secondary?.action { watchCredits() } else { self?.close() }
         }
+        host.setUpNext(actions.first.map { primary in
+            TVUpNextState(next: next, primary: primary, secondary: secondary,
+                          countdownStarted: next.isInPutio && autoplay ? countdownStarted : nil, progress: gettingProgress)
+        })
     }
 
     private func playNext() {
@@ -546,6 +547,7 @@ final class TVPlaybackCoordinator {
                         }
                         if case .failed = transfer.phase { break }
                         gettingStatus = "Getting Next Episode · \(transfer.percent)%"
+                        gettingProgress = Double(transfer.percent) / 100
                         refreshNextActions(atEnd: false)
                     }
                     try? await Task.sleep(for: .seconds(1))
@@ -555,6 +557,7 @@ final class TVPlaybackCoordinator {
                 gettingFailed = true
             }
             gettingStatus = nil
+            gettingProgress = nil
             gettingTask = nil
             refreshNextActions(atEnd: false)
         }
@@ -578,8 +581,8 @@ final class TVPlaybackCoordinator {
             pausePlayback()
             setVolume(1)
             sleepTimer = nil
-            controller?.contextualActions = []
-            builtInChrome.nextActions = []
+            host.setUpNext(nil)
+            shownActions = []
             rebuildMenus()
             return
         }

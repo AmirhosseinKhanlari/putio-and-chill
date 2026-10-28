@@ -1,16 +1,15 @@
 import AMDBKit
+import AVKit
 import SwiftUI
 import UIKit
 
 /// What the built-in player's TV screen shows around the picture: title, the menus (Subtitles, Audio, Speed, Sleep
-/// Timer…), the Next Episode buttons and a failure message. Filled by TVPlaybackCoordinator.
+/// Timer…) and a failure message. Filled by TVPlaybackCoordinator. (Next Episode is `TVUpNextPanel`, for both players.)
 @Observable @MainActor
 final class TVBuiltInChrome {
     var title = ""
     var subtitle: String?
     var menus: [TVMenu] = []
-    /// Next Episode / Watch Credits, shown bottom right (like Apple's player's contextual buttons).
-    var nextActions: [TVMenuItem] = [] { didSet { if nextActions.map(\.title) != oldValue.map(\.title) { onFocusChange() } } }
     var message: String?
     var panelOpen = false { didSet { if panelOpen != oldValue { onFocusChange() } } }
     var selectedMenu: String?
@@ -22,13 +21,33 @@ final class TVBuiltInChrome {
 }
 
 /// Holds whichever player is on screen: Apple's (AVPlayerViewController) or the built-in one, switching when the
-/// routing moves a video from one to the other.
+/// routing moves a video from one to the other. At the end of an episode it shrinks the player to the top left and
+/// shows the next episode under it (`TVUpNextPanel`), which then has focus.
 final class TVPlayerHostController: UIViewController {
     private(set) var current: UIViewController?
+    private let upNext = TVUpNextModel()
+    private lazy var panel = UIHostingController(rootView: TVUpNextPanel(model: upNext))
+    private let menuPress = UITapGestureRecognizer()
+    /// Menu on the remote while the next episode shows (Watch Credits, or closing the player).
+    var onUpNextBack: () -> Void = {}
+
+    private var showsUpNext: Bool { upNext.state != nil }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        // Behind the player: it only shows around the player once it's shrunk.
+        addChild(panel)
+        panel.view.backgroundColor = .clear
+        panel.view.frame = view.bounds
+        panel.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        panel.view.isHidden = true
+        view.addSubview(panel.view)
+        panel.didMove(toParent: self)
+        menuPress.allowedPressTypes = [NSNumber(value: UIPress.PressType.menu.rawValue)]
+        menuPress.addTarget(self, action: #selector(menuPressed))
+        menuPress.isEnabled = false
+        view.addGestureRecognizer(menuPress)
     }
 
     func show(_ child: UIViewController) {
@@ -39,15 +58,47 @@ final class TVPlayerHostController: UIViewController {
             current.removeFromParent()
         }
         addChild(child)
-        child.view.frame = view.bounds
-        child.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        child.view.frame = playerFrame
+        child.view.clipsToBounds = true
         view.addSubview(child.view)
         child.didMove(toParent: self)
         current = child
+        (child as? AVPlayerViewController)?.showsPlaybackControls = !showsUpNext
         setNeedsFocusUpdate()
     }
 
-    override var preferredFocusEnvironments: [any UIFocusEnvironment] { current.map { [$0] } ?? [] }
+    /// Shows the next episode (shrinking the player), updates it, or (nil) goes back to the full picture.
+    func setUpNext(_ state: TVUpNextState?) {
+        let wasShowing = showsUpNext
+        upNext.state = state
+        guard showsUpNext != wasShowing else { return }
+        let showing = showsUpNext
+        menuPress.isEnabled = showing
+        (current as? AVPlayerViewController)?.showsPlaybackControls = !showing
+        if showing { panel.view.isHidden = false }
+        UIView.animate(withDuration: 0.45, delay: 0, options: [.curveEaseInOut, .beginFromCurrentState]) {
+            self.current?.view.frame = self.playerFrame
+            self.current?.view.layer.cornerRadius = showing ? 22 : 0
+        } completion: { _ in
+            if !self.showsUpNext { self.panel.view.isHidden = true }
+        }
+        setNeedsFocusUpdate()
+        updateFocusIfNeeded()
+    }
+
+    private var playerFrame: CGRect { showsUpNext ? TVUpNextLayout.videoRect(in: view.bounds) : view.bounds }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        current?.view.frame = playerFrame
+    }
+
+    @objc private func menuPressed() { onUpNextBack() }
+
+    override var preferredFocusEnvironments: [any UIFocusEnvironment] {
+        if showsUpNext { return [panel.view] }
+        return current.map { [$0] } ?? []
+    }
 }
 
 /// A full-screen view that takes focus while nothing else on the built-in player's screen can, so the remote's
@@ -113,7 +164,7 @@ final class TVBuiltInPlayerController: UIViewController {
 
     /// The menus panel and the Next Episode buttons take focus when they show; otherwise the remote drives playback.
     override var preferredFocusEnvironments: [any UIFocusEnvironment] {
-        if chrome.panelOpen || !chrome.nextActions.isEmpty || chrome.message != nil, let hosting { return [hosting.view] }
+        if chrome.panelOpen || chrome.message != nil, let hosting { return [hosting.view] }
         return [surface]
     }
 
@@ -249,7 +300,6 @@ struct TVBuiltInOverlay: View {
                     ProgressView().scaleEffect(2)
                 }
                 if barShowing { transportBar.transition(.opacity) }
-                if !chrome.nextActions.isEmpty { nextButtons }
                 if chrome.panelOpen { panel.transition(.move(edge: .top).combined(with: .opacity)) }
                 if let message = chrome.message { failure(message) }
             }
@@ -315,23 +365,6 @@ struct TVBuiltInOverlay: View {
             .frame(maxHeight: .infinity)
         }
         .frame(height: 34)
-    }
-
-    // MARK: Next Episode
-
-    private var nextButtons: some View {
-        HStack(spacing: 24) {
-            ForEach(chrome.nextActions) { item in
-                Button { item.action?() } label: {
-                    Label(item.title, systemImage: item.symbol ?? "play.fill").font(.system(size: 28, weight: .semibold))
-                }
-                .disabled(item.action == nil)
-            }
-        }
-        .padding(.trailing, 90)
-        .padding(.bottom, barShowing ? 230 : 80)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        .animation(.easeInOut(duration: 0.25), value: barShowing)
     }
 
     // MARK: Menus (swipe down)
