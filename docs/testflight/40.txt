@@ -1,0 +1,6 @@
+Build 40
+
+Apple TV
+• Featured slides at the top of Home, Movies and TV Shows now wrap around: on the dots, left from the first slide goes to the last one, and right from the last goes back to the first. Swiping on the dots no longer opens the side menu; Back opens it.
+
+Please try: move down to the dots, swipe left from the first slide and check you land on the last; swipe right from the last and check you're back on the first; then press Back for the menu.
