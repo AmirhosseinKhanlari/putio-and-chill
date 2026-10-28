@@ -1,0 +1,6 @@
+Build 35
+
+• The next episode comes up when you stop at the credits: a video now counts as watched in its last 10% (at most its last 10 minutes), also when it was stopped on another device or on put.io.
+• Remove from Continue Watching: touch and hold a card (Apple TV: hold Select; Mac: right-click). It comes back when you play that title again.
+
+Please try: stop an episode when its credits start and check Up Next shows the next one; remove a card from Continue Watching, then play that title again and check it returns.
