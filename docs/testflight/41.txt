@@ -1,0 +1,11 @@
+Build 41
+
+Switch version while partly watched
+• You can now pick another version of a movie or episode after you've started it. On Apple TV, partly watched movies have a Versions button next to Resume and Start Over; on iPhone and iPad it's next to Resume, and in each episode's ⋯ menu.
+• The new version picks up where you stopped, so you can switch from 1080p to 4K (or back) halfway through.
+
+chill.institute is gone
+• The app no longer uses chill.institute. Versions come from the other sources in Settings, and your chill sign-in is removed from this device.
+• The Movies and TV Shows tabs now have New to Stream and New Episodes This Week rows; Latest Movies and Latest Shows stay.
+
+Please try: start a movie, stop halfway, open Versions, get another quality and check it starts where you stopped; do the same for an episode from its ⋯ menu; check Get & Watch still finds versions; look at the new rows on Movies and TV Shows.
