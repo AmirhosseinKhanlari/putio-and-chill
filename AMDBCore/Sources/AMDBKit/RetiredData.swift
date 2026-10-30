@@ -8,12 +8,14 @@ public enum RetiredData {
     public static let fileNames = ["chill-feed.json"]
     static let doneKey = "amdb.retiredDataRemoved.1"
 
-    /// Deletes the retired Keychain items and files the first time it runs; later launches do nothing.
+    /// Deletes the retired Keychain items and files; once the Keychain delete has worked, later launches do nothing.
     public static func removeOnce(defaults: UserDefaults = .standard, directory: URL = StorageLocation.directory,
-                                  removeToken: (String) -> Void = { KeychainTokenStore().removeRetired(account: $0) }) {
+                                  removeToken: (String) -> Bool = { KeychainTokenStore().removeRetired(account: $0) }) {
         guard !defaults.bool(forKey: doneKey) else { return }
-        for account in tokenAccounts { removeToken(account) }
+        var allGone = true
+        for account in tokenAccounts where !removeToken(account) { allGone = false }
         for name in fileNames { try? FileManager.default.removeItem(at: directory.appending(path: name)) }
-        defaults.set(true, forKey: doneKey)
+        // A refused delete (the Keychain can be locked early after a restart) is tried again next launch.
+        if allGone { defaults.set(true, forKey: doneKey) }
     }
 }

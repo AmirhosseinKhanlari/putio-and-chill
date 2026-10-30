@@ -48,5 +48,17 @@ final class TVBrowseRowsUITests: XCTestCase {
             .waitForExistence(timeout: 10))
         XCTAssertEqual(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] 'chill.'")).count, 0)
         shot("settings")
+
+        // Settings -> Connected Services: where the chill row used to be.
+        let services = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Connected Services'")).firstMatch
+        for _ in 0..<10 where !services.hasFocus {
+            XCUIRemote.shared.press(.down)
+            sleep(1)
+        }
+        XCUIRemote.shared.press(.select)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'IMDb Watchlist'")).firstMatch
+            .waitForExistence(timeout: 10))
+        XCTAssertEqual(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] 'chill.'")).count, 0)
+        shot("services")
     }
 }

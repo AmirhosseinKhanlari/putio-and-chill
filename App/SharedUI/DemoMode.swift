@@ -13,7 +13,7 @@ enum DemoMode {
     static var isFull: Bool { ProcessInfo.processInfo.arguments.contains("-demoFull") }
 
     /// `-demoOnboarding`: the first-launch setup screen, though the demo accounts are connected (iPhone and iPad).
-    static var showsOnboarding: Bool { ProcessInfo.processInfo.arguments.contains("-demoOnboarding") }
+    static var showsOnboarding: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoOnboarding") }
 
     /// `-demoPlayURL <url>` (with `-demoScreen player-url`): a test video (e.g. from a local server) played through
     /// the app's player routing as a demo file: put.io's "stream" and its original file are both this URL, so a file

@@ -76,11 +76,47 @@ private final class FakeLatest: LatestTitlesSource, @unchecked Sendable {
         try Data(#"{"updatedAt":0,"movies":[],"shows":[],"chillMovies":[],"lastSettingsSwitch":0}"#.utf8).write(to: old)
         let defaults = testDefaults()
         var removed: [String] = []
-        RetiredData.removeOnce(defaults: defaults, directory: directory) { removed.append($0) }
+        RetiredData.removeOnce(defaults: defaults, directory: directory) { removed.append($0); return true }
         #expect(!FileManager.default.fileExists(atPath: old.path()))
         #expect(removed == ["chill"])
-        RetiredData.removeOnce(defaults: defaults, directory: directory) { removed.append($0) }
+        RetiredData.removeOnce(defaults: defaults, directory: directory) { removed.append($0); return true }
         #expect(removed == ["chill"], "only the first launch")
+    }
+
+    @Test func aRefusedTokenDeleteIsTriedAgainNextLaunch() {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "retired-\(UUID())")
+        let defaults = testDefaults()
+        var attempts = 0
+        RetiredData.removeOnce(defaults: defaults, directory: directory) { _ in attempts += 1; return false }
+        RetiredData.removeOnce(defaults: defaults, directory: directory) { _ in attempts += 1; return true }
+        #expect(attempts == 2, "retried after the refusal")
+        RetiredData.removeOnce(defaults: defaults, directory: directory) { _ in attempts += 1; return true }
+        #expect(attempts == 2, "done once it worked")
+    }
+
+    @Test func aFailedListKeepsItsRememberedMatchesWhenOthersAreTrimmed() async {
+        let url = FileManager.default.temporaryDirectory.appending(path: "latest-feed-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        // A snapshot with 700 remembered matches, among them the two TV shows.
+        var resolved: [String: FeedTitle] = [:]
+        for i in 0..<700 { resolved["filler\(i)"] = FeedTitle(movie(10_000 + i, "Filler \(i)")) }
+        let tv = LatestFeed(fileURL: nil)
+        await tv.load(sources: [FakeLatest(kind: .tv)], catalog: catalog)
+        for item in tv.shows {
+            resolved[LatestTitle(imdbID: nil, title: item.title, year: item.year, kind: .tv, source: "").mergeKey] = FeedTitle(item)
+        }
+        let snapshot = LatestFeedSnapshot(updatedAt: .distantPast, movies: [], shows: tv.shows.map(FeedTitle.init), resolved: resolved)
+        try? JSONEncoder().encode(snapshot).write(to: url)
+
+        let shows = FakeLatest(kind: .tv)
+        shows.failing = true
+        let feed = LatestFeed(fileURL: url)
+        await feed.load(sources: [FakeLatest(kind: .movie), shows], catalog: catalog, force: true)
+        #expect(feed.shows.map(\.tmdbID) == [95396, 1400], "the failed list keeps its row")
+        shows.failing = false
+        let empty = FakeCatalog(movieSearch: [:], tvSearch: [:])
+        await feed.load(sources: [shows], catalog: empty, force: true, now: Date().addingTimeInterval(1))
+        #expect(feed.shows.map(\.tmdbID) == [95396, 1400], "matches were kept, so no lookup was needed")
     }
 
     @Test func snapshotWithUnknownFieldsStillLoads() async throws {

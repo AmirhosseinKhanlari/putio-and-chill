@@ -42,8 +42,10 @@ public struct KeychainTokenStore: TokenStore {
 
     /// Deletes an item saved under a key the app no longer has (on this device and, for synced items, through
     /// iCloud Keychain on the user's other devices too).
-    public func removeRetired(account: String) {
-        Keychain.write(nil, service: service, account: account, synchronizes: false)
+    /// True when the item is gone (deleted, or never there); false when the Keychain refused (say, before first unlock).
+    @discardableResult
+    public func removeRetired(account: String) -> Bool {
+        Keychain.delete(service: service, account: account)
     }
 }
 
@@ -57,6 +59,14 @@ enum Keychain {
         var result: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else { return nil }
         return result as? Data
+    }
+
+    /// Deletes the item; true when it is gone (including when it was never there).
+    static func delete(service: String, account: String) -> Bool {
+        var query = baseQuery(service: service, account: account)
+        query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 
     /// Replaces the item (nil deletes it).

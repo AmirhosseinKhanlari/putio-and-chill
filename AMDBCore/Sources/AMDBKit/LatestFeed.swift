@@ -61,8 +61,9 @@ public final class LatestFeed {
         defer { isLoading = false }
         var movieLists: [[LatestTitle]] = []
         var showLists: [[LatestTitle]] = []
+        var failed = false
         for source in sources {
-            guard let list = try? await source.latestTitles() else { continue }
+            guard let list = try? await source.latestTitles() else { failed = true; continue }
             if source.kind == .tv { showLists.append(list) } else { movieLists.append(list) }
         }
         // A list that couldn't be read this time keeps the row it showed before.
@@ -73,9 +74,10 @@ public final class LatestFeed {
         let resolvedShows = await resolveRemembering(foundShows, catalog: catalog)
         if !movieLists.isEmpty { movies = resolvedMovies }
         if !showLists.isEmpty { shows = resolvedShows }
-        // Remembered matches stay bounded to titles the lists still contain.
+        // Remembered matches stay bounded to titles the lists still contain; not while a list failed, since the
+        // rows it still shows are matched by keys only that list holds.
         let keys = Set((foundMovies + foundShows).map(\.mergeKey))
-        if resolved.count > 600 { resolved = resolved.filter { keys.contains($0.key) } }
+        if !failed, resolved.count > 600 { resolved = resolved.filter { keys.contains($0.key) } }
         updatedAt = now
         save()
     }
