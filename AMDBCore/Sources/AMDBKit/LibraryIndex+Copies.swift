@@ -23,12 +23,18 @@ extension LibraryIndex {
     }
 
     /// The copy watched most recently (when its position was saved, on any device), else the furthest one; nil when
-    /// none of them was started or watched.
+    /// none of them was really started (`Watched.rewatchSeconds`, as in Continue Watching) or watched. A short peek at
+    /// a copy doesn't count: it must not hide where the real watching was left.
     public func lastWatchedCopy(_ copies: [LibraryEntry]) -> LibraryEntry? {
-        copies.filter(hasPosition).max { a, b in
-            let oa = watchOrder(a.id), ob = watchOrder(b.id)
-            return oa != ob ? oa < ob : resumeSeconds(for: a) < resumeSeconds(for: b)
+        var best: (entry: LibraryEntry, order: (Date, Int), seconds: Int)?
+        for copy in copies {
+            let seconds = resumeSeconds(for: copy)
+            guard hasPosition(copy, seconds: seconds) else { continue }
+            let order = watchOrder(copy.id)
+            if let current = best, order != current.order ? order < current.order : seconds < current.seconds { continue }
+            best = (copy, order, seconds)
         }
+        return best?.entry
     }
 
     /// Where to start `entry` when it's played to resume: its own position, unless another copy of the same title
@@ -39,7 +45,7 @@ extension LibraryIndex {
         let own = entries.first { $0.id == entry.id } ?? entry
         let ownSeconds = resumeSeconds(for: own)
         guard let latest = lastWatchedCopy(otherCopies(of: own)) else { return ownSeconds }
-        if hasPosition(own), watchOrder(latest.id) <= watchOrder(own.id) { return ownSeconds }
+        if hasPosition(own, seconds: ownSeconds), watchOrder(latest.id) <= watchOrder(own.id) { return ownSeconds }
         if isWatched(latest) { return 0 }
         let carried = resumeSeconds(for: latest)
         if let length = durations[own.id] ?? own.file.duration, length > 0,
@@ -56,8 +62,8 @@ extension LibraryIndex {
         return resumeSeconds(forTitleOf: entry)
     }
 
-    /// Started, or watched to the end.
-    private func hasPosition(_ entry: LibraryEntry) -> Bool { resumeSeconds(for: entry) > 0 || isWatched(entry) }
+    /// Started for real (at least `Watched.rewatchSeconds`), or watched to the end.
+    private func hasPosition(_ entry: LibraryEntry, seconds: Int) -> Bool { seconds >= Watched.rewatchSeconds || isWatched(entry) }
 
     /// How recently a file was watched: when, on any device, then this session's order.
     private func watchOrder(_ id: Int64) -> (Date, Int) { (positions[id]?.watchedAt ?? .distantPast, touchedOrder[id] ?? -1) }

@@ -295,8 +295,12 @@ struct TVEpisodes: View {
                 TVShelf(title: "Episodes", trailing: AnyView(Text("Hold Select for more").font(.system(size: 20)).foregroundStyle(TVMetrics.secondaryText))) {
                     ForEach(model.episodes) { episode in
                         let entries = app.library.matching(tmdbID: item.tmdbID, season: season, episode: episode.number)
-                        let resume = entries.map { app.library.resumeSeconds(for: $0) }.max() ?? 0
                         let action = model.action(season: season, episode: episode.number)
+                        // The same position the action resumes (another copy may have been watched last).
+                        let resume: Int = switch action {
+                        case let .resume(_, seconds): seconds
+                        default: entries.map { app.library.resumeSeconds(forTitleOf: $0) }.max() ?? 0
+                        }
                         // Watched to the end (and not started again): "Watched" and a full bar.
                         let finished = resume < 30 && entries.contains(where: app.library.isWatched)
                         TVEpisodeCard(title: "\(episode.number). \(episode.name)",

@@ -18,6 +18,16 @@ import Testing
         return library
     }
 
+    /// Files as put.io lists them: positions only from `start_from`, no stamps.
+    func putioLibrary(_ files: [(Int64, Int)]) async -> LibraryIndex {
+        let library = LibraryIndex(store: LocalStore(fileURL: nil))
+        library.configure(putio: FakePutio(), catalog: TitleModelTests.catalog)
+        for (id, start) in files {
+            await library.record(file: PutioFile(id: id, name: "\(id).mkv", fileType: "VIDEO", startFrom: start), match: Self.dune)
+        }
+        return library
+    }
+
     func entry(_ library: LibraryIndex, _ id: Int64) -> LibraryEntry { library.entries.first { $0.id == id }! }
 
     static func episode(_ season: Int, _ episode: Int) -> LibraryMatch {
@@ -117,5 +127,32 @@ import Testing
         library.noteProgress(fileID: 2, seconds: 0, now: Self.t0.addingTimeInterval(4000), watched: true)
         guard case let .play(best) = model.action() else { Issue.record("expected play"); return }
         #expect(best.id == 2)
+    }
+
+    @Test func aShortPeekAtAnotherCopyDoesntHideTheRealPosition() async {
+        let store = LocalStore(fileURL: nil)
+        let library = await library([(1, Self.dune), (2, Self.dune)])
+        let model = TitleModel(item: TitleModelTests.dune, catalog: TitleModelTests.catalog, library: library,
+                               transfers: TransferMonitor(store: store, pollInterval: .seconds(3600)))
+        library.noteProgress(fileID: 1, seconds: 3733, now: Self.t0)
+        library.noteProgress(fileID: 2, seconds: 5, now: Self.t0.addingTimeInterval(60))
+        #expect(library.resumeSeconds(forTitleOf: entry(library, 1)) == 3733)
+        #expect(library.resumeSeconds(forTitleOf: entry(library, 2)) == 3733, "the peeked copy starts where the real watching was")
+        #expect(model.action() == .resume(entry(library, 1), seconds: 3733))
+        #expect(library.continueWatchingCards == [.resume(entry(library, 1))])
+        #expect(library.resumeSeconds(for: entry(library, 1)) == 3733)
+    }
+
+    @Test func putioOnlyPositionsGoByFurthestWhenNoneIsStamped() async {
+        let library = await putioLibrary([(1, 3000), (2, 1200), (3, 0)])
+        #expect(library.resumeSeconds(forTitleOf: entry(library, 3)) == 3000)
+        #expect(library.resumeSeconds(forTitleOf: entry(library, 1)) == 3000)
+        #expect(library.resumeSeconds(forTitleOf: entry(library, 2)) == 1200, "own position, no way to tell which is newer")
+    }
+
+    @Test func aPutioOnlyShortPeekIsIgnored() async {
+        let library = await putioLibrary([(1, 3000), (2, 5)])
+        #expect(library.resumeSeconds(forTitleOf: entry(library, 2)) == 3000)
+        #expect(library.resumeSeconds(forTitleOf: entry(library, 1)) == 3000)
     }
 }

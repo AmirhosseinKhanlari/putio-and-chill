@@ -43,6 +43,10 @@ public final class PlaybackSession {
         self.retryDelay = retryDelay
     }
 
+    /// Playback actually starts here (a position carried from another copy, or put.io's newer one): saves are
+    /// measured from it, not from the request's.
+    public func startedAt(_ seconds: Int) { lastSaved = seconds }
+
     public var shouldOfferResume: Bool { resumeFrom > 30 }
     /// Streams without put.io's subtitle tracks: the app shows put.io and OpenSubtitles subtitles itself,
     /// so Apple's player has no second subtitles menu.

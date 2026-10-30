@@ -170,6 +170,7 @@ final class TVPlaybackCoordinator {
             let id = entry.id
             guard let self, !self.finished else { return }
             let seconds = fresh ?? self.request.resumeFrom
+            self.session?.startedAt(seconds)
             let step = await self.plan?.firstStep() ?? .play(.apple)
             BuiltInPlayer.log.notice("file \(id): first \(String(describing: step)) (TV)")
             if step == .play(.builtIn), await self.switchToBuiltIn(at: Double(seconds)) {
