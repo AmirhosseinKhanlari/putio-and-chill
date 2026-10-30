@@ -215,7 +215,11 @@ struct MainView: View {
     private func open(_ request: PlayerRequest) async {
         var request = request
         if !request.exactStart {
-            let fresh = await app.library.freshResumeSeconds(fileID: request.file.id)
+            // Another copy of the title watched more recently (switching versions): from where that one was left.
+            let match = request.played.map {
+                LibraryMatch(tmdbID: $0.tmdbID, mediaType: $0.kind, season: request.season, episode: request.episode, confidence: 1)
+            }
+            let fresh = await app.library.freshResumeSeconds(forTitleOf: LibraryEntry(file: request.file, match: match, folderName: nil))
             // Closed or replaced while put.io was asked.
             guard router.player?.id == request.id, PlayerCoordinator.current?.request.id != request.id else { return }
             request.resumeFrom = fresh

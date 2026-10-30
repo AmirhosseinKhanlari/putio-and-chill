@@ -23,7 +23,7 @@ struct TVVersionsView: View {
                 if !request.playNow.isEmpty {
                     sectionTitle("Already in put.io")
                     ForEach(request.playNow) { entry in
-                        Button { router.play(entry, from: app.library.resumeSeconds(for: entry)) } label: {
+                        Button { router.play(entry, from: app.library.resumeSeconds(forTitleOf: entry)) } label: {
                             Label(entry.file.name, systemImage: "play.fill").font(.system(size: 24, weight: .medium)).lineLimit(1)
                         }
                         .tvRow()

@@ -195,6 +195,8 @@ struct TVTitleActions: View {
                 .focused($primaryFocused)
             Button { router.play(entry, from: 0, exactStart: true) } label: { Image(systemName: "arrow.counterclockwise") }
                 .tvCircle().accessibilityLabel("Start over")
+            // Partly watched: another copy (4K instead of 1080p…) goes on from here.
+            Button { openVersions() } label: { Label("Versions", systemImage: "square.stack.3d.up") }.tvPill()
         case let .downloading(transfer):
             TVTransferStatus(transfer: transfer)
             Button("Cancel") { Task { try? await app.transfers.cancel(transfer.id) } }.tvPill()

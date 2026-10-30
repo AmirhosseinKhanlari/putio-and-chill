@@ -164,8 +164,10 @@ final class TVPlaybackCoordinator {
         // Which player first (Apple's, or the built-in one when put.io's codec info says Apple's can't decode it),
         // and where to start: the request's position, or put.io's newer one (it may have been watched further on
         // another device).
-        routingTask = Task { [weak self, app, id = self.request.entry.id, exact = self.request.exactStart || self.session == nil] in
-            let fresh = exact ? nil : await app.library.freshResumeSeconds(fileID: id)
+        routingTask = Task { [weak self, app, entry = self.request.entry, exact = self.request.exactStart || self.session == nil] in
+            // Another copy of the title watched more recently (switching versions): from where that one was left.
+            let fresh = exact ? nil : await app.library.freshResumeSeconds(forTitleOf: entry)
+            let id = entry.id
             guard let self, !self.finished else { return }
             let seconds = fresh ?? self.request.resumeFrom
             let step = await self.plan?.firstStep() ?? .play(.apple)

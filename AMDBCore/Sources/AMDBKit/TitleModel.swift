@@ -103,8 +103,10 @@ public final class TitleModel {
             }
         }
         let hits = library.matching(tmdbID: item.tmdbID, season: season, episode: episode)
-        guard let best = hits.max(by: { library.resumeSeconds(for: $0) < library.resumeSeconds(for: $1) }) else { return .get }
-        let seconds = library.resumeSeconds(for: best)
+        // The copy watched last (another may have been started before it: switching versions), else the furthest.
+        guard let best = library.lastWatchedCopy(hits)
+            ?? hits.max(by: { library.resumeSeconds(for: $0) < library.resumeSeconds(for: $1) }) else { return .get }
+        let seconds = library.resumeSeconds(forTitleOf: best)
         return seconds >= 30 ? .resume(best, seconds: seconds) : .play(best)
     }
 

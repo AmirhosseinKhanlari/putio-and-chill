@@ -12,6 +12,15 @@ struct PrimaryActions: View {
     @State private var smartError: String?
 
     var body: some View {
+        // On a narrow iPhone, Resume + Download + Versions don't fit in a row: Versions shrinks to its icon rather
+        // than being squeezed off (switching to another copy while partly watched needs it).
+        ViewThatFits(in: .horizontal) {
+            actions(versionsTitle: true)
+            actions(versionsTitle: false)
+        }
+    }
+
+    private func actions(versionsTitle: Bool) -> some View {
         HStack(spacing: 10) {
             switch model.action(season: season, episode: episode) {
             case .get:
@@ -24,13 +33,13 @@ struct PrimaryActions: View {
                 }
                 .buttonStyle(.primaryPill)
                 .disabled(finding)
-                if app.settings.oneTapGet { versionsButton }
+                if app.settings.oneTapGet { versionsButton(title: versionsTitle) }
             case let .play(entry):
                 Button { router.play(entry, resumeFrom: 0) } label: { playLabel("Play", entry: entry) }
                     .buttonStyle(.primaryPill)
                     .playSourceMenu(entry: entry, resumeFrom: 0)
                 DownloadButton(entry: entry)
-                versionsButton
+                versionsButton(title: versionsTitle)
             case let .resume(entry, seconds):
                 Button { router.play(entry, resumeFrom: seconds) } label: {
                     playLabel("Resume \(Format.clock(seconds))", entry: entry)
@@ -38,7 +47,7 @@ struct PrimaryActions: View {
                 .buttonStyle(.primaryPill)
                 .playSourceMenu(entry: entry, resumeFrom: seconds)
                 DownloadButton(entry: entry)
-                versionsButton
+                versionsButton(title: versionsTitle)
             case let .downloading(transfer):
                 DownloadStatus(transfer: transfer, large: true)
             case let .failed(transfer):
@@ -84,9 +93,12 @@ struct PrimaryActions: View {
         }
     }
 
-    private var versionsButton: some View {
-        Button { openVersions() } label: { Label("Versions", systemImage: "square.stack.3d.up") }
-            .buttonStyle(.glassPill)
+    private func versionsButton(title: Bool) -> some View {
+        Button { openVersions() } label: {
+            if title { Label("Versions", systemImage: "square.stack.3d.up") } else { Image(systemName: "square.stack.3d.up") }
+        }
+        .buttonStyle(.glassPill)
+        .accessibilityLabel("Versions")
     }
 
     private func openVersions() {
@@ -218,7 +230,7 @@ struct EpisodeActionButton: View {
             if owned.count > 1 {
                 Section("In put.io") {
                     ForEach(owned) { entry in
-                        Button { router.play(entry, resumeFrom: app.library.resumeSeconds(for: entry), next: next) } label: {
+                        Button { router.play(entry, resumeFrom: app.library.resumeSeconds(forTitleOf: entry), next: next) } label: {
                             Label(Self.versionLabel(entry), systemImage: "play")
                         }
                     }

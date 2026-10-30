@@ -247,6 +247,7 @@ struct TVRootView: View {
         }
         switch DemoMode.screen {
         case "title": router.homePath = [.title(DemoCatalog.movies[0])]
+        case "title-resume": router.homePath = [.title(DemoCatalog.movies[2])]
         case "show": router.homePath = [.title(DemoCatalog.shows[0])]
         case "person": router.homePath = [.person(900)]
         case "collection": router.homePath = [.collection(8945)]

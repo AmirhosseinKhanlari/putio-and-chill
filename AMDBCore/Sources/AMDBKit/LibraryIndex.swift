@@ -150,7 +150,7 @@ public final class LibraryIndex {
     /// Video lengths (seconds) seen by the player, so cards can show how much is left.
     var durations: [Int64: Int] = [:]
     /// Order in which files were watched this session (higher = more recent); a counter, so ties can't happen.
-    private var touchedOrder: [Int64: Int] = [:]
+    private(set) var touchedOrder: [Int64: Int] = [:]
     private var touchCount = 0
     /// Played files the library didn't have (from Files, a transfer that just finished, another device): shown at once,
     /// and kept through an update that was already walking put.io when they were played. Each update starts this over.

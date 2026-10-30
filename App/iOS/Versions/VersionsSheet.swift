@@ -23,7 +23,7 @@ struct VersionsSheet: View {
                         ForEach(request.playNow) { entry in
                             Button {
                                 dismiss()
-                                router.play(entry, resumeFrom: app.library.resumeSeconds(for: entry))
+                                router.play(entry, resumeFrom: app.library.resumeSeconds(forTitleOf: entry))
                             } label: {
                                 HStack {
                                     Image(systemName: "play.circle.fill").font(.title2).foregroundStyle(Theme.good)

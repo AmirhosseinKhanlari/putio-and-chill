@@ -3,7 +3,7 @@ import AMDBKit
 import Foundation
 
 /// `-demo` swaps in fake services so every screen can be exercised without credentials.
-/// `-demoScreen title|show|versions|search|library|movies|player` opens a screen at launch.
+/// `-demoScreen title|title-resume|show|versions|search|library|movies|player` opens a screen at launch.
 enum DemoMode {
     static var isEnabled: Bool { ProcessInfo.processInfo.arguments.contains("-demo") }
 
@@ -67,6 +67,9 @@ enum DemoMode {
     @MainActor static func apply(to router: Router) {
         switch screen {
         case "title": router.homePath = [.title(DemoCatalog.movies[0])]
+        case "title-resume":
+            // Interstellar, partly watched in the demo put.io.
+            router.homePath = [.title(DemoCatalog.movies[2])]
         case "show":
             // After the demo library has loaded, so the page opens on the season being watched (Season 2).
             Task {
