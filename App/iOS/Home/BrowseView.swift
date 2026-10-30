@@ -34,7 +34,9 @@ struct BrowseView: View {
                 if !recent.isEmpty {
                     EntryRowView(title: "Recently Added to put.io", entries: recent)
                 }
-                let latest = kind == .tv ? app.chillFeed.shows : app.chillFeed.movies
+                // New to Stream / New Episodes This Week (TMDB), then MyMoviz's newest.
+                if let fresh = model?.newReleases { CatalogRowView(row: fresh) }
+                let latest = kind == .tv ? app.latestFeed.shows : app.latestFeed.movies
                 if !latest.isEmpty {
                     CatalogRowView(row: CatalogRow(id: "latest", title: kind == .tv ? "Latest Shows" : "Latest Movies", items: latest))
                 }
@@ -64,7 +66,7 @@ struct BrowseView: View {
                 chart = top
                 Task { await top.load() }
             }
-            Task { await app.refreshChillFeed() }
+            Task { await app.refreshLatestFeed() }
             await browse.load()
             if let first = browse.rows.first?.items.first { ambient.focus(first) }
         }

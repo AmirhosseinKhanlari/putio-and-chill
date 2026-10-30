@@ -17,7 +17,6 @@ struct OnboardingView: View {
     @State private var mdblistKey = ""
     @State private var busy = false
     @State private var errorText: String?
-    @State private var showChill = false
 
     var body: some View {
         ScrollView {
@@ -69,12 +68,6 @@ struct OnboardingView: View {
                     }
                 }
 
-                StepCard(number: 2 + (app.usesBundledTMDB ? 0 : 1) + (app.usesBundledMDBList ? 0 : 1), title: "Connect chill (optional)", done: app.hasChill) {
-                    Text("Adds chill's eight indexers to every search. You can do this later in Settings.")
-                        .font(.footnote).foregroundStyle(.white.opacity(0.7))
-                    Button("Connect chill") { showChill = true }.buttonStyle(.glassPill)
-                }
-
                 if let errorText {
                     Text(errorText).font(.footnote).foregroundStyle(Theme.poor)
                 }
@@ -94,7 +87,6 @@ struct OnboardingView: View {
             .frame(maxWidth: .infinity)
         }
         .ambientBackground()
-        .sheet(isPresented: $showChill) { ChillConnectView() }
     }
 
     private func connectPutio() async {

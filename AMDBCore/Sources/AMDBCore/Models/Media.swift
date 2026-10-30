@@ -46,7 +46,7 @@ public enum MediaQuery: Sendable, Hashable {
 func twoDigits(_ n: Int) -> String { n < 10 ? "0\(n)" : "\(n)" }
 
 public struct SourceTag: Hashable, Sendable, Comparable {
-    public enum Kind: String, Sendable { case chill, direct }
+    public enum Kind: String, Sendable { case direct }
     public let kind: Kind
     public let name: String
     public init(_ kind: Kind, _ name: String) { self.kind = kind; self.name = name }

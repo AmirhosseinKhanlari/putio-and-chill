@@ -10,7 +10,7 @@ import Testing
     func device(_ putio: FakePutio, cache: LibraryCache = LibraryCache(fileURL: nil),
                 keychain: (any WatchLogStore)? = nil, name: String = "iPad") -> AppModel {
         let catalog = LibraryIndexTests.catalog
-        let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in catalog }, makeProvider: { _, _ in nil })
+        let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in catalog }, makeProvider: { _ in nil })
         return AppModel(tokens: InMemoryTokenStore([.putio: "t", .tmdb: "t"]), defaults: testDefaults(),
                         store: LocalStore(fileURL: nil), factory: factory, libraryCache: cache,
                         watchLogStore: keychain, deviceName: name)

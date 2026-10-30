@@ -182,7 +182,7 @@ import Testing
     // MARK: In the app
 
     func model(_ putio: FakePutio, defaults: UserDefaults) -> AppModel {
-        let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in FakeCatalog() }, makeProvider: { _, _ in nil })
+        let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in FakeCatalog() }, makeProvider: { _ in nil })
         return AppModel(tokens: InMemoryTokenStore([.putio: "p", .tmdb: "t"]), defaults: defaults, store: LocalStore(fileURL: nil),
                         factory: factory)
     }

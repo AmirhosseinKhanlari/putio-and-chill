@@ -62,14 +62,19 @@ public final class HomeModel {
 public final class BrowseModel {
     public let kind: MediaKind
     public private(set) var rows: [CatalogRow] = []
+    /// New to Stream (movies) or New Episodes This Week (shows), shown above the other rows.
+    public private(set) var newReleases: CatalogRow?
     public private(set) var isLoading = false
     private let catalog: any CatalogService
     private let now: @Sendable () -> Date
+    private let region: String
 
-    public init(kind: MediaKind, catalog: any CatalogService, now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(kind: MediaKind, catalog: any CatalogService, now: @escaping @Sendable () -> Date = { Date() },
+                region: String = NewReleases.deviceRegion) {
         self.kind = kind
         self.catalog = catalog
         self.now = now
+        self.region = region
     }
 
     /// The titles for the slider at the top: New Series for TV (fresh shows rather than long-running ones), Popular
@@ -100,6 +105,8 @@ public final class BrowseModel {
         let kind = kind
         let genres = Self.genres(for: kind)
         let today = now()
+        let region = region
+        async let fresh = NewReleases.load(kind, catalog: catalog, today: today, region: region)
         // Popular, the themed lists (New on Netflix, New Series, …), Top Rated, then genres.
         let curated = CuratedList.allCases.filter { $0.applies(to: kind) }
         let loaded = await withTaskGroup(of: (Int, CatalogRow?).self) { group in
@@ -124,5 +131,6 @@ public final class BrowseModel {
             return byOrder.keys.sorted().compactMap { byOrder[$0] }
         }
         rows = loaded
+        newReleases = await fresh
     }
 }

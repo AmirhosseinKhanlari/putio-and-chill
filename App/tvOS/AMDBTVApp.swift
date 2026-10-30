@@ -13,6 +13,8 @@ struct AMDBTVApp: App {
         URLCache.shared = URLCache(memoryCapacity: 64 << 20, diskCapacity: 256 << 20)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         let info = Bundle.main
+        // The chill account and Latest lists of older versions: deleted once.
+        if !DemoMode.isEnabled { RetiredData.removeOnce() }
         _model = State(initialValue: DemoMode.isEnabled ? DemoMode.makeModel() : AppModel(
             tokens: KeychainTokenStore(), store: LocalStore(fileURL: LocalStore.defaultURL(), backupSuite: "app.amdb.backup"),
             bundledTMDBToken: info.object(forInfoDictionaryKey: "TMDBReadToken") as? String,
@@ -21,7 +23,7 @@ struct AMDBTVApp: App {
             bundledOpenSubtitlesKey: info.object(forInfoDictionaryKey: "OpenSubtitlesAPIKey") as? String,
             bundledMDBListKey: info.object(forInfoDictionaryKey: "MDBListAPIKey") as? String,
             subtitleCache: SubtitleFileCache(directory: SubtitleFileCache.defaultDirectory()),
-            libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL()), chillFeedURL: ChillFeed.defaultURL(),
+            libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL()), latestFeedURL: LatestFeed.defaultURL(),
             watchLogStore: KeychainWatchLogStore(), deviceName: UIDevice.current.name))
     }
 

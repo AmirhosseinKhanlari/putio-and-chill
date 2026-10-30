@@ -306,6 +306,12 @@ struct FakeCatalog: CatalogService {
     var seasonCounts: [Int: Int] = [:]
     func seasonCount(tvID: Int) async throws -> Int? { try guarded(seasonCounts[tvID]) }
     func findByIMDb(_ imdbID: String) async throws -> CatalogItem? { try guarded(imdb[imdbID]) }
+    /// Answers filtered discovery; without it, popular titles (like the protocol's default).
+    var discoverAnswer: (@Sendable (MediaKind, DiscoverQuery) -> [CatalogItem])?
+    func discover(_ kind: MediaKind, query: DiscoverQuery) async throws -> [CatalogItem] {
+        if let discoverAnswer { return try guarded(discoverAnswer(kind, query)) }
+        return try await popular(kind)
+    }
 
     private func guarded<T>(_ value: T) throws -> T {
         if failAll || outage?.isOn == true { throw AppError.transport("offline") }

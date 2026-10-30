@@ -113,7 +113,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
     /// Settings saved by older versions keep their values and pick up defaults for new options.
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        sources = try c.decodeIfPresent([SourceConfig].self, forKey: .sources) ?? AppSettings.defaults.sources
+        sources = AppSettings.withoutRetiredSources(try c.decodeIfPresent([SourceConfig].self, forKey: .sources)
+            ?? AppSettings.defaults.sources)
         defaultResolution = try c.decodeIfPresent(Int.self, forKey: .defaultResolution)
         autoPlayCountdown = try c.decodeIfPresent(Bool.self, forKey: .autoPlayCountdown) ?? true
         autoPlayNextEpisode = try c.decodeIfPresent(Bool.self, forKey: .autoPlayNextEpisode) ?? true
@@ -138,7 +139,6 @@ public struct AppSettings: Codable, Sendable, Equatable {
     }
 
     public static let defaults = AppSettings(sources: [
-        SourceConfig(id: "chill", name: "chill", enabled: true, baseURL: "https://api.chill.institute/v4"),
         SourceConfig(id: "yts", name: "YTS", enabled: true, baseURL: "https://movies-api.accel.li"),
         SourceConfig(id: "eztv", name: "EZTV", enabled: true, baseURL: "https://eztvx.to"),
         SourceConfig(id: "apibay", name: "The Pirate Bay (apibay)", enabled: true, baseURL: "https://apibay.org"),
@@ -149,6 +149,19 @@ public struct AppSettings: Codable, Sendable, Equatable {
 
     public func source(_ id: String) -> SourceConfig? { sources.first { $0.id == id } }
 
+    /// Release sources the app no longer has (chill, which needed an account).
+    static let retiredSourceIDs: Set<String> = ["chill"]
+
+    /// Saved sources without the retired ones. When dropping them leaves nothing switched on (someone who searched
+    /// chill alone), every default source is switched back on, so searches still find releases.
+    static func withoutRetiredSources(_ saved: [SourceConfig]) -> [SourceConfig] {
+        var kept = saved.filter { !retiredSourceIDs.contains($0.id) }
+        guard kept.count < saved.count, saved.contains(where: \.enabled), !kept.contains(where: \.enabled) else { return kept }
+        let defaultIDs = Set(defaults.sources.filter(\.enabled).map(\.id))
+        for index in kept.indices where defaultIDs.contains(kept[index].id) { kept[index].enabled = true }
+        return kept
+    }
+
     static let storageKey = "amdb.settings"
 
     public static func load(from userDefaults: UserDefaults) -> AppSettings {
@@ -157,7 +170,17 @@ public struct AppSettings: Codable, Sendable, Equatable {
         for source in AppSettings.defaults.sources where decoded.source(source.id) == nil {
             decoded.sources.append(source)
         }
+        // Settings saved with a retired source are saved again without it, so the migration happens once.
+        if let stored = try? JSONDecoder().decode(StoredSources.self, from: data),
+           stored.sources?.contains(where: { retiredSourceIDs.contains($0.id) }) == true {
+            decoded.save(to: userDefaults)
+        }
         return decoded
+    }
+
+    private struct StoredSources: Decodable {
+        struct Source: Decodable { let id: String }
+        let sources: [Source]?
     }
 
     /// The same settings with any folder pick that is the old AMDB/Movies or AMDB/TV set back to the default (those

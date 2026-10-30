@@ -2,13 +2,13 @@ import Foundation
 import Security
 
 public enum TokenKey: String, CaseIterable, Sendable {
-    case putio, tmdb, chill, mdblist
+    case putio, tmdb, mdblist
     /// OpenSubtitles API key (overrides the built-in one) and optional account, which raises the daily download limit.
     case opensubtitles, opensubtitlesUsername, opensubtitlesPassword
     /// Link to the user's public IMDb watchlist or list (not a secret; synced so the Apple TV shows it too).
     case imdb
 
-    /// TMDB, chill and MDBList tokens sync through iCloud Keychain so the Apple TV app can reuse them.
+    /// TMDB and MDBList tokens sync through iCloud Keychain so the Apple TV app can reuse them.
     var synchronizes: Bool { self != .putio }
 }
 
@@ -38,6 +38,12 @@ public struct KeychainTokenStore: TokenStore {
     public func write(_ value: String?, for key: TokenKey) {
         Keychain.write(value.flatMap { $0.isEmpty ? nil : Data($0.utf8) }, service: service, account: key.rawValue,
                        synchronizes: key.synchronizes)
+    }
+
+    /// Deletes an item saved under a key the app no longer has (on this device and, for synced items, through
+    /// iCloud Keychain on the user's other devices too).
+    public func removeRetired(account: String) {
+        Keychain.write(nil, service: service, account: account, synchronizes: false)
     }
 }
 

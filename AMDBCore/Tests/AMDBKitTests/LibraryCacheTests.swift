@@ -118,7 +118,7 @@ import Testing
         let putio = LibraryIndexTests.tree()
         let catalog = LibraryIndexTests.catalog
         let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in catalog },
-                                     makeProvider: { _, _ in nil })
+                                     makeProvider: { _ in nil })
         let app = AppModel(tokens: InMemoryTokenStore([.putio: "t", .tmdb: "t"]), defaults: testDefaults(),
                            store: LocalStore(fileURL: nil), factory: factory)
         #expect(await app.refreshLibraryIfDue(), "never fetched: always runs")

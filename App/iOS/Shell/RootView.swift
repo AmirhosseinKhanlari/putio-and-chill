@@ -8,7 +8,7 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if app.isReady && (onboarded || DemoMode.isEnabled) {
+            if app.isReady && !DemoMode.showsOnboarding && (onboarded || DemoMode.isEnabled) {
                 MainView()
             } else {
                 OnboardingView()

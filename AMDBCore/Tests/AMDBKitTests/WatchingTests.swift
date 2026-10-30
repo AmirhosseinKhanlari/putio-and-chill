@@ -66,7 +66,7 @@ import Testing
 @MainActor @Suite struct SmartGetFlowTests {
     func app(snapshots: [ReleaseSnapshot], putio: FakePutio) -> AppModel {
         let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in FakeCatalog() },
-                                     makeProvider: { _, _ in nil })
+                                     makeProvider: { _ in nil })
         let model = AppModel(tokens: InMemoryTokenStore([.putio: "p", .tmdb: "t"]), defaults: testDefaults(),
                              store: LocalStore(fileURL: nil), factory: factory)
         model.overrideReleaseSearcher(FakeSearcher(snapshots: snapshots))

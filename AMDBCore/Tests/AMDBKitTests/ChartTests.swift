@@ -8,7 +8,7 @@ import Testing
         let factory = ServiceFactory(
             makePutio: { _ in FakePutio() },
             makeCatalog: { _ in FakeCatalog() },
-            makeProvider: { config, _ in FakeProvider(id: config.id) },
+            makeProvider: { config in FakeProvider(id: config.id) },
             makeCharts: { _ in charts })
         return AppModel(tokens: InMemoryTokenStore([.putio: "p", .tmdb: "t"]), defaults: testDefaults(),
                         store: LocalStore(fileURL: nil), factory: factory, bundledTraktClientID: bundledTrakt)
@@ -45,7 +45,7 @@ import Testing
             }
         }
         let factory = ServiceFactory(makePutio: { _ in FakePutio() }, makeCatalog: { _ in FakeCatalog() },
-                                     makeProvider: { _, _ in nil }, trailers: FakeTrailers())
+                                     makeProvider: { _ in nil }, trailers: FakeTrailers())
         let app = AppModel(tokens: InMemoryTokenStore(), defaults: testDefaults(), store: LocalStore(fileURL: nil), factory: factory)
         #expect(await app.trailer(imdbID: "tt1")?.url.absoluteString == "https://v.test/t.m3u8")
         #expect(await app.trailer(imdbID: "tt2") == nil)

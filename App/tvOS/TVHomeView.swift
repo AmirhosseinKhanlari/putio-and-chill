@@ -155,7 +155,9 @@ struct TVBrowseView: View {
                 if !recent.isEmpty {
                     TVEntryShelf(title: "Recently Added to put.io", entries: recent)
                 }
-                let latest = kind == .tv ? app.chillFeed.shows : app.chillFeed.movies
+                // New to Stream / New Episodes This Week (TMDB), then MyMoviz's newest.
+                if let fresh = model?.newReleases { TVCatalogShelf(row: fresh) }
+                let latest = kind == .tv ? app.latestFeed.shows : app.latestFeed.movies
                 if !latest.isEmpty {
                     TVCatalogShelf(row: CatalogRow(id: "latest", title: kind == .tv ? "Latest Shows" : "Latest Movies", items: latest))
                 }
@@ -179,7 +181,7 @@ struct TVBrowseView: View {
             guard model == nil, let catalog = app.catalog else { return }
             let browse = BrowseModel(kind: kind, catalog: catalog)
             model = browse
-            Task { await app.refreshChillFeed() }
+            Task { await app.refreshLatestFeed() }
             await browse.load()
         }
     }

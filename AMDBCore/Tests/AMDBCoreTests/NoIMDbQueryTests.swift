@@ -61,29 +61,6 @@ import Testing
         #expect(ReleaseRelevance.sameShow("", "Severance"))
     }
 
-    @Test func chillSearchesByTitleWithoutIMDbID() async throws {
-        let stub = StubTransport { request in
-            let path = request.url!.path
-            if path.hasSuffix("/GetIndexers") {
-                return (200, Data(#"{"indexers":[{"id":"tpb","name":"TPB","enabled":true}]}"#.utf8))
-            }
-            if path.hasSuffix("/Search") {
-                return (200, Data(#"""
-                {"results":[
-                 {"title":"Monster The Ed Gein Story S01E01 1080p WEB h264-ETHEL","indexer":"tpb","link":"magnet:?xt=urn:btih:1111111111111111111111111111111111111111","seeders":"500","size":"2000000000"},
-                 {"title":"Monster S01E01 1080p BluRay","indexer":"tpb","link":"magnet:?xt=urn:btih:2222222222222222222222222222222222222222","seeders":"50","size":"1000000000"}]}
-                """#.utf8))
-            }
-            return (404, Data())
-        }
-        let releases = try await ChillProvider(token: "tok", transport: stub)
-            .releases(for: .episode(imdbID: nil, title: Self.edGein, season: 1, episode: 1))
-        #expect(releases.map(\.infoHash) == [String(repeating: "1", count: 40)])
-        let search = try #require(stub.requests.first { $0.url!.path.hasSuffix("/Search") })
-        #expect(search.bodyString.contains(#""query":"Monster The Ed Gein Story S01E01""#))
-        #expect(!stub.requests.contains { $0.url!.path.hasSuffix("/GetTVShowEpisodeDownload") })
-    }
-
     @Test func eztvSkipsWithoutIMDbID() async throws {
         let stub = StubTransport(json: #"{"torrents":[]}"#)
         let releases = try await EZTVProvider(transport: stub)

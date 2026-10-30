@@ -200,7 +200,7 @@ struct ReleaseRow: View {
                     ForEach(release.sources.sorted(), id: \.self) { tag in
                         Text(tag.label).font(.caption2.weight(.semibold))
                             .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background((tag.kind == .chill ? Color.red : Color.blue).opacity(0.22), in: Capsule())
+                            .background(Color.blue.opacity(0.22), in: Capsule())
                     }
                     ForEach(release.parsed.hdr, id: \.self) { flag in
                         Text(flag).font(.caption2.weight(.semibold)).padding(.horizontal, 6).padding(.vertical, 2)

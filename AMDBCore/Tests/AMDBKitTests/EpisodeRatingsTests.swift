@@ -32,7 +32,7 @@ import Testing
     @Test func appModelCachesSeasonRatings() async throws {
         let service = CountingEpisodeRatings()
         let factory = ServiceFactory(makePutio: { _ in fatalError() }, makeCatalog: { _ in FakeCatalog() },
-                                     makeProvider: { _, _ in nil }, episodeRatings: service)
+                                     makeProvider: { _ in nil }, episodeRatings: service)
         let app = AppModel(tokens: InMemoryTokenStore(), store: LocalStore(fileURL: nil), factory: factory)
         _ = await app.episodeRatings(seriesIMDbID: "tt1", season: 1)
         let second = await app.episodeRatings(seriesIMDbID: "tt1", season: 1)

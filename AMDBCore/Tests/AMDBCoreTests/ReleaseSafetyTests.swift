@@ -209,9 +209,9 @@ private func check(_ name: String, _ size: Int64?, _ query: MediaQuery? = nil) -
     }
 
     @Test func blockedMatchesHashOrLink() {
-        let chill = Release(name: "X.2024.1080p", link: "https://chill.institute/t/Abc", sources: [])
-        #expect(ReleaseAggregator.isBlocked(chill, ["https://chill.institute/t/abc"]))
-        #expect(!ReleaseAggregator.isBlocked(chill, []))
+        let linked = Release(name: "X.2024.1080p", link: "https://tracker.example/t/Abc", sources: [])
+        #expect(ReleaseAggregator.isBlocked(linked, ["https://tracker.example/t/abc"]))
+        #expect(!ReleaseAggregator.isBlocked(linked, []))
         #expect(ReleaseAggregator.isBlocked(release("e", seeders: 1, tag: SourceTag(.direct, "TPB")), [String(repeating: "e", count: 40)]))
     }
 

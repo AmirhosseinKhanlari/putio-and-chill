@@ -14,7 +14,6 @@ struct SettingsView: View {
     @AppStorage("amdb.onboarded") private var onboarded = false
     @State private var username: String?
     @State private var draft = AppSettings.defaults
-    @State private var showChill = false
     @State private var tmdbDraft = ""
     @State private var mdblistDraft = ""
     /// Why the key just entered wasn't saved, shown under its field (saving used to fail without a word).
@@ -147,7 +146,6 @@ struct SettingsView: View {
             } message: {
                 Text("Your downloads on this device stay. Sign in again to keep using Putio & Chill.")
             }
-            .sheet(isPresented: $showChill) { ChillConnectView() }
             .sheet(isPresented: $organizing) { OrganizeSheet(layout: FolderLayout(settings: draft)) }
         }
     }
@@ -233,7 +231,7 @@ struct SettingsView: View {
     }
 
     private var servicesSummary: String {
-        let count = [app.catalog != nil, app.hasRatings, app.hasChill, app.hasSubtitleSearch, app.imdbWatchlist.isConnected].filter { $0 }.count
+        let count = [app.catalog != nil, app.hasRatings, app.hasSubtitleSearch, app.imdbWatchlist.isConnected].filter { $0 }.count
         return "\(count) connected"
     }
 
@@ -384,7 +382,7 @@ struct SettingsView: View {
                     }
                 }
             } footer: {
-                Text("Sites move. If one stops answering, update its address here. chill needs a connected account.")
+                Text("Sites move. If one stops answering, update its address here.")
             }
         }
     }
@@ -567,18 +565,6 @@ struct SettingsView: View {
                 Text("IMDb, Rotten Tomatoes, Metacritic and Letterboxd scores on title pages.")
             }
             imdbSection
-            Section {
-                LabeledContent("chill.institute", value: app.hasChill ? "Connected" : "Not connected")
-                if app.hasChill {
-                    Button("Disconnect chill", role: .destructive) { app.setToken(nil, for: .chill) }
-                } else {
-                    Button("Connect chill") { showChill = true }
-                }
-            } header: {
-                Text("Releases")
-            } footer: {
-                Text("chill's release search and Latest lists.")
-            }
         }
     }
 }

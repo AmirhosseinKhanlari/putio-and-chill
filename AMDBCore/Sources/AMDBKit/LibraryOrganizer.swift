@@ -25,7 +25,7 @@ public struct OrganizePlan: Sendable, Equatable {
     public var isEmpty: Bool { moves.isEmpty }
 }
 
-/// Moves files that arrived outside AMDB (chill's site, put.io directly, older downloads) into the folder layout
+/// Moves files that arrived outside AMDB (a torrent site, put.io directly, older downloads) into the folder layout
 /// from Settings. Only confidently recognized videos move; release folders move whole so subtitle files stay
 /// next to their video; folders the layout lives in are never moved.
 public enum LibraryOrganizer {

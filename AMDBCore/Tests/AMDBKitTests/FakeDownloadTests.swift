@@ -155,7 +155,7 @@ import Testing
         let putio = FakePutio()
         let store = LocalStore(fileURL: nil)
         await store.update { $0.badReleases = [String(repeating: "c", count: 40)] }
-        let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in FakeCatalog() }, makeProvider: { _, _ in nil })
+        let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in FakeCatalog() }, makeProvider: { _ in nil })
         let model = AppModel(tokens: InMemoryTokenStore([.putio: "p", .tmdb: "t"]), defaults: testDefaults(),
                              store: store, factory: factory)
         model.overrideReleaseSearcher(FakeSearcher(snapshots: [done]))

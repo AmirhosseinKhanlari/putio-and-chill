@@ -51,7 +51,7 @@ import Testing
         let factory = ServiceFactory(
             makePutio: { _ in FakePutio() },
             makeCatalog: { token in catalogTokens.record(token); return FakeCatalog() },
-            makeProvider: { config, _ in FakeProvider(id: config.id) },
+            makeProvider: { config in FakeProvider(id: config.id) },
             makeRatings: { key in ratingsKeys.record(key); return ratings },
             makeCharts: { _ in trakt ?? FakeCharts() })
         return AppModel(tokens: InMemoryTokenStore(tokens), defaults: testDefaults(), store: LocalStore(fileURL: nil),

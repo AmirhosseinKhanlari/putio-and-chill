@@ -58,7 +58,7 @@ struct TVRootView: View {
                     if app.reloadSyncedTokens() { await app.imdbWatchlist.load(force: true) }
                     // Watched on another device meanwhile: Continue Watching shows it now, not at the next update.
                     Task { await app.refreshContinueWatching() }
-                    await app.refreshChillFeed(force: true)
+                    await app.refreshLatestFeed(force: true)
                     await app.refreshLibraryIfDue()
                 }
             }
@@ -296,7 +296,7 @@ struct TVRootView: View {
         Task { await app.refreshContinueWatching() }
         await app.myList.load()
         await app.transfers.restore()
-        Task { await app.refreshChillFeed(force: true) }
+        Task { await app.refreshLatestFeed(force: true) }
         // The one-time move of AMDB/Movies and AMDB/TV into Movies and TV Series, before the library update reads them.
         if let message = await app.mergeOldFoldersIfNeeded()?.message {
             withAnimation(.snappy) { router.notice = message }

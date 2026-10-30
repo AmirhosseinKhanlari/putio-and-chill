@@ -20,15 +20,15 @@ func release(_ hash: Character, seeders: Int?, size: Int64? = nil, tag: SourceTa
 
 @Suite struct ReleaseAggregatorTests {
     let yts = SourceTag(.direct, "YTS")
-    let chill = SourceTag(.chill, "YTS")
+    let knaben = SourceTag(.direct, "Knaben")
     let tpb = SourceTag(.direct, "TPB")
 
     @Test func mergeUnionsTagsAndKeepsMaxSeeders() {
         let merged = ReleaseAggregator.merge(
             [release("a", seeders: 10, tag: yts)],
-            [release("a", seeders: 50, size: 99, tag: chill), release("b", seeders: 1, tag: tpb)])
+            [release("a", seeders: 50, size: 99, tag: knaben), release("b", seeders: 1, tag: tpb)])
         #expect(merged.count == 2)
-        #expect(merged[0].sources == [yts, chill])
+        #expect(merged[0].sources == [yts, knaben])
         #expect(merged[0].seeders == 50)
         #expect(merged[0].sizeBytes == 99)
     }

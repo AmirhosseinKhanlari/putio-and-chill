@@ -5,14 +5,13 @@ import Observation
 public struct ServiceFactory: Sendable {
     public var makePutio: @Sendable (String) -> any PutioService
     public var makeCatalog: @Sendable (String) -> any CatalogService
-    public var makeProvider: @Sendable (SourceConfig, _ chillToken: String?) -> (any SourceProvider)?
+    public var makeProvider: @Sendable (SourceConfig) -> (any SourceProvider)?
     public var makeRatings: @Sendable (String) -> any RatingsService
     public var makeLists: @Sendable (String) -> any ListsService
     public var makeCharts: @Sendable (String) -> any ChartsService
     public var trailers: any TrailerService
     public var episodeRatings: any EpisodeRatingsService
     public var makeSubtitles: @Sendable (String) -> any SubtitleService
-    public var makeChillCatalog: @Sendable (String) -> any ChillCatalogService
     /// Latest movie / show lists that need no account (MyMoviz).
     public var latestLists: [any LatestTitlesSource]
     public var imdbLists: any IMDbListService
@@ -21,7 +20,7 @@ public struct ServiceFactory: Sendable {
 
     public init(makePutio: @escaping @Sendable (String) -> any PutioService,
                 makeCatalog: @escaping @Sendable (String) -> any CatalogService,
-                makeProvider: @escaping @Sendable (SourceConfig, String?) -> (any SourceProvider)?,
+                makeProvider: @escaping @Sendable (SourceConfig) -> (any SourceProvider)?,
                 makeRatings: @escaping @Sendable (String) -> any RatingsService = {
                     RatingsClient(apiKey: $0, transport: URLSessionTransport())
                 },
@@ -35,9 +34,6 @@ public struct ServiceFactory: Sendable {
                 episodeRatings: any EpisodeRatingsService = IMDbEpisodeRatingsClient(transport: URLSessionTransport()),
                 makeSubtitles: @escaping @Sendable (String) -> any SubtitleService = {
                     OpenSubtitlesClient(apiKey: $0, transport: URLSessionTransport())
-                },
-                makeChillCatalog: @escaping @Sendable (String) -> any ChillCatalogService = {
-                    ChillCatalogClient(token: $0, transport: URLSessionTransport())
                 },
                 latestLists: [any LatestTitlesSource] = [MyMovizClient(kind: .movie, transport: URLSessionTransport()),
                                                          MyMovizClient(kind: .tv, transport: URLSessionTransport())],
@@ -54,7 +50,6 @@ public struct ServiceFactory: Sendable {
         self.trailers = trailers
         self.episodeRatings = episodeRatings
         self.makeSubtitles = makeSubtitles
-        self.makeChillCatalog = makeChillCatalog
         self.latestLists = latestLists
     }
 
@@ -67,10 +62,9 @@ public struct ServiceFactory: Sendable {
         return ServiceFactory(
             makePutio: { PutioClient(token: $0, transport: putio) },
             makeCatalog: { CatalogClient(accessToken: $0, transport: metadata) },
-            makeProvider: { config, chillToken in
+            makeProvider: { config in
                 guard let url = URL(string: config.baseURL) else { return nil }
                 switch config.id {
-                case "chill": return chillToken.map { ChillProvider(token: $0, transport: transport, baseURL: url) }
                 case "yts": return YTSProvider(baseURL: url, transport: transport)
                 case "eztv": return EZTVProvider(baseURL: url, transport: transport)
                 case "apibay": return ApibayProvider(baseURL: url, transport: transport)
@@ -96,7 +90,6 @@ public final class AppModel {
     public private(set) var putio: (any PutioService)?
     public private(set) var catalog: (any CatalogService)?
     public private(set) var settings: AppSettings
-    public private(set) var hasChill = false
     public private(set) var hasRatings = false
     /// OpenSubtitles search is available (built-in or user API key).
     public private(set) var hasSubtitleSearch = false
@@ -119,8 +112,8 @@ public final class AppModel {
     /// MDBList charts and lists for the Movies and TV tabs.
     public let lists = MDBLists()
     public let downloads: DownloadsIndex
-    /// "Latest on chill" rows (needs a connected chill account).
-    public let chillFeed: ChillFeed
+    /// Latest Movies / Latest Shows rows (MyMoviz's newest, matched to TMDB).
+    public let latestFeed: LatestFeed
     /// put.io's used / free space and trash size.
     public let storage = PutioStorage()
     /// The user's public IMDb watchlist, matched to TMDB.
@@ -153,7 +146,6 @@ public final class AppModel {
     @ObservationIgnored private var chartCache: [IMDbChart: [ChartEntry]] = [:]
     @ObservationIgnored private var episodeRatingsCache: [String: [Int: EpisodeRating]] = [:]
     @ObservationIgnored private var subtitleService: (any SubtitleService)?
-    @ObservationIgnored private var chillCatalog: (any ChillCatalogService)?
     @ObservationIgnored private let bundledOpenSubtitlesKey: String?
     @ObservationIgnored private let bundledMDBListKey: String?
     @ObservationIgnored private var openSubtitlesLogin: OpenSubtitlesLogin?
@@ -163,7 +155,7 @@ public final class AppModel {
                 bundledTMDBToken: String? = nil, ratingsCache: RatingsCache = RatingsCache(fileURL: nil),
                 bundledTraktClientID: String? = nil, bundledOpenSubtitlesKey: String? = nil, bundledMDBListKey: String? = nil,
                 subtitleCache: SubtitleFileCache = SubtitleFileCache(directory: nil),
-                libraryCache: LibraryCache = LibraryCache(fileURL: nil), chillFeedURL: URL? = nil,
+                libraryCache: LibraryCache = LibraryCache(fileURL: nil), latestFeedURL: URL? = nil,
                 watchLogStore: (any WatchLogStore)? = nil, deviceName: String = "This device") {
         self.tokens = tokens
         watchLog = WatchLogSync(store: watchLogStore, deviceName: deviceName)
@@ -193,7 +185,7 @@ public final class AppModel {
         transfers = TransferMonitor(store: store)
         myList = MyList(store: store, synced: watchLogStore)
         downloads = DownloadsIndex(store: store)
-        chillFeed = ChillFeed(fileURL: chillFeedURL)
+        latestFeed = LatestFeed(fileURL: latestFeedURL)
         imdbWatchlist = IMDbWatchlistModel(store: store)
         episodeAlerts = EpisodeAlerts(store: store)
         rebuild()
@@ -549,10 +541,9 @@ public final class AppModel {
         return login
     }
 
-    /// Combined latest lists (chill when connected, plus MyMoviz) for the Movies / TV Shows tabs;
-    /// at most every six hours unless forced.
-    public func refreshChillFeed(force: Bool = false) async {
-        await chillFeed.load(service: chillCatalog, extra: factory.latestLists, catalog: catalog, force: force)
+    /// MyMoviz's latest lists for the Movies / TV Shows tabs; at most every six hours unless forced.
+    public func refreshLatestFeed(force: Bool = false) async {
+        await latestFeed.load(sources: factory.latestLists, catalog: catalog, force: force)
     }
 
     public func notePlayed(_ title: PlayedTitle) async {
@@ -602,10 +593,7 @@ public final class AppModel {
         openSubtitlesLogin = nil
         hasRatings = ratingsService != nil
         lists.use((tokens.read(.mdblist) ?? bundledMDBListKey).map(factory.makeLists))
-        let chillToken = tokens.read(.chill)
-        hasChill = chillToken != nil
-        chillCatalog = chillToken.map(factory.makeChillCatalog)
-        let providers = settings.sources.filter(\.enabled).compactMap { factory.makeProvider($0, chillToken) }
+        let providers = settings.sources.filter(\.enabled).compactMap { factory.makeProvider($0) }
         searcher = ReleaseAggregator(providers: providers, inspector: factory.fileLists) { [store] in
             await store.snapshot.badReleases
         }

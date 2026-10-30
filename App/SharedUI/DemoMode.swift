@@ -12,6 +12,9 @@ enum DemoMode {
     /// `-demoFull`: put.io has only 1.5 GB free and a Movies folder with two movies, so Get & Watch offers to make room.
     static var isFull: Bool { ProcessInfo.processInfo.arguments.contains("-demoFull") }
 
+    /// `-demoOnboarding`: the first-launch setup screen, though the demo accounts are connected (iPhone and iPad).
+    static var showsOnboarding: Bool { ProcessInfo.processInfo.arguments.contains("-demoOnboarding") }
+
     /// `-demoPlayURL <url>` (with `-demoScreen player-url`): a test video (e.g. from a local server) played through
     /// the app's player routing as a demo file: put.io's "stream" and its original file are both this URL, so a file
     /// Apple's player can't play falls back to the built-in player. `-demoCodecs mpeg4,mp3` makes put.io report its
@@ -35,15 +38,14 @@ enum DemoMode {
         let factory = ServiceFactory(
             makePutio: { _ in putio },
             makeCatalog: { _ in DemoCatalog() },
-            makeProvider: { config, _ in DemoProvider(id: config.id) },
+            makeProvider: { config in DemoProvider(id: config.id) },
             makeCharts: { _ in DemoCharts() },
             episodeRatings: DemoEpisodeRatings(),
             makeSubtitles: { _ in DemoSubtitles() },
-            makeChillCatalog: { _ in DemoChill() },
-            latestLists: [],
+            latestLists: [DemoLatest(kind: .movie), DemoLatest(kind: .tv)],
             imdbLists: DemoIMDbList())
         // `-demoIMDb` starts with an IMDb watchlist connected.
-        var tokens: [TokenKey: String] = [.putio: "demo", .tmdb: "demo", .chill: "demo"]
+        var tokens: [TokenKey: String] = [.putio: "demo", .tmdb: "demo"]
         if ProcessInfo.processInfo.arguments.contains("-demoIMDb") { tokens[.imdb] = "https://www.imdb.com/user/ur12345678/watchlist" }
         let model = AppModel(tokens: InMemoryTokenStore(tokens),
                              defaults: UserDefaults(suiteName: "amdb.demo") ?? .standard,
@@ -516,7 +518,7 @@ struct DemoProvider: SourceProvider {
     func releases(for query: MediaQuery) async throws -> [Release] {
         try await Task.sleep(for: .milliseconds(300 + abs(stableHash(id)) % 900))
         let title = query.searchText.replacingOccurrences(of: " ", with: ".")
-        let tag = id == "chill" ? SourceTag(.chill, "TPB") : SourceTag(.direct, id.uppercased())
+        let tag = SourceTag(.direct, id.uppercased())
         let variants: [(String, Int64, Int)] = [
             ("2160p.WEB-DL.DDP5.1.DV.HDR.H.265-FLUX", 18_200_000_000, 412),
             ("1080p.WEBRip.x264.AAC5.1", 2_900_000_000, 1200),
@@ -524,7 +526,8 @@ struct DemoProvider: SourceProvider {
             ("720p.WEBRip.x264", 1_100_000_000, 6),
         ]
         return variants.enumerated().compactMap { index, variant in
-            guard (stableHash(id) + index) % 3 != 0 || id == "chill" else { return nil }
+            // The Pirate Bay always has every version, so the demo list is never missing one.
+            guard (stableHash(id) + index) % 3 != 0 || id == "apibay" else { return nil }
             let hash = String(repeating: String(index), count: 40)
             return Release(name: "\(title).\(variant.0)", link: "magnet:?xt=urn:btih:\(hash)", sizeBytes: variant.1,
                            seeders: variant.2, sources: [tag])
@@ -584,13 +587,13 @@ struct DemoCharts: ChartsService {
     }
 }
 
-/// chill's combined lists in demo mode: a few of the demo titles, newest first.
-struct DemoChill: ChillCatalogService {
-    func combinedMovies(allowSettingsSwitch: Bool) async throws -> [ChillTitle] {
-        DemoCatalog.movies.reversed().map { ChillTitle(imdbID: nil, title: $0.title, year: $0.year, kind: .movie, source: "DEMO") }
-    }
-    func combinedShows() async throws -> [ChillTitle] {
-        DemoCatalog.shows.map { ChillTitle(imdbID: nil, title: $0.title, year: $0.year, kind: .tv, source: "DEMO") }
+/// Latest Movies / Latest Shows in demo mode: a few of the demo titles, newest first.
+struct DemoLatest: LatestTitlesSource {
+    let kind: MediaKind
+    func latestTitles() async throws -> [LatestTitle] {
+        kind == .tv
+            ? DemoCatalog.shows.map { LatestTitle(imdbID: nil, title: $0.title, year: $0.year, kind: .tv, source: "DEMO") }
+            : DemoCatalog.movies.reversed().map { LatestTitle(imdbID: nil, title: $0.title, year: $0.year, kind: .movie, source: "DEMO") }
     }
 }
 

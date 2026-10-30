@@ -5,7 +5,7 @@ import Testing
 
 @MainActor @Suite struct OfflineSubtitlesTests {
     func makeApp(_ putio: FakePutio, store: LocalStore, defaults: UserDefaults = testDefaults()) -> AppModel {
-        let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in FakeCatalog() }, makeProvider: { _, _ in nil })
+        let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in FakeCatalog() }, makeProvider: { _ in nil })
         return AppModel(tokens: InMemoryTokenStore([.putio: "p", .tmdb: "t"]), defaults: defaults, store: store, factory: factory)
     }
 

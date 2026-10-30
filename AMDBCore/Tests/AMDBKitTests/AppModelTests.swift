@@ -13,16 +13,15 @@ final class ProviderCalls: @unchecked Sendable {
 
 @MainActor @Suite struct AppModelTests {
     func makeModel(_ tokens: [TokenKey: String], calls: ProviderCalls = ProviderCalls(), catalog: FakeCatalog = FakeCatalog(),
-                   putio: FakePutio = FakePutio()) -> AppModel {
+                   putio: FakePutio = FakePutio(), defaults: UserDefaults = testDefaults()) -> AppModel {
         let factory = ServiceFactory(
             makePutio: { _ in putio },
             makeCatalog: { _ in catalog },
-            makeProvider: { config, chillToken in
+            makeProvider: { config in
                 calls.record(config.id)
-                if config.id == "chill" && chillToken == nil { return nil }
                 return FakeProvider(id: config.id)
             })
-        return AppModel(tokens: InMemoryTokenStore(tokens), defaults: testDefaults(), store: LocalStore(fileURL: nil), factory: factory)
+        return AppModel(tokens: InMemoryTokenStore(tokens), defaults: defaults, store: LocalStore(fileURL: nil), factory: factory)
     }
 
     @Test func notReadyWithoutTokens() {
@@ -34,7 +33,6 @@ final class ProviderCalls: @unchecked Sendable {
     @Test func readyWithPutioAndTMDB() {
         let model = makeModel([.putio: "p", .tmdb: "t"])
         #expect(model.isReady)
-        #expect(!model.hasChill)
     }
 
     @Test func settingTokensRebuilds() {
@@ -47,16 +45,32 @@ final class ProviderCalls: @unchecked Sendable {
         #expect(!model.isReady)
     }
 
-    @Test func providersFollowSettingsAndChillToken() {
+    @Test func providersFollowSettings() {
         let calls = ProviderCalls()
-        let model = makeModel([.putio: "p", .tmdb: "t", .chill: "c"], calls: calls)
-        #expect(model.hasChill)
-        #expect(calls.all == ["chill", "yts", "eztv", "apibay", "knaben", "torrentscsv", "torrentgalaxy"])
+        let model = makeModel([.putio: "p", .tmdb: "t"], calls: calls)
+        #expect(calls.all == ["yts", "eztv", "apibay", "knaben", "torrentscsv", "torrentgalaxy"])
         calls.reset()
         var settings = model.settings
-        settings.sources[2].enabled = false
+        settings.sources[1].enabled = false
         model.updateSettings(settings)
-        #expect(calls.all == ["chill", "yts", "apibay", "knaben", "torrentscsv", "torrentgalaxy"])
+        #expect(calls.all == ["yts", "apibay", "knaben", "torrentscsv", "torrentgalaxy"])
+    }
+
+    /// Someone who searched chill alone: chill is gone and the default sources search instead.
+    @Test func settingsWithOnlyChillSearchTheDefaultSources() {
+        let defaults = testDefaults()
+        defaults.set(SettingsAndTokensTests.savedWithChill(chillEnabled: true, othersEnabled: false), forKey: AppSettings.storageKey)
+        let calls = ProviderCalls()
+        let model = makeModel([.putio: "p", .tmdb: "t"], calls: calls, defaults: defaults)
+        #expect(calls.all == ["yts", "eztv", "apibay", "knaben", "torrentscsv", "torrentgalaxy"])
+        #expect(model.settings.source("chill") == nil)
+    }
+
+    @Test func nothingAboutChillIsLeftOnTheModel() {
+        let model = makeModel([.putio: "p", .tmdb: "t"])
+        let names = Mirror(reflecting: model).children.compactMap(\.label).map { $0.lowercased() }
+        #expect(!names.isEmpty)
+        #expect(!names.contains { $0.contains("chill") })
     }
 
     @Test func validateTMDBUsesFactory() async {

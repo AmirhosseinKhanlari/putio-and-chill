@@ -17,6 +17,8 @@ struct AMDBApp: App {
         URLCache.shared = URLCache(memoryCapacity: 64 << 20, diskCapacity: 512 << 20)
         UNUserNotificationCenter.current().delegate = NotificationLinks.shared
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        // The chill account and Latest lists of older versions: deleted once.
+        if !DemoMode.isEnabled { RetiredData.removeOnce() }
         let model = DemoMode.isEnabled
             ? DemoMode.makeModel()
             : AppModel(tokens: KeychainTokenStore(), store: LocalStore(fileURL: LocalStore.defaultURL()),
@@ -26,7 +28,7 @@ struct AMDBApp: App {
                        bundledOpenSubtitlesKey: Bundle.main.object(forInfoDictionaryKey: "OpenSubtitlesAPIKey") as? String,
                        bundledMDBListKey: Bundle.main.object(forInfoDictionaryKey: "MDBListAPIKey") as? String,
                        subtitleCache: SubtitleFileCache(directory: SubtitleFileCache.defaultDirectory()),
-                       libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL()), chillFeedURL: ChillFeed.defaultURL(),
+                       libraryCache: LibraryCache(fileURL: LibraryCache.defaultURL()), latestFeedURL: LatestFeed.defaultURL(),
                        watchLogStore: KeychainWatchLogStore(), deviceName: UIDevice.current.name)
         _model = State(initialValue: model)
         _downloader = State(initialValue: OfflineDownloader(app: model))

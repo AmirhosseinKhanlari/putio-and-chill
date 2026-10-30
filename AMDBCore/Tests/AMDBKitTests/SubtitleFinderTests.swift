@@ -162,7 +162,7 @@ private final class FakeSubtitles: SubtitleService, @unchecked Sendable {
         let service = FakeSubtitles()
         let tokens = InMemoryTokenStore()
         let factory = ServiceFactory(makePutio: { _ in fatalError() }, makeCatalog: { _ in FakeCatalog() },
-                                     makeProvider: { _, _ in nil }, makeSubtitles: { _ in service })
+                                     makeProvider: { _ in nil }, makeSubtitles: { _ in service })
         let app = AppModel(tokens: tokens, store: LocalStore(fileURL: nil), factory: factory, bundledOpenSubtitlesKey: " key ")
         #expect(app.hasSubtitleSearch)
         #expect(app.usesBundledOpenSubtitles)

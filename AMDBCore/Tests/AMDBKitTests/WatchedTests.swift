@@ -328,7 +328,7 @@ import Testing
     @Test func findUpNextAsksTMDBOncePerWatchedEpisode() async {
         let putio = Self.tree()
         let catalog = severance()
-        let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in catalog }, makeProvider: { _, _ in nil })
+        let factory = ServiceFactory(makePutio: { _ in putio }, makeCatalog: { _ in catalog }, makeProvider: { _ in nil })
         let app = AppModel(tokens: InMemoryTokenStore([.putio: "t", .tmdb: "t"]), defaults: testDefaults(),
                            store: LocalStore(fileURL: nil), factory: factory)
         await app.library.refresh()

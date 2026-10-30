@@ -4,7 +4,7 @@ import Foundation
 
 let env = ProcessInfo.processInfo.environment
 guard let putioToken = env["PUTIO_TOKEN"], let tmdbToken = env["TMDB_TOKEN"] else {
-    print("Set PUTIO_TOKEN and TMDB_TOKEN (CHILL_TOKEN optional).")
+    print("Set PUTIO_TOKEN and TMDB_TOKEN.")
     exit(1)
 }
 let outPath = ".spike-out"
@@ -76,27 +76,7 @@ for provider in directProviders {
     await attempt("\(provider.id) episode") { "\(try await provider.releases(for: severance).count) releases" }
 }
 
-// 6. chill
-if let chillToken = env["CHILL_TOKEN"] {
-    let chill = ChillProvider(token: chillToken, transport: transport)
-    await attempt("chill indexers") { try await chill.indexers().map(\.name).joined(separator: ", ") }
-    await attempt("chill movie search") { "\(try await chill.releases(for: furiosa).count) releases" }
-    await attempt("chill episode download") { "\(try await chill.releases(for: severance).count) releases" }
-    for method in ["ResolvePlayback", "GetTransfer"] {
-        await attempt("chill \(method) exists") {
-            var request = try URLRequest.postJSON(
-                URL(string: "https://api.chill.institute/v4/chill.v4.UserService/\(method)")!,
-                body: ["fileId": "1"], headers: ["Authorization": "Bearer \(chillToken)", "Connect-Protocol-Version": "1"])
-            request.timeoutInterval = 15
-            let (data, response) = try await URLSessionTransport().send(request)
-            return "HTTP \(response.statusCode) \(String(decoding: data.prefix(160), as: UTF8.self))"
-        }
-    }
-} else {
-    record("chill", "skipped (no CHILL_TOKEN)")
-}
-
-// 7. Aggregate end-to-end
+// 6. Aggregate end-to-end
 await attempt("aggregate Furiosa") {
     let snapshot = await ReleaseAggregator(providers: directProviders).collect(for: furiosa)
     let top = snapshot.releases.sorted(by: .seeders).prefix(3).map { "\($0.parsed.resolution.label) \($0.seeders ?? 0)s \($0.sources.map(\.label).sorted())" }

@@ -119,8 +119,8 @@ struct MainView: View {
             Task { await app.refreshContinueWatching() }
             // Saved to or removed from My List on another device.
             Task { await app.myList.sync() }
-            // Latest Movies / Shows (chill, MyMoviz) are fetched every time the app opens.
-            Task { await app.refreshChillFeed(force: true) }
+            // Latest Movies / Shows (MyMoviz) are fetched every time the app opens.
+            Task { await app.refreshLatestFeed(force: true) }
             // New-episode alerts follow TMDB's schedule, which changes: plan them again.
             Task { await EpisodeAlertScheduler.reschedule(app) }
         }

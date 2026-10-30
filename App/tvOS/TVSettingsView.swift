@@ -144,7 +144,7 @@ struct TVSettingsView: View {
     }
 
     private var servicesSummary: String {
-        let count = [app.catalog != nil, app.hasRatings, app.hasChill, app.hasSubtitleSearch, app.imdbWatchlist.isConnected].filter { $0 }.count
+        let count = [app.catalog != nil, app.hasRatings, app.hasSubtitleSearch, app.imdbWatchlist.isConnected].filter { $0 }.count
         return "\(count) connected"
     }
 
@@ -311,9 +311,8 @@ struct TVSettingsView: View {
                      ? "IMDb, Rotten Tomatoes, Metacritic and Letterboxd scores on title pages."
                      : "Keys you added on your iPhone appear here by themselves when both devices use the same Apple Account with iCloud Keychain on.")
             }
-            Section("Catalog & Releases") {
+            Section("Catalog") {
                 LabeledContent("TMDB", value: app.catalog == nil ? "Not connected" : (app.usesBundledTMDB ? "Built in" : "Connected"))
-                LabeledContent("chill.institute", value: app.hasChill ? "Connected" : "Not connected")
             }
         }
     }
