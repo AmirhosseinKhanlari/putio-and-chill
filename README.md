@@ -45,8 +45,8 @@ on the phone in your pocket and the TV in your living room.
     <td width="33%" valign="top" align="center">
       <img src="docs/images/iphone-movies.png" width="230" alt="Browse">
       <h3>Endless discovery</h3>
-      New on Netflix and Disney+, New Series, Returning This Week, Critically Acclaimed, IMDb Top 250, and the latest
-      releases from chill and MyMoviz.
+      New to Stream, New Episodes This Week, New on Netflix and Disney+, New Series, Returning This Week, Critically
+      Acclaimed, IMDb Top 250, and MyMoviz's latest releases.
     </td>
   </tr>
   <tr>
@@ -127,8 +127,8 @@ No accounts yet? Add the launch argument **`-demo`** for built-in sample content
 | `TRAKT_CLIENT_ID` | IMDb Top 250, box office | trakt.tv/oauth/applications |
 | `OPENSUBTITLES_API_KEY` | Optional built-in subtitle search | opensubtitles.com → API consumers |
 
-The secrets file is gitignored. Users sign in to put.io in the app; chill, MDBList and OpenSubtitles accounts are
-optional and live in Settings.
+The secrets file is gitignored. Users sign in to put.io in the app; MDBList and OpenSubtitles accounts are optional
+and live in Settings.
 
 ## Under the hood
 
@@ -171,7 +171,7 @@ project.yml          XcodeGen spec
 
 ## Disclaimer
 
-Putio & Chill is a personal project, not affiliated with put.io, chill.institute, TMDB, IMDb, Trakt, OpenSubtitles or any release
+Putio & Chill is a personal project, not affiliated with put.io, TMDB, IMDb, Trakt, OpenSubtitles or any release
 source. You are responsible for what you download; follow the laws where you live and the terms of the services you
 connect.
 

@@ -11,7 +11,7 @@ Putio & Chill is one Swift package holding all the logic, and thin, platform-nat
                        │
 ┌──────────────── AMDBKit ────────────────────┐
 │ AppModel · LibraryIndex · TransferMonitor    │  App state and view models
-│ TitleModel · HomeModel · ChillFeed · …       │  (@Observable, @MainActor)
+│ TitleModel · HomeModel · LatestFeed · …      │  (@Observable, @MainActor)
 └──────────────────────┬──────────────────────┘
                        │
 ┌──────────────── AMDBCore ───────────────────┐
@@ -37,7 +37,7 @@ Putio & Chill is one Swift package holding all the logic, and thin, platform-nat
 | `Catalog/` | TMDB: search, details, seasons, people, collections, discover, now playing / upcoming, keywords, images |
 | `Charts/` | Trakt: IMDb Top 250 lists and the weekend box office; IMDb trailers |
 | `Ratings/` | MDBList ratings; IMDb per-episode ratings |
-| `Providers/` | Release sources (chill, YTS, EZTV, apibay, Knaben, Torrents.csv, TorrentGalaxy), chill's catalog lists, MyMoviz |
+| `Providers/` | Release sources (YTS, EZTV, apibay, Knaben, Torrents.csv, TorrentGalaxy), MyMoviz's latest lists |
 | `Search/` | `LiveSearchEngine`: debounced, cancellable catalog search |
 | `Parsing/` | `ReleaseNameParser`: title, year, season/episode, resolution, codec from release and file names |
 | `Library/` | `LibraryMatcher`: matches put.io file names to TMDB titles with a confidence score |
@@ -55,7 +55,9 @@ Putio & Chill is one Swift package holding all the logic, and thin, platform-nat
 | `TitleModel` | A title page: details, ratings, seasons, episode ratings, and which action to show |
 | `HomeModel`, `BrowseModel`, `SearchModel`, `ChartModel`, `ComingUpModel` | Screen models |
 | `CuratedLists` | TMDB discover filters for New on Netflix, Returning This Week, … |
-| `ChillFeed` | Latest Movies / Shows: chill + MyMoviz, merged, matched, cached |
+| `NewReleases` | New to Stream (movies out on digital or disc in the device's region, last 45 days) and New Episodes This Week, from TMDB |
+| `LatestFeed` | Latest Movies / Shows: MyMoviz's newest, matched to TMDB, cached |
+| `RetiredData` | Deletes what removed features left behind (an old Keychain item and cache file), once |
 | `SurpriseModel`, `AskSearch` | Surprise Me and Ask Chill |
 | `SubtitleFinder` | put.io tracks + OpenSubtitles, timing, per-file choice |
 | `PlaybackSession` | Progress sync to put.io while playing |
@@ -84,7 +86,7 @@ Putio & Chill is one Swift package holding all the logic, and thin, platform-nat
 ## Services and testability
 
 Every external service sits behind a protocol in AMDBKit (`PutioService`, `CatalogService`, `ChartsService`,
-`RatingsService`, `SubtitleService`, `ChillCatalogService`, `LatestTitlesSource`, …). `ServiceFactory.live` builds the
+`RatingsService`, `SubtitleService`, `LatestTitlesSource`, …). `ServiceFactory.live` builds the
 real clients; tests and demo mode pass fakes. Network clients take an `HTTPTransport`, so tests replay canned
 responses with `StubTransport`.
 
@@ -96,7 +98,8 @@ responses with `StubTransport`.
 3. `refreshLibraryIfDue()` re-walks put.io if the cache is older than the user's interval (or was read with another
    `LibraryScope`).
 4. New files are matched to TMDB (six at a time) and appear once matched.
-5. `ChillFeed` refreshes Latest Movies / Shows; screen models load TMDB rows.
+5. `LatestFeed` refreshes Latest Movies / Shows; screen models load TMDB rows (New to Stream / New Episodes This Week
+   included).
 
 **Get & Watch**
 1. `TitleModel` builds a query (IMDb id, title, year, season/episode).
@@ -120,7 +123,7 @@ responses with `StubTransport`.
 | Data | Stored | Refreshed |
 |---|---|---|
 | put.io library + matches + folder tree | `library.json`, `state.json` | At launch / return if older than the Settings interval (default 1 h); Update Now; iPhone checks every minute while open |
-| Latest Movies / Shows | `chill-feed.json` (lists, matches) | Every time the app opens; chill's settings-switch fallback at most every 6 h |
+| Latest Movies / Shows | `latest-feed.json` (rows, matches) | Every time the app opens; otherwise at most every 6 h |
 | Ratings | `ratings-v2.json` | After 7 days |
 | Subtitles | `Subtitles/` | Kept (re-watching never spends another download) |
 | TMDB rows, Coming Up, Top 250 | memory | When the app starts |

@@ -21,7 +21,7 @@ Everything Putio & Chill does, by area. Unless noted, a feature works on iPhone,
 
 - **put.io sign-in**: OAuth in the browser on iPhone/iPad. On Apple TV, a short code to enter at put.io/link (or a QR
   code to scan), so you never type a password with the remote.
-- **Optional accounts**: chill.institute (releases and lists), MDBList (ratings), OpenSubtitles (more subtitle downloads).
+- **Optional accounts**: MDBList (ratings), OpenSubtitles (more subtitle downloads).
 - **iCloud Keychain**: keys and accounts added on iPhone appear on Apple TV by themselves.
 - **Demo mode**: launch with `-demo` to explore with sample content, no accounts needed.
 
@@ -37,8 +37,9 @@ Everything Putio & Chill does, by area. Unless noted, a feature works on iPhone,
 - **My List**: save anything with ＋; See All page.
 - **Recently Added to put.io**, on Home and per kind on Movies and TV Shows.
 - **Movies / TV Shows** (on iPhone, both under **Browse** with a switch):
-  - Recently Added to put.io and **Latest Movies / Latest Shows** (MyMoviz's newest, plus chill's five movie lists and
-    its All providers TV list when connected), refreshed every time the app opens.
+  - Recently Added to put.io, then **New to Stream** (movies with a digital or disc release in your region in the last
+    45 days, from TMDB) or **New Episodes This Week** (shows with an episode out in the last seven days), then
+    **Latest Movies / Latest Shows** (MyMoviz's newest, refreshed every time the app opens).
   - **IMDb Top 250**.
   - **New on Netflix**, **New on Disney+** (US catalogs), **New Series**, **Returning This Week**, **Critically
     Acclaimed**.
@@ -83,8 +84,8 @@ Everything Putio & Chill does, by area. Unless noted, a feature works on iPhone,
 - **Get & Watch**: searches every enabled source, picks the best release by your Smart Get rule (resolution, max size,
   most seeders), and sends it to put.io.
 - **Versions**: every release found, best first, filterable by 4K / 1080p / 720p, marked when already in put.io.
-- **Sources**: chill.institute (with a chill account), YTS, EZTV, The Pirate Bay (apibay), Knaben, Torrents.csv,
-  TorrentGalaxy; each can be turned off or pointed to a new address in Settings.
+- **Sources**: YTS, EZTV, The Pirate Bay (apibay), Knaben, Torrents.csv, TorrentGalaxy; each can be turned off or
+  pointed to a new address in Settings.
 - **Transfers**: live progress, speed and peers; stalled transfers are flagged; a "Ready to watch" banner and
   notification with Play when done.
 - **put.io folders**: downloads go to Movies and TV Series at the top of put.io, or folders you choose (with optional
@@ -183,7 +184,7 @@ Everything Putio & Chill does, by area. Unless noted, a feature works on iPhone,
 
 ## Settings
 
-- Accounts: put.io, chill, TMDB (when not built in), MDBList, OpenSubtitles.
+- Accounts: put.io, TMDB (when not built in), MDBList, OpenSubtitles.
 - Sources: on/off and address for each release source.
 - Playback: auto-play when ready, auto-play next episode, audio and subtitle language, subtitle style.
 - Smart Get: one-tap Get, quality, max size, default Versions filter.
